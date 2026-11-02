@@ -337,6 +337,10 @@ func (m *Model) renderTurn(t *exchange) string {
 		lines = append(lines, m.approvalBoxView(width))
 	}
 
+	if t.firstTry != "" {
+		lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Wrap(t.firstTry, width, ""))))
+	}
+
 	switch {
 	case asking && t.answer == "":
 		// The box says what Meru waits for; the spinner would only repeat it.
@@ -370,6 +374,9 @@ func (m *Model) renderTurn(t *exchange) string {
 		if stoppedShort(t) && t == &m.turns[len(m.turns)-1] {
 			lines = append(lines, m.style.raw.Render(m.style.notice.Render(ansi.Wrap(continueHint, width, ""))))
 		}
+		if t.stats.OfferLarge && t == &m.turns[len(m.turns)-1] {
+			lines = append(lines, m.style.raw.Render(m.style.notice.Render(ansi.Wrap(largeHint, width, ""))))
+		}
 	case stateStopped:
 		lines = append(lines, m.style.raw.Render(m.style.dim.Render("stopped")))
 	case stateFailed:
@@ -400,6 +407,21 @@ func quietLine(t *exchange, now time.Time) string {
 
 // continueHint follows the newest answer when it stopped short.
 const continueHint = "This answer stopped short. /continue picks up where it stopped."
+
+// largeHint follows a main answer that ended early when a large model is
+// set: the user may ask it, and nothing asks it on its own.
+const largeHint = "/large asks the large model the same question."
+
+// firstTryLine folds the fast model's early answer to one line: the
+// reason merud gave, then the start of the text, such as
+// "▸ first try, folded: the fast model's answer was cut off, so … · Paris is the cap…".
+func firstTryLine(answer, why string) string {
+	line := "▸ first try, folded: " + why
+	if a := strings.Join(strings.Fields(answer), " "); a != "" {
+		line += " · " + ansi.Truncate(a, 60, "…")
+	}
+	return line
+}
 
 // toolText writes one tool call as the turn shows it:
 //

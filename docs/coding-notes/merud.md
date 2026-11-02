@@ -1096,6 +1096,18 @@ Scanning:   no
 Last scan:  2026-09-23T10:15:00-04:00, 3 files indexed (5 chunks), 9 unchanged, 0 removed, 0 failed, 2 skipped, in 1.2s
 ```
 
+### meru: -large, escalate, and `meru check`'s models
+
+`meru -large "…"` sends the question with `Large` set. An `escalate` event ends
+the fast model's line on stdout and prints a dim note on stderr; the main
+model's answer follows. When `done` says `offer_large`, a note says `meru
+-large` asks the large model. `meru check` records each answer's writer from
+`done` in `answered_by`, `escalated` when the fast first try went to main, and
+`[router] answers` from the models op in `answers`; `meru check report` shows
+each routed set as its own row, with a "Routed answers" table. `bench.sh`
+takes `ANSWERS="main routed"` and writes `[router] answers` into the bench
+home's config before each mode (`set_answers`).
+
 ### meru: approve.go
 
 A consent question, an approval with `Consent` set, takes its own prompt,

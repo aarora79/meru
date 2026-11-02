@@ -206,6 +206,9 @@ export function runCommand(text) {
     case "/continue":
       act.continueAnswer();
       return true;
+    case "/large":
+      act.askLarge(arg);
+      return true;
     case "/scope":
       return scopeCommand(arg);
     case "/attach":

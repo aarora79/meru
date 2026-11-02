@@ -60,6 +60,8 @@ clients offer Continue after the first two. A request asks for that with
 `merud` then picks up the session's last answer (see [agent](agent.md),
 "Continue").
 
+`model` on `done` names the model that wrote the answer, and `offer_large` says a large model is set and the answer ended early. An `escalate` event says the fast model's answer ended early and `model`, the main model, answers again; `large: true` on an `ask` asks the large model.
+
 `answered_by` and `reach` on `done` name the answer endpoint off this computer
 that wrote the answer, and stay empty for one written here. An `approval` with
 `kind: "consent"` and a `consent` object asks before a turn goes to such an

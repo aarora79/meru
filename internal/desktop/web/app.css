@@ -1121,6 +1121,24 @@ pre {
   color: var(--danger);
 }
 
+/* The fast model's answer that ended early, folded above the main
+   model's answer; it opens to the text. */
+.first-try {
+  margin: 0 0 10px;
+  color: var(--ink-2, inherit);
+  font-size: 13px;
+}
+
+.first-try summary {
+  cursor: pointer;
+}
+
+.first-try-text {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  opacity: 0.8;
+}
+
 /* Source chips. */
 /* merud's warning under an answer that claims an action no tool
    performed, in the colours of an approval. */

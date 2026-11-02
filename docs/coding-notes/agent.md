@@ -860,6 +860,31 @@ qwen-4bit` in meru chat, or Use for answers in Settings, Models." With none, it
 points to `/model` and Settings, Models. The names come from config, never from
 code.
 
+### Which model answers (pick.go)
+
+A turn starts with `t.tier = "main"` and the main model. A request with
+`Large` set calls `useLarge`, which puts `[models] large` in `t.model` and
+`"large"` in `t.tier`, or fails with `errNoLarge` when config names none.
+
+`respond` calls `pickFast` once every routing rule has had its say, just
+before it sends the `route` event. With `[router] answers = "routed"`, it gives
+the turn to the fast model when the route is `direct`, the router chose it
+itself (`Outcome == "ok"`) at least `easy_above` sure, and the turn has no
+picture, no skill, no web-first search and no Continue hand-off. Any other
+turn keeps main. `consent` runs at the start of `finishPrompt`, after the pick,
+so a fast turn never asks.
+
+`Handle` runs `respond` in a loop. When the turn's tier is fast and
+`weakEnding` says its ending is `cut_off`, `capped`, `window_full`, `gave_up`
+or `bad_output`, it sends an `escalate` event and builds a fresh turn with
+`escalated`. That turn keeps what identifies the turn (the session, the
+question, the approver, the tool call count, so IDs don't repeat) and drops
+the rest. Its `noFast` keeps the router from picking fast again, so the loop
+runs at most twice. The weak answer never reaches the transcript. The `done`
+event names the writer in `Model`, and sets `OfferLarge` when a main answer
+ended weak and a large model is set. `pick_test.go` covers each pick, an
+escalation, a second weak answer that stands, and a missing large model.
+
 ### Asking before a turn leaves (consent.go)
 
 A turn picks its answer model once, right after it opens the session:

@@ -178,6 +178,11 @@ type turnRecord struct {
 	TPOTMillis float64
 	TokensIn   int
 	TokensOut  int
+	// AnsweredBy is the model that wrote the answer, from the done event,
+	// and Escalated is true when the fast model's first try ended early
+	// and the main model answered again.
+	AnsweredBy string
+	Escalated  bool
 }
 
 // grade checks rec against want and returns why it fails, one short reason

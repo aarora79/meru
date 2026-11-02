@@ -65,7 +65,7 @@ func TestAskApproval(t *testing.T) {
 			sock := startServer(t, toolTurn(tt.choices))
 			var out, errOut bytes.Buffer
 			p := newPrompter(strings.NewReader(tt.input), &errOut, tt.terminal)
-			if err := ask(context.Background(), sock, "email sam", "", &out, &errOut, p.approve); err != nil {
+			if err := ask(context.Background(), sock, "email sam", "", false, &out, &errOut, p.approve); err != nil {
 				t.Fatalf("ask: %v (stderr %q)", err, errOut.String())
 			}
 			// stdout holds the answer and nothing else.
@@ -200,7 +200,7 @@ func TestAskConsent(t *testing.T) {
 		sock := startServer(t, turn)
 		var out, errOut bytes.Buffer
 		p := newPrompter(strings.NewReader(tt.input), &errOut, true)
-		if err := ask(context.Background(), sock, "q", "", &out, &errOut, p.approve); err != nil {
+		if err := ask(context.Background(), sock, "q", "", false, &out, &errOut, p.approve); err != nil {
 			t.Fatalf("%q: ask: %v", tt.input, err)
 		}
 		if want := "Answer (" + tt.want + ").\n"; out.String() != want {

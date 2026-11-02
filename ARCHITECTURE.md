@@ -805,7 +805,9 @@ sees which call it refused. A tool doing slow work sends `progress` events
 between its `tool_call` and `tool_result`, with the call's ID, such as the line
 `web_fetch` sends while it installs its page reader. The `done` event's `outcome`
 says when an answer stopped short, such as `cut_off`, so a script can tell a
-whole answer from part of one. Every tool call still goes through `dispatch`; the
+whole answer from part of one, and its `model` names the model that wrote it. An
+`escalate` event says the fast model's answer ended early and the main model
+answers again; a script drops the text it had. Every tool call still goes through `dispatch`; the
 mode adds no second path.
 
 ---
@@ -1144,7 +1146,11 @@ says which model fills each one.
 | --- | --- |
 | `fast` | routing, picking a turn's skill, session summaries, answers about a fetched page |
 | `main` | reasoning, writing the answer, choosing tools |
+| `large` | optional: a bigger answer model you ask for by hand |
 | `embed` | embeddings for the index and for queries |
+
+With `[router] answers = "routed"`, the fast model also answers easy direct
+questions (see [Which model answers](#which-model-answers)).
 
 `fast` and `embed` always run on the local Ollama: the router needs token
 probabilities, which only Ollama reports, and search must never send a file or a
@@ -1235,6 +1241,54 @@ records the current fingerprint and keeps their vectors (see [Storage](#storage)
 
 A 120B model at 4-bit needs ~60 GB, which leaves even the 64 GB development machine
 no room and makes it swap. Meru won't support models that size.
+
+### Which model answers
+
+`[router] answers` decides which model writes each answer:
+
+```toml
+[router]
+answers    = "routed"   # "main", the default: every answer from main
+easy_above = 0.8        # how sure the router must be; "routed" only
+
+[models]
+large = ""              # optional: a bigger model you ask for by hand
+```
+
+With `"routed"`, the fast model answers a question only when every one of
+these holds, read after the routing rules below have had their say:
+
+1. the route is `direct`, and the router chose it itself (outcome `ok`);
+2. the router is at least `easy_above` sure;
+3. the question carries no picture, no picked skill, no web-first search and
+   no hand-off from a Continue.
+
+Anything else goes to `main`: a question that searches your files or uses a
+tool, a direct one the router isn't sure of, a picture, a skill. The pick
+reads the router's existing result and makes no model call. The turn picks
+once, before it builds its prompt, and every step reads that choice, so the
+window, the self line and the checks fit the model that answers. The consent
+question for an endpoint comes after the pick, so a turn the fast model
+answers never asks.
+
+**A weak fast answer goes to main, once.** When the fast model's answer ends
+`cut_off`, `capped`, `window_full`, `gave_up` or `bad_output`, `merud` sends an
+`escalate` event ("the fast model's answer was cut off, so … answers.") and
+runs the question again on main, in a fresh turn that keeps the session, the
+question and the tool call numbers. The clients fold what streamed into a
+collapsed "First try" above the new answer. The weak answer never reaches the
+transcript, and a second escalation never happens.
+
+**The large model answers only when you ask.** `large` names a bigger model,
+on this machine or an endpoint: "Ask the large model" in the app, `/large` in
+`meru chat`, `meru -large`, or `large: true` on an ask. When a main answer ends
+weak and a large model is set, `done` carries `offer_large` and the clients
+offer it. Nothing sends a question to the large model on its own.
+
+`done` names the model that wrote each answer in `model`, which `meru check`
+records, so the benchmark counts fast answers and escalations (`make bench
+ANSWERS="main routed"` runs each set both ways). Metrics carry the tier,
+`fast`, `main` or `large`.
 
 ### Models we tried
 

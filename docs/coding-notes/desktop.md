@@ -134,6 +134,16 @@ connection and so tells `merud` to stop, and drops the queue with a notice.
 app quits, and hides it from the page. It cancels the turn and waits for the
 goroutine.
 
+### "First try" and the large model
+
+An `escalate` update sets `t.firstTry` with the reason and the text that
+streamed, and `drawFirstTry` in `turns.js` draws it as a closed `<details>`,
+"First try, folded: …", above the new answer. `/large` and the footer's "Ask
+the large model", which shows when `done` says `offer_large`, call the
+Bridge's `AskLarge`, which sends the question with `Large` set. `send` takes a
+kind, `sendAsk`, `sendContinue` or `sendLarge`, in place of the Continue flag
+it had.
+
 ### views.go
 
 `consentView` builds the card for a consent question: the endpoint, what the

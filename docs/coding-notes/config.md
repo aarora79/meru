@@ -402,6 +402,11 @@ the sets: `EndpointRef` says whether a name is `@name`, and only a `main` may
 be one, of an entry that exists. `tools` is a `*bool`, so `CallsTools` can tell
 "left out", which means true, from `false`.
 
+`[router] answers` must be `"main"` (the default) or `"routed"`, and
+`easy_above` between 0 and 1, 0.8 by default. `[models] large` is optional;
+like `main` it may name an endpoint as `@name`, and a cloud model is refused
+there too.
+
 The reach rules: `local` needs a loopback URL (`loopback.CheckURL`).
 `checkReachURL` handles the other two: both need an http or https URL with a
 host, `remote` needs https, and a `near-edge` URL whose host is an IP address

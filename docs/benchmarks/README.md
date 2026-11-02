@@ -72,6 +72,10 @@ This needs no code: a text file of questions and a few commands.
    ```
 
    `make bench SETS=gemma-moe REPEATS=1 ONLY=t0-direct` runs a small part of it first.
+   `make bench ANSWERS="main routed"` runs each set twice over: with every answer from
+   the main model, and with `[router] answers = "routed"`, where easy direct questions go to
+   the fast model. The report then shows each routed set as its own row, with how many
+   answers the fast model wrote and how many it handed to main.
 
 `make bench` runs in its own Meru home, `bench/home/`, so it never touches your real sessions,
 memories or index. The first run copies your config, secrets, skills and memories there and

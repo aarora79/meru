@@ -60,6 +60,25 @@ Mac's memory, and never less than `[ollama] context_length`, 32,768 by default.
 the window at startup and on each switch: `answer model window`. No Ollama
 setting is needed.
 
+**Let easy questions use the fast model.** With this in `config.toml`, a
+question the router is sure needs no files, no tools and no picture gets the
+fast model, which starts writing sooner; everything else gets the answer
+model, and a fast answer that ends early is asked again of it:
+
+```toml
+[router]
+answers    = "routed"
+easy_above = 0.8      # how sure the router must be
+```
+
+Each answer names the model that wrote it. `"main"`, the default, sends every
+question to the answer model.
+
+**A larger model on request.** `[models] large` names a bigger model, on this
+computer or an [endpoint](answer-endpoints.md). It answers only when you ask:
+"Ask the large model" under an answer that ended early, `/large` in `meru
+chat`, or `meru -large "…"`.
+
 **Changing the embedding model** (`[models] embed`) makes `merud` embed every
 file again: set it, `ollama pull` it, and restart `merud`.
 

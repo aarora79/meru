@@ -119,10 +119,14 @@ type exchange struct {
 	// past is true for a turn /chats reopened from its transcript.
 	past bool
 
-	answer string    // the answer's raw text, grown token by token
-	notice string    // merud's warning about the answer, from a "notice" event; "" for none
-	err    string    // why the turn failed, for stateFailed
-	stats  rpc.Event // the closing "done" event and its stats; zero if none came
+	answer string // the answer's raw text, grown token by token
+	// firstTry is the fast model's answer that ended early, folded to one
+	// line above the main model's answer by an "escalate" event; "" for
+	// none.
+	firstTry string
+	notice   string    // merud's warning about the answer, from a "notice" event; "" for none
+	err      string    // why the turn failed, for stateFailed
+	stats    rpc.Event // the closing "done" event and its stats; zero if none came
 
 	// code lists the answer's code blocks, found when the turn ends, and
 	// firstBlock is the number of the first one; the rest follow on. The
@@ -176,6 +180,8 @@ type outgoing struct {
 	// cont marks /continue, which merud answers by picking up the chat's
 	// last answer; text is then the word the chat shows.
 	cont bool
+	// large asks the large model, for /large.
+	large bool
 }
 
 // link says whether merud answered last time we heard from it.
@@ -585,6 +591,7 @@ func (m *Model) startTurn(q outgoing) tea.Cmd {
 		// continue it by the ID merud sent.
 		Incognito: m.session == "" && m.incognito,
 		Continue:  q.cont,
+		Large:     q.large,
 	}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{Paths: q.images}
@@ -634,6 +641,11 @@ func (m *Model) handleEvent(msg eventMsg) {
 		cur.answer += ev.Text
 	case rpc.EventNotice:
 		cur.notice = ev.Text
+	case rpc.EventEscalate:
+		// The fast model's answer ended early, and the main model answers
+		// afresh: fold what streamed into one line, and start again.
+		cur.firstTry = firstTryLine(cur.answer, ev.Text)
+		cur.answer = ""
 	case rpc.EventDone:
 		// The turnDoneMsg right behind this event ends the turn; keep the
 		// stats for the line under the answer.

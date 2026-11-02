@@ -113,3 +113,24 @@ func TestLoadEndpointReaches(t *testing.T) {
 		}
 	}
 }
+
+// TestRouterAnswers checks [router] answers and easy_above, and that
+// [models] large may name an endpoint.
+func TestRouterAnswers(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "[router]\nanswers = \"routed\"\neasy_above = 0.7\n\n[models]\nlarge = \"@lab\"\n"+labEndpoint))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Router.Answers != AnswersRouted || cfg.Router.EasyAbove != 0.7 || cfg.Models.Large != "@lab" {
+		t.Errorf("router %+v, large %q", cfg.Router, cfg.Models.Large)
+	}
+	for body, want := range map[string]string{
+		"[router]\nanswers = \"sometimes\"\n": `router.answers "sometimes" is unknown`,
+		"[router]\neasy_above = 1.5\n":        "router.easy_above is 1.5",
+		"[models]\nlarge = \"@nope\"\n":       `models.large: "@nope" names no [[endpoints]] entry`,
+	} {
+		if _, err := Load(writeConfig(t, body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Load(%q) = %v, want %q", body, err, want)
+		}
+	}
+}

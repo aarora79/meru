@@ -213,3 +213,46 @@ func TestEndpointConsent(t *testing.T) {
 		t.Errorf("consent lines = %v, want once, deny, and meru's deny", consents)
 	}
 }
+
+// TestRoutedAnswers runs [router] answers = "routed" through real binaries:
+// an easy direct question gets the fast model, and a fast answer cut off at
+// its length goes to the main model, with an escalate event between.
+func TestRoutedAnswers(t *testing.T) {
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fakeConfig(f.url, "[router]\ntemperature = 1.0\nanswers = \"routed\"\n"))
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+
+	// directRoute is 0.9 sure, above easy_above's 0.8.
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Four."})
+	events := ask(t, h.socket, "", "what is 2 + 2?")
+	if done := lastEvent(t, events); answerOf(events) != "Four." || done.Model != fastModel {
+		t.Errorf("answer %q from %q, want Four. from the fast model", answerOf(events), done.Model)
+	}
+
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Paris is", DoneReason: "length"})
+	f.enqueue(t, mainModel, fakeollama.Reply{Text: "Paris is the capital of France."})
+	events = ask(t, h.socket, "", "What is the capital of France?")
+	esc := eventsOf(events, rpc.EventEscalate)
+	if len(esc) != 1 || esc[0].Model != mainModel {
+		t.Fatalf("escalate events = %+v\nlog:\n%s", esc, h.log())
+	}
+	done := lastEvent(t, events)
+	if done.Model != mainModel || done.Outcome != "" {
+		t.Errorf("done = %+v, want a whole answer from main", done)
+	}
+	// The transcript holds the main model's answer, not the fast try.
+	var answers []string
+	for _, file := range sessionFiles(t, h) {
+		for _, l := range readTranscript(t, file) {
+			if l.Type == transcript.TypeAssistant {
+				answers = append(answers, l.Text)
+			}
+		}
+	}
+	if !slices.Contains(answers, "Paris is the capital of France.") || slices.Contains(answers, "Paris is") {
+		t.Errorf("assistant lines = %q", answers)
+	}
+}

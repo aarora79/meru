@@ -784,7 +784,7 @@
   <li><code>dispatch</code> asks for approval through <code>rpc.ApproveFunc</code> and writes each call to the store's <code>tool_calls</code> table as a <code>store.ToolCall</code>.</li>
 </ul>
 
-<p>A script can drive the harness with no one at the keyboard. <code>meru -image shot.png "find images like this"</code> sends a picture with one question, through the same <code>attach_file</code> step and rules as the desktop app's attach button; <code>-image</code> works with <code>run --json</code> too. <code>meru run --json "question"</code> writes each socket event as one JSON line on stdout and exits non-zero when the turn fails. The command denies a tool call that asks first, as any client with no one to ask does, and <code>dispatch</code> logs it as <code>declined</code>. The command also writes the approval event to stdout, so the script sees which call it refused. A tool doing slow work sends <code>progress</code> events between its <code>tool_call</code> and <code>tool_result</code>, with the call's ID, such as the line <code>web_fetch</code> sends while it installs its page reader. The <code>done</code> event's <code>outcome</code> says when an answer stopped short, such as <code>cut_off</code>, so a script can tell a whole answer from part of one. Every tool call still goes through <code>dispatch</code>; the mode adds no second path.</p>
+<p>A script can drive the harness with no one at the keyboard. <code>meru -image shot.png "find images like this"</code> sends a picture with one question, through the same <code>attach_file</code> step and rules as the desktop app's attach button; <code>-image</code> works with <code>run --json</code> too. <code>meru run --json "question"</code> writes each socket event as one JSON line on stdout and exits non-zero when the turn fails. The command denies a tool call that asks first, as any client with no one to ask does, and <code>dispatch</code> logs it as <code>declined</code>. The command also writes the approval event to stdout, so the script sees which call it refused. A tool doing slow work sends <code>progress</code> events between its <code>tool_call</code> and <code>tool_result</code>, with the call's ID, such as the line <code>web_fetch</code> sends while it installs its page reader. The <code>done</code> event's <code>outcome</code> says when an answer stopped short, such as <code>cut_off</code>, so a script can tell a whole answer from part of one, and its <code>model</code> names the model that wrote it. An <code>escalate</code> event says the fast model's answer ended early and the main model answers again; a script drops the text it had. Every tool call still goes through <code>dispatch</code>; the mode adds no second path.</p>
 
 <!-- ============================================================ -->
 <h2 id="end-to-end">A question, end to end</h2>
@@ -1084,9 +1084,12 @@ off     = []               # built-ins you chose to keep off; see below</code></
   <tbody>
     <tr><td><code>fast</code></td><td>routing, picking a turn's skill, session summaries, answers about a fetched page</td></tr>
     <tr><td><code>main</code></td><td>reasoning, writing the answer, choosing tools</td></tr>
+    <tr><td><code>large</code></td><td>optional: a bigger answer model you ask for by hand</td></tr>
     <tr><td><code>embed</code></td><td>embeddings for the index and for queries</td></tr>
   </tbody>
 </table></div>
+
+<p>With <code>[router] answers = "routed"</code>, the fast model also answers easy direct questions (see <a href="#which-model-answers">Which model answers</a>).</p>
 
 <p><code>fast</code> and <code>embed</code> always run on the local Ollama: the router needs token probabilities, which only Ollama reports, and search must never send a file or a question anywhere. <code>main</code> may instead name an answer model on another model server, as <code>@name</code> (see <a href="#answer-endpoints">Answer endpoints</a>).</p>
 
@@ -1123,6 +1126,31 @@ off     = []               # built-ins you chose to keep off; see below</code></
 <p>A new embedding model makes every stored vector stale. So does a change to its query or document prefix, even when the model and vector size stay the same. The store records the model name, vector size and a fingerprint of both prefixes. When one changes, the store drops every vector and keeps the text, so keyword search keeps working while the indexer re-embeds your files (see <a href="#storage">Storage</a>).</p>
 
 <p>A 120B model at 4-bit needs about 60 GB, which leaves even the 64 GB development machine no room and makes it swap. Meru won't support models that size.</p>
+
+<h3 id="which-model-answers">Which model answers</h3>
+
+<p><code>[router] answers</code> decides which model writes each answer:</p>
+
+<pre><code>[router]
+answers    = "routed"   # "main", the default: every answer from main
+easy_above = 0.8        # how sure the router must be; "routed" only
+
+[models]
+large = ""              # optional: a bigger model you ask for by hand</code></pre>
+
+<p>With <code>"routed"</code>, the fast model answers a question only when every one of these holds, read after the routing rules have had their say:</p>
+<ol>
+  <li>the route is <code>direct</code>, and the router chose it itself (outcome <code>ok</code>);</li>
+  <li>the router is at least <code>easy_above</code> sure;</li>
+  <li>the question carries no picture, no picked skill, no web-first search and no hand-off from a Continue.</li>
+</ol>
+<p>Anything else goes to <code>main</code>: a question that searches your files or uses a tool, a direct one the router isn't sure of, a picture, a skill. The pick reads the router's existing result and makes no model call. The turn picks once, before it builds its prompt, and every step reads that choice, so the window, the self line and the checks fit the model that answers. The consent question for an endpoint comes after the pick, so a turn the fast model answers never asks.</p>
+
+<p><b>A weak fast answer goes to main, once.</b> When the fast model's answer ends <code>cut_off</code>, <code>capped</code>, <code>window_full</code>, <code>gave_up</code> or <code>bad_output</code>, <code>merud</code> sends an <code>escalate</code> event ("the fast model's answer was cut off, so … answers.") and runs the question again on main, in a fresh turn that keeps the session, the question and the tool call numbers. The clients fold what streamed into a collapsed "First try" above the new answer. The weak answer never reaches the transcript, and a second escalation never happens.</p>
+
+<p><b>The large model answers only when you ask.</b> <code>large</code> names a bigger model, on this machine or an endpoint: "Ask the large model" in the app, <code>/large</code> in <code>meru chat</code>, <code>meru -large</code>, or <code>large: true</code> on an ask. When a main answer ends weak and a large model is set, <code>done</code> carries <code>offer_large</code> and the clients offer it. Nothing sends a question to the large model on its own.</p>
+
+<p><code>done</code> names the model that wrote each answer in <code>model</code>, which <code>meru check</code> records, so the benchmark counts fast answers and escalations (<code>make bench ANSWERS="main routed"</code> runs each set both ways). Metrics carry the tier, <code>fast</code>, <code>main</code> or <code>large</code>.</p>
 
 <h3 id="models-we-tried">Models we tried</h3>
 

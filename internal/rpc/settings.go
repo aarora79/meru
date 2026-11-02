@@ -215,6 +215,12 @@ type ModelsInfo struct {
 	Fast    string `json:"fast"`
 	Main    string `json:"main"`
 	Embed   string `json:"embed"`
+	// Large is [models] large, the model "Ask the large model" uses; ""
+	// for none.
+	Large string `json:"large,omitempty"`
+	// Answers is [router] answers: "main", or "routed" when easy
+	// questions go to the fast model.
+	Answers string `json:"answers,omitempty"`
 	// Runtime and RuntimeVersion name the model runtime, "ollama" and its
 	// version, and Loaded lists the models it holds in memory now. Err
 	// says why merud couldn't ask it.

@@ -161,7 +161,7 @@ remote  = false
 		Agent:   Agent{MaxRounds: 3, MaxOutputTokens: 2048, TurnTimeout: "90s", HistoryTurns: 0, SystemPrompt: "Be brief.", SummaryIdle: "30m"},
 		Skills:  Skills{OutputDir: "~/meru-output", Disabled: []string{"explainer", "not-yet"}},
 		Router: Router{TopLogProbs: 5, Temperature: 0.7, MinConfidence: 0, Fallback: "direct",
-			Decision: "marginal", SearchThreshold: 0.4, ToolsThreshold: 0},
+			Decision: "marginal", SearchThreshold: 0.4, ToolsThreshold: 0, Answers: AnswersMain, EasyAbove: 0.8},
 		Observability: Observability{OTLPEndpoint: "http://[::1]:4318", MetricsInterval: "1m", Traces: false, CaptureContent: true},
 		Log:           Log{Level: "debug"},
 		Index: Index{

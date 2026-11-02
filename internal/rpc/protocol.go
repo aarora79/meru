@@ -354,6 +354,10 @@ type Request struct {
 	// the turn's deadline ("timeout"). Text may be empty; merud then
 	// records "Continue" as what the user typed.
 	Continue bool `json:"continue,omitempty"`
+	// Large asks the large model, [models] large, to answer this question:
+	// "Ask the large model" in the app, /large in meru chat, meru -large.
+	// merud refuses it when config names no large model.
+	Large bool `json:"large,omitempty"`
 	// Job and Skill belong to an ask merud's own scheduler makes for a
 	// job's run: the job's name, which goes on the user line and files the
 	// chat in the Jobs folder, and a skill to load without the pick step.
@@ -442,6 +446,13 @@ const (
 	// client that doesn't know the type skips it, as it does any unknown
 	// type.
 	EventNotice EventType = "notice"
+	// EventEscalate says the fast model's answer ended early, with the
+	// reason in Text, and that Model, the main model, answers the question
+	// again. A client folds what it has streamed so far
+	// into a collapsed "first answer" and starts the answer afresh. A
+	// client that doesn't know the type shows both answers one after the
+	// other.
+	EventEscalate EventType = "escalate"
 	// EventToolCall says the model asked for a tool, in Tool, before
 	// dispatch decides whether it runs.
 	EventToolCall EventType = "tool_call"
@@ -637,6 +648,14 @@ type Event struct {
 	// only when it came from elsewhere.
 	AnsweredBy string `json:"answered_by,omitempty"`
 	Reach      string `json:"reach,omitempty"`
+	// Model, on the "done" event, is the model that wrote the answer, as
+	// config names it, and on an "escalate" event the model that answers
+	// next. `meru check` records it, so the benchmark can count the
+	// questions each model answered.
+	Model string `json:"model,omitempty"`
+	// OfferLarge, on the "done" event, says the answer ended early and a
+	// large model is set, so the client offers "Ask the large model".
+	OfferLarge bool `json:"offer_large,omitempty"`
 }
 
 // Citation is one excerpt a turn's prompt held, as the "sources" event lists
