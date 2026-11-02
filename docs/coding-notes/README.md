@@ -85,6 +85,7 @@ Read them in this order; each builds on the ones before it.
 - [Byte slices](go-basics/byte-slices.md)
 - [XML streaming](go-basics/xml-streaming.md)
 - [Server-sent events](go-basics/server-sent-events.md)
+- [Generics](go-basics/generics.md)
 
 ## Rules for writing a note
 

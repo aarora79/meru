@@ -34,6 +34,12 @@ func TestClaimsAction(t *testing.T) {
 		{"I have just moved the garden folder to ~/Projects.", true},
 		{"I sent the email to Sam.", true},
 		{"The file has been saved to ~/Projects.", true},
+		{"Updated the HTML dashboard with a **Daily Calls** column after each row.", true},
+		{"**Added a chart** to the report page.", true},
+		{"Saved your draft as ~/meru-output/letter.md.", true},
+		{"Updated weekly, the page lists new releases.", false},
+		{"Updated the answer above with the new figure.", false},
+		{"Added bonus: the table now sorts by date.", false},
 		{"Your events have been scheduled for Monday.", true},
 		{"The folder is now in ~/Projects.", true},
 		{"I’ve deleted the old notes.", true}, // a curly apostrophe

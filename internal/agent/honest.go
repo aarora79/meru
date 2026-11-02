@@ -160,9 +160,18 @@ var (
 	// count only when the sentence names a file, a folder, a note, an email,
 	// an event or a path (see namesThing).
 	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written)\b`)
+	// claimOpening matches a sentence that opens with the verb, with no
+	// "I": "Updated the HTML dashboard with a new column." A real turn
+	// said that after it had called no tool, and the rules above, which
+	// all want "I" or "has been", let it pass. The verb must be followed
+	// by "the", "your", "a", "an", "it" or "them", and the sentence must
+	// name a thing (see namesThing), so "Updated weekly" and "Added
+	// bonus: …" don't count.
+	claimOpening = regexp.MustCompile(`(?i)^[^\pL]*(?:moved|saved|sent|deleted|removed|renamed|copied|scheduled|replaced|created|updated|wrote|added|changed|edited)\s+(?:the|your|a|an|it|them)\b`)
 	// namesThing matches a word for something on the computer or in a
-	// service, or a path such as ~/notes or /tmp.
-	namesThing = regexp.MustCompile(`(?i)\b(?:file|files|folder|folders|directory|note|notes|email|event|reminder|calendar)\b|~/|(?:^|\s)/\w`)
+	// service, such as a file, a page or a spreadsheet, or a path such as
+	// ~/notes or /tmp.
+	namesThing = regexp.MustCompile(`(?i)\b(?:file|files|folder|folders|directory|note|notes|email|event|reminder|calendar|html|page|dashboard|document|report|draft|spreadsheet|sheet|csv)\b|~/|(?:^|\s)/\w`)
 	// notClaim matches a sentence that asks, offers, plans or denies
 	// instead of reporting: "I can move it", "Want me to save it",
 	// "if you like, I'll", "I couldn't move it". n't covers every
@@ -194,7 +203,7 @@ func claimsAction(text string) bool {
 		}
 		if claimDone.MatchString(s) || claimNowAt.MatchString(s) ||
 			claimPassive.MatchString(s) || claimFirst.MatchString(s) ||
-			(claimMade.MatchString(s) && namesThing.MatchString(s)) {
+			((claimMade.MatchString(s) || claimOpening.MatchString(s)) && namesThing.MatchString(s)) {
 			return true
 		}
 	}

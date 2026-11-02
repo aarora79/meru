@@ -164,6 +164,33 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("ollama %s: %d %s: %s", e.Path, e.StatusCode, http.StatusText(e.StatusCode), e.Message)
 }
 
+// Unwrap returns ErrModelOutput when the error is Ollama refusing what the
+// model wrote, and nil otherwise, so errors.Is(err, ErrModelOutput) finds
+// it. Ollama usually reports a tool call it can't parse part way through a
+// stream, but a real turn got the same parser error as a 500 from
+// /api/chat before any text: "XML syntax error on line 8: element
+// <function> closed by </parameter>". Asking the model again can work in
+// both cases. Other 500s, such as a model that fails to load, stay plain
+// errors, since a retry won't help.
+func (e *APIError) Unwrap() error {
+	if e.Path == "/api/chat" && e.StatusCode == http.StatusInternalServerError && parserError(e.Message) {
+		return ErrModelOutput
+	}
+	return nil
+}
+
+// parserError reports whether msg, an error Ollama sent, is its parser
+// rejecting the model's output, by the words its parsers use.
+func parserError(msg string) bool {
+	m := strings.ToLower(msg)
+	for _, w := range []string{"syntax error", "closed by", "unexpected end of", "invalid character", "failed to parse"} {
+		if strings.Contains(m, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // ErrModelOutput marks an error line that Ollama sent part way through a
 // stream, after it had answered 200 OK. Ollama sends one when its parser for
 // the model's own format rejects what the model wrote, most often a tool

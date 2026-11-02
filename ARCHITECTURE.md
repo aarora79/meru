@@ -1536,8 +1536,12 @@ sees a model-specific token. When Ollama's parser rejects what the model wrote,
 it sends an `{"error": ...}` line part way through a stream it had answered
 200 OK. `Stream` wraps any such line in `ErrModelOutput`, and the agent loop
 tests for it with `errors.Is` to retry the round (see [Agent loop](#agent-loop)).
-A failure before the stream starts, such as Ollama down or a model not pulled,
-stays an `*APIError` or a transport error, and fails the turn as before. Each `Completion` also carries Ollama's counters
+Ollama sometimes sends the same parser error as a 500 from `/api/chat` before
+any text, as in "XML syntax error on line 8: element `<function>` closed by
+`</parameter>`". That `*APIError` wraps `ErrModelOutput` too, by the words
+Ollama's parsers use, so the round retries the same way. Any other failure
+before the stream starts, such as Ollama down or a model not pulled, stays an
+`*APIError` or a transport error, and fails the turn as before. Each `Completion` also carries Ollama's counters
 (`prompt_eval_count`, `eval_count`, `load_duration`, `prompt_eval_duration`,
 `eval_duration`), which feed [Observability](#observability).
 
@@ -2061,6 +2065,9 @@ names Meru and the answer model:
 > Ollama on this computer. Never give yourself another name, and never name
 > another model as yours.
 
+For an answer model on an endpoint, the line names the endpoint's model and
+"the model server Meru calls @name on this computer" instead of Ollama.
+
 The line came from a real session. Asked "who are you" on the `search+tools` route,
 `qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
 use a Mistral model." Neither name appears anywhere in Meru. The prompt already
@@ -2083,7 +2090,8 @@ the full word lists:
 | it, they, or a file, folder, note, email or event "is now at/in" | "It's now at ~/Projects/garden" |
 | "has/have been" and an action | "The file has been saved to ~/Projects" |
 | "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
-| the same with created, updated, wrote or written, when the sentence names a file, folder, note, email, event, reminder, calendar or a path | "I've created the file ~/notes/plan.md" |
+| the same with created, updated, wrote or written, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
+| a sentence that opens with one of those verbs, or added, changed, edited or replaced, then "the", "your", "a", "an", "it" or "them", when it names such a thing | "Updated the HTML dashboard with a new column" |
 
 A sentence that ends in "?", or that holds words such as "if", "want me", "I
 can", "I'll", "let me", "shall I", "would you", "not", "never", "unable" or any
@@ -3218,7 +3226,15 @@ own files did worse, 42 of 63: naming the skill drew the model to it.
   skips, built-in or yours (see [Skills](#skills)).
 - **Skills that make files need somewhere to put them.** The built-in `write_file`
   tool (v0.4) writes only inside `~/meru-output/` (configurable). It can't touch any other
-  path, and it goes through `dispatch` like every tool.
+  path, and it goes through `dispatch` like every tool. A path that already names
+  the folder, such as `~/meru-output/uploads/page.html`, its absolute form, or
+  `meru-output/uploads/page.html`, means `uploads/page.html`: a model that read a
+  file there passes its path back, and taken as relative it once wrote a second
+  copy in `~/meru-output/meru-output/` while the user looked at the first. The
+  result says whether it wrote a new file or replaced one, and gives a Markdown
+  link with a `file://` URL for the model to pass on, which both clients open
+  with a click. Every turn's note on your folders also asks the model to give a
+  file on this computer as such a link.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
   model writes weaker explainers and reads pages less well.
 

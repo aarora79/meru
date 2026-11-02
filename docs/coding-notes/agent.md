@@ -195,8 +195,13 @@ agentic)` to the end of it, so every turn tells the model which folders Meru
 searches:
 
 ```text
-Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below.
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. When you name a file on this computer, give it as a Markdown link to its full path, such as [report.html](file:///Users/you/meru-output/report.html), so the user can click it.
 ```
+
+The last sentence is `fileLinkRule`. Asked for a clickable link to a page it
+had saved, a model wrote the path in backticks, which both clients show as
+plain text; a `file://` link opens with a click, and `write_file`'s result
+hands the model one to copy.
 
 With `[index] retrieval = "agentic"`, `New` sets `a.agentic`, and the note
 leaves out the second sentence, since Meru searches nothing first. The note
@@ -1006,12 +1011,18 @@ expressions:
 | `claimPassive` | "The file has been saved to ~/Projects" |
 | `claimFirst` | "I've moved the folder", "I just sent the email" |
 | `claimMade` with `namesThing` | "I've created the file ~/notes/plan.md", but not "I've created a short plan:" |
+| `claimOpening` with `namesThing` | "Updated the HTML dashboard with a new column", but not "Updated weekly, the page lists releases" |
 
 A sentence that ends in `?`, or that `notClaim` matches ("if", "want me", "I
 can", "I'll", "not", any "n't"), is a question, an offer or a denial, and
 never counts. `claimMade` needs `namesThing` because a model also creates,
 updates and writes text in the chat itself: "I've updated the function below"
-changes nothing on the computer and says so.
+changes nothing on the computer and says so. `claimOpening` came from a turn
+that called no tool and answered "Updated the HTML dashboard with a Daily
+Calls column…": no "I", so no rule matched. It wants the verb first, then
+"the", "your", "a", "an", "it" or "them", and a thing `namesThing` knows, which
+now includes a page, a dashboard, a document, a report, a draft and a
+spreadsheet.
 
 The warning goes out as a `notice` event, after the last token and before
 `done`, and into the assistant line's `Notice` field. The turn span gets

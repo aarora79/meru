@@ -70,6 +70,55 @@ func TestWriteFile(t *testing.T) {
 	}
 }
 
+// TestWriteFileNamesTheOutputFolder checks the three ways a model names a
+// file it read in the output folder: "~/meru-output/x", the absolute path,
+// and "meru-output/x". Each must write x itself, never a meru-output folder
+// inside the output folder, and the result must say whether it replaced the
+// file and give a link the user can click.
+func TestWriteFileNamesTheOutputFolder(t *testing.T) {
+	tools, out := writeTools(t)
+	// os.UserHomeDir reads HOME, so "~" is the folder above the output folder.
+	t.Setenv("HOME", filepath.Dir(out))
+	want := filepath.Join(out, "uploads", "page.html")
+	paths := []string{
+		"uploads/page.html",
+		"meru-output/uploads/page.html",
+		"~/meru-output/uploads/page.html",
+		filepath.ToSlash(want),
+	}
+	for i, p := range paths {
+		res := callWrite(t, tools, `{"path":"`+p+`","content":"v`+string(rune('1'+i))+`","overwrite":true}`)
+		if res.IsError {
+			t.Fatalf("%s: %s", p, res.Text)
+		}
+		verb := "Replaced"
+		if i == 0 {
+			verb = "Wrote a new file"
+		}
+		if !strings.HasPrefix(res.Text, verb) || !strings.Contains(res.Text, want) {
+			t.Errorf("%s: result = %q, want %q and the path", p, res.Text, verb)
+		}
+		if !strings.Contains(res.Text, "Link for the user: [page.html](file://") {
+			t.Errorf("%s: result = %q, want a file link", p, res.Text)
+		}
+	}
+	if got, _ := os.ReadFile(want); string(got) != "v4" { // #nosec G304 -- a test temp dir
+		t.Errorf("the file holds %q, want the last write", got)
+	}
+	if _, err := os.Stat(filepath.Join(out, "meru-output")); err == nil {
+		t.Error("write_file made a meru-output folder inside the output folder")
+	}
+}
+
+func TestFileURL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix paths")
+	}
+	if got, want := fileURL("/Users/me/meru-output/a b.html"), "file:///Users/me/meru-output/a%20b.html"; got != want {
+		t.Errorf("fileURL = %q, want %q", got, want)
+	}
+}
+
 func TestWriteFileRefuses(t *testing.T) {
 	tests := []struct {
 		name string

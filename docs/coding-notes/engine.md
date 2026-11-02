@@ -184,6 +184,14 @@ any error line counts. A failure before the stream starts, such as a non-2xx
 status or Ollama down, is an `*APIError` or a transport error instead, and
 asking the model again won't fix it.
 
+One exception: Ollama sometimes sends the parser error as a 500 from
+`/api/chat` before any text. `APIError` has an `Unwrap` method, which
+`errors.Is` calls to look inside an error; it returns `ErrModelOutput` for a
+500 from `/api/chat` whose message holds the words Ollama's parsers use, such
+as "syntax error" or "closed by", and nil for every other `*APIError`. So that
+one case retries like a bad line mid-stream, and a model that fails to load
+still fails the turn.
+
 `Embed` posts all texts to `/api/embed` in one request and checks that one vector
 came back per text. `Info` reads `/api/version` and `/api/ps`.
 
@@ -392,7 +400,8 @@ and that no message text reaches either. `TestStreamErrors` checks that an
 error line, Ollama's XML error among them, satisfies
 `errors.Is(err, ErrModelOutput)` and that a bad JSON line or a stream with no
 done line doesn't. `TestStreamHTTPErrorIsNotModelOutput` checks that an HTTP
-500 stays an `*APIError`. `images_test.go` checks that a user message's images
+500 stays an `*APIError`, and `TestStreamParserErrorBeforeTextIsModelOutput`
+that a 500 holding Ollama's XML error wraps `ErrModelOutput`. `images_test.go` checks that a user message's images
 reach `/api/chat` as base64 strings and the system message carries none, and
 `TestCapabilities` feeds `/api/show` replies for a model with vision, one
 without, an older reply with no `capabilities` key and a 404; a good answer is

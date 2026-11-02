@@ -346,7 +346,12 @@ checks too.
 in this order, and each refusal ends with "Nothing was written" so the model
 can't mistake it for a success:
 
-1. `cleanRelPath` turns down an empty path, an absolute one (`/etc/x`, `\x`,
+1. `insideOutput` first turns a path that already names the output folder
+   into one inside it: `~/meru-output/uploads/page.html`, its absolute form and
+   `meru-output/uploads/page.html` all become `uploads/page.html`. A model that
+   read a file there passes its path back, and taken as relative the last form
+   once wrote a second copy in `~/meru-output/meru-output/` while the user
+   looked at the first. Then `cleanRelPath` turns down an empty path, an absolute one (`/etc/x`, `\x`,
    `C:\x`) and any path with a `..` part. It splits at both `/` and `\`, so
    `a\..\..\x` can't slip a `..` past a check that only knows one separator.
 2. It refuses content over 1 MiB. A model that writes that much is most likely
@@ -365,8 +370,17 @@ can't mistake it for a success:
    happens in one step, so nobody sees half a file, and a failed write leaves the
    old file as it was.
 
-The result reads `Wrote 1234 bytes to /Users/you/meru-output/dns/explainer.html.`
-The model passes the path on to you, and the client shows it in the tool result.
+The result says whether the file is new or replaced, and gives a link:
+
+```text
+Wrote a new file, 1234 bytes, at /Users/you/meru-output/dns/explainer.html.
+Link for the user: [explainer.html](file:///Users/you/meru-output/dns/explainer.html)
+```
+
+`fileURL` builds the link with `net/url`, so a space becomes `%20`. The model
+passes the link on, and both clients open a `file://` link with a click. Before
+the link, a model asked for a clickable link wrote the path in backticks, which
+shows as plain text.
 
 `write_file` asks before each call, because the shipped `[builtin] confirm` is
 `["write_file"]`. A file outlives the chat, so the default is to ask. Take it out
@@ -708,6 +722,16 @@ otherwise reads quartiles off a sorted list by eye.
 `stringList`, whose `UnmarshalJSON` method takes a list, one string, or a
 string that holds a list, quoted or not (`"[daily]"`). Models send all three,
 and refusing them costs a round.
+
+`where`, `aggregate` and `sort` are lists of objects, and a model sends those
+as strings too. One real call sent `aggregate` as
+`"[{\"column\": Number, \"fn\": count}]"`: a string, with the values left
+bare. `objectList[T]` takes a list, or a string that holds one, and
+`quoteBareWords` puts quotes round a bare value such as `count` before it
+tries again, leaving numbers, `true`, `false` and `null` alone. A string it
+still can't read fails with an example of the JSON to send. The `[T any]` makes
+the type generic: one type serves `condition`, `aggArg` and `sortKey` (see
+[generics](go-basics/generics.md)).
 
 ### search.go
 
@@ -1126,6 +1150,8 @@ It returns the bytes, and the agent puts them on the question's message.
 - **A custom `UnmarshalJSON`**: `stringList` decodes a list, a string, or a
   string that holds a list. More in
   [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
+- **Generics**: `objectList[T]` is one list type for three kinds of object.
+  More in [go-basics/generics.md](go-basics/generics.md).
 - **`net/http` clients** — an `http.Client` holds the timeout, the redirect rule
   and the `Transport`, which holds the proxy setting and the dialer. Each web tool
   builds its own, so one tool's rules can't leak into the other's. More in

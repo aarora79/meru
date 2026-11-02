@@ -69,14 +69,22 @@ const whoIsWho = "The person asking is the user, and the files are theirs. " +
 func filesNote(folders []string, agentic bool) string {
 	if len(folders) == 0 {
 		return "Meru hasn't indexed any of the user's files yet. " +
-			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
+			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml. " + fileLinkRule
 	}
 	if agentic {
-		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + "."
+		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + ". " + fileLinkRule
 	}
 	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
-		"When a question needs them, Meru searches first and puts the best excerpts below."
+		"When a question needs them, Meru searches first and puts the best excerpts below. " + fileLinkRule
 }
+
+// fileLinkRule ends filesNote. A real session showed why: asked for a
+// clickable link to a page it had just saved, the model gave the path in
+// backticks, which both clients show as plain text. A Markdown link with a
+// file:// URL opens with a click, and write_file's result hands the model
+// one to copy.
+const fileLinkRule = "When you name a file on this computer, give it as a Markdown link to its full path, " +
+	"such as [report.html](file:///Users/you/meru-output/report.html), so the user can click it."
 
 // noResults stands in for the excerpts when a search finds nothing, or when
 // nothing is indexed yet, so the model answers without pretending it looked.

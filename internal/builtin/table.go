@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -53,15 +54,15 @@ var fns = []string{"count", "sum", "avg", "min", "max", "median", "percentile"}
 // tableArgs is the JSON the model sends. decode refuses any key the struct
 // doesn't name, so the model can pass nothing that reads as code.
 type tableArgs struct {
-	Path      string      `json:"path"`
-	Sheet     string      `json:"sheet"`      // .xlsx only; empty means the first sheet with data
-	HeaderRow int         `json:"header_row"` // 0 means find it
-	Where     []condition `json:"where"`      // all must hold
-	GroupBy   stringList  `json:"group_by"`
-	Aggregate []aggArg    `json:"aggregate"`
-	Columns   stringList  `json:"columns"` // for a list of rows, without aggregate
-	Sort      []sortKey   `json:"sort"`
-	Limit     int         `json:"limit"` // rows in the result; 0 means defaultTableLimit
+	Path      string                `json:"path"`
+	Sheet     string                `json:"sheet"`      // .xlsx only; empty means the first sheet with data
+	HeaderRow int                   `json:"header_row"` // 0 means find it
+	Where     objectList[condition] `json:"where"`      // all must hold
+	GroupBy   stringList            `json:"group_by"`
+	Aggregate objectList[aggArg]    `json:"aggregate"`
+	Columns   stringList            `json:"columns"` // for a list of rows, without aggregate
+	Sort      objectList[sortKey]   `json:"sort"`
+	Limit     int                   `json:"limit"` // rows in the result; 0 means defaultTableLimit
 }
 
 // condition is one filter. Column is a header name or a column letter.
@@ -79,6 +80,55 @@ type aggArg struct {
 	Fn     string   `json:"fn"`
 	Column string   `json:"column"`
 	P      *float64 `json:"p"`
+}
+
+// objectList is a list of objects, such as where's conditions, that also
+// takes the list sent as a string. A real turn sent aggregate as
+// "[{\"column\": Number, \"fn\": count}]": a string, with the values left
+// unquoted, and the call failed with a decoding error the model couldn't
+// act on. The [T any] makes it generic: one type serves conditions,
+// aggregates and sort keys, which would otherwise need three copies.
+type objectList[T any] []T
+
+// UnmarshalJSON reads a list, or a string that holds one. In the string,
+// a bare word where a value belongs, such as count or Number, counts as
+// that word in quotes.
+func (l *objectList[T]) UnmarshalJSON(b []byte) error {
+	var list []T
+	if err := json.Unmarshal(b, &list); err == nil {
+		*l = list
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("want a list of objects")
+	}
+	s = strings.TrimSpace(s)
+	if json.Unmarshal([]byte(s), &list) == nil || json.Unmarshal([]byte(quoteBareWords(s)), &list) == nil {
+		*l = list
+		return nil
+	}
+	return fmt.Errorf("want a list of objects, not the string %q; send it as JSON, such as "+
+		`[{"fn": "count"}, {"fn": "sum", "column": "Amount"}]`, s)
+}
+
+// bareValue matches a value after a colon that isn't in quotes: a word
+// such as count or Number, which may hold spaces, up to the next comma or
+// closing brace.
+var bareValue = regexp.MustCompile(`:\s*([A-Za-z_][^",{}\[\]]*?)\s*([,}])`)
+
+// quoteBareWords puts quotes around the bare values in s, and leaves
+// true, false and null as they are, since they are JSON's own words.
+func quoteBareWords(s string) string {
+	return bareValue.ReplaceAllStringFunc(s, func(m string) string {
+		sub := bareValue.FindStringSubmatch(m)
+		switch sub[1] {
+		case "true", "false", "null":
+			return m
+		}
+		b, _ := json.Marshal(sub[1])
+		return ": " + string(b) + sub[2]
+	})
 }
 
 // stringList is a list of strings that also takes one string, or a string
