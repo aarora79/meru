@@ -176,6 +176,9 @@ type ToolRunner interface {
 // turn holds what the rounds need to know about the turn they run in.
 // Handle fills it in as the turn goes.
 type turn struct {
+	// saved lists the files write_file wrote this turn, in order, for the
+	// links savedLinks adds under the answer.
+	saved  []savedFile
 	sess   *transcript.Session
 	source rpc.Source
 	// scope is where the user let the turn look, one of the rpc.Scope
@@ -915,6 +918,11 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		}
 		if caller == "" {
 			t.succeeded++
+		}
+		if calls[i].Name == builtin.WriteFile {
+			if name, link, ok := builtin.Written(out[i].Content); ok {
+				t.saved = append(t.saved, savedFile{name: name, link: link})
+			}
 		}
 		t.web = append(t.web, webHitsOf(calls[i].Name, out[i].Content)...)
 	}

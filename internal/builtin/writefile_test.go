@@ -114,8 +114,8 @@ func TestFileURL(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix paths")
 	}
-	if got, want := fileURL("/Users/me/meru-output/a b.html"), "file:///Users/me/meru-output/a%20b.html"; got != want {
-		t.Errorf("fileURL = %q, want %q", got, want)
+	if got, want := FileURL("/Users/me/meru-output/a b.html"), "file:///Users/me/meru-output/a%20b.html"; got != want {
+		t.Errorf("FileURL = %q, want %q", got, want)
 	}
 }
 
@@ -240,5 +240,19 @@ func checkMode(t *testing.T, path string, want os.FileMode) {
 	}
 	if got := info.Mode().Perm(); got != want {
 		t.Errorf("%s mode = %o, want %o", path, got, want)
+	}
+}
+
+// TestWritten checks that Written reads back the name and link of the file
+// a write_file result names, and nothing from a refusal.
+func TestWritten(t *testing.T) {
+	tools, out := writeTools(t)
+	res := callWrite(t, tools, `{"path":"r e.html","content":"x"}`)
+	name, link, ok := Written(res.Text)
+	if !ok || name != "r e.html" || link != FileURL(filepath.Join(out, "r e.html")) {
+		t.Errorf("Written(%q) = %q, %q, %v", res.Text, name, link, ok)
+	}
+	if _, _, ok := Written("write_file: r.html already exists. Nothing was written"); ok {
+		t.Error("Written read a link from a refusal")
 	}
 }

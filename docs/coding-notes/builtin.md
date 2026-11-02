@@ -377,7 +377,9 @@ Wrote a new file, 1234 bytes, at /Users/you/meru-output/dns/explainer.html.
 Link for the user: [explainer.html](file:///Users/you/meru-output/dns/explainer.html)
 ```
 
-`fileURL` builds the link with `net/url`, so a space becomes `%20`. The model
+`FileURL` builds the link with `net/url`, so a space becomes `%20`.
+`Written` reads the name and link back from a result, for the agent, which
+adds the link under an answer that leaves it out (see [agent](agent.md)). The model
 passes the link on, and both clients open a `file://` link with a click. Before
 the link, a model asked for a clickable link wrote the path in backticks, which
 shows as plain text.

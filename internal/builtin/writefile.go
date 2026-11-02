@@ -99,8 +99,30 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 		return "", fmt.Errorf("write_file: write %s: %w. Nothing was written", a.Path, err)
 	}
 	abs := filepath.Join(t.outputDir, rel)
-	return fmt.Sprintf("%s %d bytes, at %s.\nLink for the user: [%s](%s)", verb, len(a.Content), abs,
-		filepath.Base(abs), fileURL(abs)), nil
+	return fmt.Sprintf("%s %d bytes, at %s.\n%s[%s](%s)", verb, len(a.Content), abs,
+		linkLead, filepath.Base(abs), FileURL(abs)), nil
+}
+
+// linkLead starts the last line of a write_file result, the link. Written
+// reads the link back from there.
+const linkLead = "Link for the user: "
+
+// Written returns the name and file:// link of the file a write_file
+// result reports, and false for any other text, such as a refusal. The
+// agent uses it to make sure an answer links each file a turn saved,
+// since a model may write "click the link above", pointing at a tool
+// result the user never sees.
+func Written(result string) (name, link string, ok bool) {
+	_, line, found := strings.Cut(result, "\n"+linkLead)
+	if !found {
+		return "", "", false
+	}
+	// The line reads [name](file:///…).
+	n, u, found := strings.Cut(strings.TrimPrefix(line, "["), "](")
+	if !found || !strings.HasSuffix(u, ")") {
+		return "", "", false
+	}
+	return n, strings.TrimSuffix(u, ")"), true
 }
 
 // insideOutput turns a path that already names the output folder into one
@@ -137,10 +159,10 @@ func (t *Tools) insideOutput(p string) string {
 	return p
 }
 
-// fileURL returns the file:// URL for abs, an absolute path, with the
+// FileURL returns the file:// URL for abs, an absolute path, with the
 // characters a URL can't hold, such as spaces, escaped. Both clients open
 // such a link with the system's opener.
-func fileURL(abs string) string {
+func FileURL(abs string) string {
 	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}
 	// A Windows path such as C:/x needs a "/" before the drive letter.
 	if !strings.HasPrefix(u.Path, "/") {

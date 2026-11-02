@@ -508,6 +508,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	//
 	// A turn whose answer model can't call tools ran none (see
 	// notools.go), and says so in the same notice, first.
+	// An answer that leaves out a file the turn saved gets its link,
+	// streamed as the answer's last words, so it lands in the transcript
+	// and the next turn's history holds the true path. A turn that ran out
+	// of rounds after it saved a file gets the link too. See saved.go.
+	if add := savedLinks(t.saved, rep.text); add != "" {
+		if err := emit(rpc.Event{Type: rpc.EventToken, Text: add}); err != nil {
+			return err
+		}
+		rep.text += add
+	}
 	var notice string
 	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 		notice = unbackedNotice

@@ -3234,7 +3234,11 @@ own files did worse, 42 of 63: naming the skill drew the model to it.
   result says whether it wrote a new file or replaced one, and gives a Markdown
   link with a `file://` URL for the model to pass on, which both clients open
   with a click. Every turn's note on your folders also asks the model to give a
-  file on this computer as such a link.
+  file on this computer as such a link. Meru doesn't rely on the model to copy
+  it: when an answer leaves out a file the turn saved, `merud` adds a line,
+  "Saved: [report.html](file://…)", under the answer, and the transcript keeps
+  it, so a later question sees the true path. A clicked file link to nothing
+  says the file isn't on this computer.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
   model writes weaker explainers and reads pages less well.
 

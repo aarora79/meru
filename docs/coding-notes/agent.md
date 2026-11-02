@@ -1107,6 +1107,29 @@ with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.
 
+### Links to the files a turn saved (saved.go)
+
+The notice says a link is wrong; `savedLinks` keeps the link right in the
+first place. In a real session `write_file` saved a report and handed the
+model its link, and the model answered "Click the link above", pointing at a
+tool result the user never sees. Asked for the link next turn, it made up a
+file name. So `runCalls` reads each successful `write_file` result with
+`builtin.Written`, which returns the file's name and `file://` link, and
+keeps them in `t.saved`. Before the checks above, `Handle` asks `savedLinks`
+for a line that links each saved file the answer doesn't, by link or by
+path:
+
+```text
+Saved: [report.html](file:///Users/you/meru-output/report.html)
+```
+
+`Handle` streams the line as the answer's last tokens and adds it to
+`rep.text`, so the transcript holds it and the next turn's history gives the
+model the true path to copy. A turn that ran out of rounds after it saved a
+file gets the line too. `TestSavedLinks` covers an answer that points
+elsewhere, one that holds the link or the path, a made-up name, and two files
+with one written twice.
+
 ### searchFiles
 
 On a file turn, `Handle` calls `searchFiles` between routing and the prompt.
