@@ -35,3 +35,7 @@ config.local.toml
 
 # Git worktrees that parallel agents work in
 .claude/worktrees/
+
+# Binaries `go build ./cmd/meru` and `go build ./cmd/merud` leave in the repo root.
+/meru
+/merud
