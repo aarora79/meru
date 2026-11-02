@@ -572,8 +572,10 @@ func TestOutputFolder(t *testing.T) {
 			nil, "no folder the file tools read holds"},
 		{"dot-dot out of the attachments", ReadFile, `{"path":"../../outside/other.md"}`,
 			nil, "outside the folders the file tools read"},
-		{"write_file still refuses an absolute path", WriteFile,
-			`{"path":` + jsonPath(filepath.Join(att, "new.md")) + `,"content":"x"}`, nil, "absolute"},
+		{"write_file takes an absolute path inside the output folder", WriteFile,
+			`{"path":` + jsonPath(filepath.Join(att, "new.md")) + `,"content":"x"}`, []string{"Wrote a new file", "attachments/new.md"}, ""},
+		{"write_file still refuses an absolute path outside it", WriteFile,
+			`{"path":` + jsonPath(filepath.Join(outside, "new.md")) + `,"content":"x"}`, nil, "absolute"},
 		{"write_file still refuses dot-dot", WriteFile, `{"path":"../notes/new.md","content":"x"}`, nil, `".."`},
 	}
 	for _, tt := range tests {

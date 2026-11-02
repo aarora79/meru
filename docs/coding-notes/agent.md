@@ -195,8 +195,13 @@ agentic)` to the end of it, so every turn tells the model which folders Meru
 searches:
 
 ```text
-Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below.
+Meru indexes and searches the user's files in these folders: ~/notes, ~/repos/meru. When a question needs them, Meru searches first and puts the best excerpts below. When you name a file on this computer, give it as a Markdown link to its full path, such as [report.html](file:///Users/you/meru-output/report.html), so the user can click it.
 ```
+
+The last sentence is `fileLinkRule`. Asked for a clickable link to a page it
+had saved, a model wrote the path in backticks, which both clients show as
+plain text; a `file://` link opens with a click, and `write_file`'s result
+hands the model one to copy.
 
 With `[index] retrieval = "agentic"`, `New` sets `a.agentic`, and the note
 leaves out the second sentence, since Meru searches nothing first. The note
@@ -227,8 +232,8 @@ conversation, and never make up what a tool would give, such as a time, a
 file's contents or a search result. Asked the time, a model had made one up,
 and then said "I called the `datetime` tool" when asked how it knew.
 
-After `honestyRule` comes `selfLine(a.Main())`, also in `honest.go`, which
-names Meru and the answer model:
+After `honestyRule` comes `a.selfIntro()`, also in `honest.go`, which
+names Meru and the answer model through `selfLine`:
 
 ```text
 Your name is Meru, and the model qwen3.6:35b writes your answers, through
@@ -243,7 +248,9 @@ it didn't. A fact in the prompt needs no tool call. `a.Main()` reads the answer
 model under its lock, so a model switch shows up on the next turn. The switch
 also loads another model, whose cache starts empty, so the line can sit with
 the parts Ollama reuses. `selfLine` returns "" when no model is set, and `add`
-then leaves the line out.
+then leaves the line out. For an answer model on an endpoint, `@lab`,
+`selfIntro` uses `endpointSelfLine` instead, with the model's name from its
+`[[endpoints]]` entry and the endpoint's: "through Ollama" would be false.
 
 `New` also keeps `displayDir(home, cfg.Skills.OutputDir)` in `a.outputDir`:
 the folder `write_file` writes in, as the model should read it, such as
@@ -724,6 +731,13 @@ the first question to reuse. It logs `loading the answer model`, then `answer
 model warm` with the time it took, or `couldn't load the answer model` with
 the `ollama pull` command to run.
 
+An answer model on an endpoint, `@name` (see [engine](engine.md)), gets no
+warm-up: it runs on another server, so there is nothing to load here, and the
+warm-up's prompt holds the profile and memories, which should reach an
+endpoint only with a real question. `warm` logs `the answer model runs at an
+endpoint; nothing to load` and returns. `TestWarmSkipsAnEndpoint`, in
+`warm_test.go`, checks that a local model gets one call and an endpoint none.
+
 Why not "hi" alone: in a real session `merud` warmed a 38 GB
 mixture-of-experts model with "hi", and Ollama kept it loaded, yet the first
 question 26 minutes later spent 2 minutes 17 seconds on a prompt of 1,349
@@ -997,12 +1011,27 @@ expressions:
 | `claimPassive` | "The file has been saved to ~/Projects" |
 | `claimFirst` | "I've moved the folder", "I just sent the email" |
 | `claimMade` with `namesThing` | "I've created the file ~/notes/plan.md", but not "I've created a short plan:" |
+| `claimOpening` with `namesThing` | "Updated the HTML dashboard with a new column", but not "Updated weekly, the page lists releases" |
 
 A sentence that ends in `?`, or that `notClaim` matches ("if", "want me", "I
 can", "I'll", "not", any "n't"), is a question, an offer or a denial, and
 never counts. `claimMade` needs `namesThing` because a model also creates,
 updates and writes text in the chat itself: "I've updated the function below"
-changes nothing on the computer and says so.
+changes nothing on the computer and says so. `claimOpening` came from a turn
+that called no tool and answered "Updated the HTML dashboard with a Daily
+Calls column…": no "I", so no rule matched. It wants the verb first, then
+"the", "your", "a", "an", "it" or "them", and a thing `namesThing` knows, which
+now includes a page, a dashboard, a document, a report, a draft and a
+spreadsheet. `claimMade` also takes fixed, corrected, edited, changed, replaced
+and added.
+
+The check runs only when `t.succeeded` is 0, and `runCalls` counts a call
+there only when it ends "ok" and `builtin.ReadOnly` says the tool can change
+something. A real turn ran `grep` three times on a page, wrote nothing, and
+answered "I've fixed all instances … in the HTML file". When every success
+counted, the greps silenced the check, and the next turn built on the false
+claim. A read can't back a claim of a change, so the read-only built-ins no
+longer count; `write_file`, an MCP tool or a command still does.
 
 The warning goes out as a `notice` event, after the last token and before
 `done`, and into the assistant line's `Notice` field. The turn span gets
@@ -1086,6 +1115,29 @@ computer." `TestMissingFiles` covers links that are there, missing, bare,
 with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.
+
+### Links to the files a turn saved (saved.go)
+
+The notice says a link is wrong; `savedLinks` keeps the link right in the
+first place. In a real session `write_file` saved a report and handed the
+model its link, and the model answered "Click the link above", pointing at a
+tool result the user never sees. Asked for the link next turn, it made up a
+file name. So `runCalls` reads each successful `write_file` result with
+`builtin.Written`, which returns the file's name and `file://` link, and
+keeps them in `t.saved`. Before the checks above, `Handle` asks `savedLinks`
+for a line that links each saved file the answer doesn't, by link or by
+path:
+
+```text
+Saved: [report.html](file:///Users/you/meru-output/report.html)
+```
+
+`Handle` streams the line as the answer's last tokens and adds it to
+`rep.text`, so the transcript holds it and the next turn's history gives the
+model the true path to copy. A turn that ran out of rounds after it saved a
+file gets the line too. `TestSavedLinks` covers an answer that points
+elsewhere, one that holds the link or the path, a made-up name, and two files
+with one written twice.
 
 ### searchFiles
 
@@ -1279,7 +1331,7 @@ round.
 | Reason | Test | Calls |
 | --- | --- | --- |
 | `asked` | `askedWebFirst`: the question asks for the web (`asksForWeb`) or gives a URL (`givesURL`), and the tool it needs is on; or, in `respondScoped`, the scope is web | `askedCalls`: `web_fetch` per URL, two at most, or one `web_search` on `webQuery` |
-| `named` | `namedWebFirst`: the turn searched files, no tool is the target, `web_search` is on, the question doesn't say "my" or "our", `namedThing` finds a name, and `filesCover` says the excerpts don't hold it | `namedCalls`: one `web_search` on `namedQuery` |
+| `named` | `namedWebFirst`: the turn searched files, no tool is the target, `web_search` is on, the question doesn't say "my" or "our", `namedThing` finds a name, `filesCover` says the excerpts don't hold it, and `inHistory` finds it in no earlier message of the chat | `namedCalls`: one `web_search` on `namedQuery` |
 
 `asksForWeb` reads the phrases in `webPhrases`, each a list of lower-case
 words matched whole against `words(question)`: "search the web", "look it up",

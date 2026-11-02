@@ -20,7 +20,8 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
    A page URL that no search result or question of yours gave asks you first, so
    the model can't send your data out in a URL. Meru measures itself, but no telemetry
    leaves the machine, and the codebase has no path that sends a prompt to a cloud
-   model.
+   model. An answer model named in `[[endpoints]]` must be on this machine too,
+   for now (see [Answer endpoints](#answer-endpoints)).
    Other programs Meru talks to on loopback can reach the network on their own: an
    MCP server you add, such as Gmail, and SearXNG, which web search sends its
    search words through (see [MCP](#mcp) and [Web search](#web-search)).
@@ -885,11 +886,11 @@ and arguments and offers the choices `merud` sends, from these:
   ```toml
   [builtin]
   tools   = ["configure", "datetime", "about_meru", "remember", "write_file",
-             "read_file", "list_folder", "grep", "search_files",
+             "edit_file", "read_file", "list_folder", "grep", "search_files",
              "search_images", "view_image", "analyze_table",
              "web_search", "web_fetch", "search_notes", "list_notes",
-             "read_note", "schedule_job"]   # all eighteen, the default
-  confirm = ["write_file"]   # the shipped default; add "remember" to approve each memory
+             "read_note", "schedule_job"]   # all nineteen, the default
+  confirm = ["write_file", "edit_file"]   # the shipped default; add "remember" to approve each memory
   off     = []               # built-ins you chose to keep off; see below
   ```
 
@@ -899,7 +900,7 @@ and arguments and offers the choices `merud` sends, from these:
   works without it. An unknown name stops `merud` at load, with the valid names
   in the message, and so does a `confirm` entry that `tools` doesn't list. A
   listed tool still needs what it works on: the file tools need `[index]
-  folders`, `write_file` needs `[skills] output_dir`, `web_search` needs
+  folders`, `write_file` and `edit_file` need `[skills] output_dir`, `web_search` needs
   `[web] searxng_url`, and the Apple Notes tools need a Mac. Without it the tool stays off, and `merud` logs one info
   line at startup that names the tool and the missing setting.
 
@@ -919,7 +920,10 @@ and arguments and offers the choices `merud` sends, from these:
   whatever `confirm` says (see [First run and setup](#first-run-and-setup) and
   [Scheduler](#scheduler)); `remember`, which saves a
   memory without asking unless you list it in `confirm`; `write_file`, which asks
-  before each file it saves because the shipped list names it; the two web
+  before each file it saves because the shipped list names it; `edit_file`, which
+  replaces exact text in a file in the output folder, such as a name in a page
+  Meru saved, keeps the file as it was in a hidden `.<name>.bak` beside it, and
+  asks before each edit for the same reason; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
   clock tool, `datetime`; `about_meru`, which reports this setup; seven
   read-only file tools; and three read-only Apple Notes tools. `web_search`, `datetime`, `about_meru` and the file
@@ -1137,9 +1141,14 @@ says which model fills each one.
 
 | Tier | Job |
 | --- | --- |
-| `fast` | routing, classification, trivial answers |
+| `fast` | routing, picking a turn's skill, session summaries, answers about a fetched page |
 | `main` | reasoning, writing the answer, choosing tools |
 | `embed` | embeddings for the index and for queries |
+
+`fast` and `embed` always run on the local Ollama: the router needs token
+probabilities, which only Ollama reports, and search must never send a file or a
+question anywhere. `main` may instead name an answer model on another model
+server, as `@name` (see [Answer endpoints](#answer-endpoints)).
 
 Two profiles ship in `config.toml`. **`lite` is the default.**
 
@@ -1510,9 +1519,11 @@ type Engine interface {
 }
 ```
 
-**`OllamaEngine` is the only implementation.** It talks to Ollama over HTTP on
-loopback and refuses to start if the configured URL points anywhere else. It is the
-codebase's only HTTP client for a model runtime, and it can't reach a cloud model.
+**`OllamaEngine` is the main implementation.** It talks to Ollama over HTTP on
+loopback and refuses to start if the configured URL points anywhere else. Two more
+answer the models in `[[endpoints]]`, and `Engines`, the engine `merud` holds,
+sends each call to the right one (see [Answer endpoints](#answer-endpoints)).
+None of them can reach a cloud model.
 
 Ollama itself can: once signed in to ollama.com, a model whose tag ends in `cloud`,
 such as `gpt-oss:120b-cloud`, answers through the local API while Ollama passes
@@ -1528,8 +1539,12 @@ sees a model-specific token. When Ollama's parser rejects what the model wrote,
 it sends an `{"error": ...}` line part way through a stream it had answered
 200 OK. `Stream` wraps any such line in `ErrModelOutput`, and the agent loop
 tests for it with `errors.Is` to retry the round (see [Agent loop](#agent-loop)).
-A failure before the stream starts, such as Ollama down or a model not pulled,
-stays an `*APIError` or a transport error, and fails the turn as before. Each `Completion` also carries Ollama's counters
+Ollama sometimes sends the same parser error as a 500 from `/api/chat` before
+any text, as in "XML syntax error on line 8: element `<function>` closed by
+`</parameter>`". That `*APIError` wraps `ErrModelOutput` too, by the words
+Ollama's parsers use, so the round retries the same way. Any other failure
+before the stream starts, such as Ollama down or a model not pulled, stays an
+`*APIError` or a transport error, and fails the turn as before. Each `Completion` also carries Ollama's counters
 (`prompt_eval_count`, `eval_count`, `load_duration`, `prompt_eval_duration`,
 `eval_duration`), which feed [Observability](#observability).
 
@@ -1580,6 +1595,56 @@ debug line counts a request's images; no log line or span holds their bytes.
 Speech to text doesn't go through the interface: it runs in
 whisper.cpp's server, not in Ollama, and `internal/speech` talks to it (see
 [Speech to text](#speech-to-text)).
+
+### Answer endpoints
+
+An answer model can run on a model server other than the local Ollama: Ollama's
+own OpenAI-style API, vLLM, llama.cpp's server, LM Studio, or another Ollama. A
+`[[endpoints]]` entry names it, and `[models] main`, or a model set's `main`,
+refers to it as `@name`:
+
+```toml
+[models]
+main = "@ollama-v1"
+
+[[endpoints]]
+name           = "ollama-v1"
+reach          = "local"                     # this machine only, for now
+api            = "openai"                    # "ollama", "openai" or "anthropic"
+url            = "http://127.0.0.1:11434/v1"
+model          = "qwen3.6:35b-a3b-mxfp8"     # the name the server knows
+context_length = 32768
+vision         = true
+api_key        = "secret:my_server_key"      # optional; never the key itself
+```
+
+- **Only an answer model.** Config refuses `@name` for `fast` and `embed`.
+- **On this machine.** `reach` must be `local` and the URL loopback, checked at
+  load and again when the engine starts, and no engine follows a redirect.
+  Endpoints on another machine wait for a prompt that asks you before a question
+  leaves it ([#78](https://github.com/aarora79/meru/issues/78),
+  [the design](docs/design/model-router.md)).
+- **Three APIs.** `api = "ollama"` uses `OllamaEngine` against the other server.
+  `OpenAIEngine` speaks OpenAI chat completions (`POST <url>/chat/completions`)
+  and `AnthropicEngine` the Anthropic Messages API (`POST <url>/messages`). Both
+  read a stream of server-sent events, join a tool call's arguments as they
+  arrive in pieces, hand the calls out on the last `Delta` as Ollama does, and
+  leave the model's reasoning out of the answer. Neither embeds
+  (`ErrNoEmbed`) or reports token probabilities (`ErrNoLogProbs`). Both map
+  their stop reasons to Meru's, so an answer cut at its token cap ends `length`.
+- **Details from config.** Those two APIs report neither a model's context
+  length nor what it can do, so the entry gives `context_length`, `vision` and
+  `tools`, and `Engines.Details` returns them where `OllamaEngine` would ask
+  `/api/show`. The window, the vision check and the tools check then treat an
+  endpoint like a local model. `Pulled` lists each endpoint as `@name`, so a
+  model set may name one.
+- **Nothing loads.** The warm-up and a switch to an endpoint's model send it
+  nothing; the warm-up's prompt holds the profile and memories.
+- **The key.** `merud` reads `api_key` from `secrets.toml` when it starts and
+  sends it in the API's own header. An entry whose secret is missing leaves
+  `merud` running; a question for that model fails with a fixed sentence that
+  says to add the `api_key` entry to `secrets.toml`. Nothing read from `api_key`,
+  not even the entry's name, goes into a log line or an error.
 
 Two engines may come later, behind the same interface:
 
@@ -2005,6 +2070,9 @@ names Meru and the answer model:
 > Ollama on this computer. Never give yourself another name, and never name
 > another model as yours.
 
+For an answer model on an endpoint, the line names the endpoint's model and
+"the model server Meru calls @name on this computer" instead of Ollama.
+
 The line came from a real session. Asked "who are you" on the `search+tools` route,
 `qwen3.6:35b` called no tool and answered "I'm Meru", then "My name is Jina. I
 use a Mistral model." Neither name appears anywhere in Meru. The prompt already
@@ -2027,7 +2095,8 @@ the full word lists:
 | it, they, or a file, folder, note, email or event "is now at/in" | "It's now at ~/Projects/garden" |
 | "has/have been" and an action | "The file has been saved to ~/Projects" |
 | "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
-| the same with created, updated, wrote or written, when the sentence names a file, folder, note, email, event, reminder, calendar or a path | "I've created the file ~/notes/plan.md" |
+| the same with created, updated, wrote, written, fixed, corrected, edited, changed, replaced or added, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
+| a sentence that opens with one of those verbs, or added, changed, edited or replaced, then "the", "your", "a", "an", "it" or "them", when it names such a thing | "Updated the HTML dashboard with a new column" |
 
 A sentence that ends in "?", or that holds words such as "if", "want me", "I
 can", "I'll", "let me", "shall I", "would you", "not", "never", "unable" or any
@@ -2046,8 +2115,13 @@ The check reads plain English patterns, so it is easy to test and to explain,
 and it gets some cases wrong. It misses a claim in words no rule lists, such as
 "your folder lives in ~/Projects now", and any claim in another language. It
 flags a "Done." at the top of a poem you asked for, where the note is true but
-not needed. It stays quiet on a turn where any tool call succeeded, even one that
-only read a file, because it can't tell which call backs which claim.
+not needed. A successful call that could change something, such as `write_file`,
+an MCP tool or a command, silences it, because it can't tell which call backs
+which claim. A built-in that only reads (`read_file`, `list_folder`, `grep`,
+`search_files`, `search_images`, `view_image`, `analyze_table`, `web_search`,
+`datetime`, `about_meru` and the Apple Notes tools) doesn't: a real turn ran
+`grep` three times, wrote nothing, and answered "I've fixed all instances in
+the HTML file".
 
 A second check runs on every full answer, whatever its tool calls, and looks for
 a sentence that says Meru called, ran or used a tool or a program:
@@ -3162,7 +3236,19 @@ own files did worse, 42 of 63: naming the skill drew the model to it.
   skips, built-in or yours (see [Skills](#skills)).
 - **Skills that make files need somewhere to put them.** The built-in `write_file`
   tool (v0.4) writes only inside `~/meru-output/` (configurable). It can't touch any other
-  path, and it goes through `dispatch` like every tool.
+  path, and it goes through `dispatch` like every tool. A path that already names
+  the folder, such as `~/meru-output/uploads/page.html`, its absolute form, or
+  `meru-output/uploads/page.html`, means `uploads/page.html`: a model that read a
+  file there passes its path back, and taken as relative it once wrote a second
+  copy in `~/meru-output/meru-output/` while the user looked at the first. The
+  result says whether it wrote a new file or replaced one, and gives a Markdown
+  link with a `file://` URL for the model to pass on, which both clients open
+  with a click. Every turn's note on your folders also asks the model to give a
+  file on this computer as such a link. Meru doesn't rely on the model to copy
+  it: when an answer leaves out a file the turn saved, `merud` adds a line,
+  "Saved: [report.html](file://…)", under the answer, and the transcript keeps
+  it, so a later question sees the true path. A clicked file link to nothing
+  says the file isn't on this computer.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
   model writes weaker explainers and reads pages less well.
 
@@ -4766,7 +4852,7 @@ So `merud` itself searches before the model's first round in two cases:
 | Case | When | What `merud` runs |
 | --- | --- | --- |
 | `asked` | the question holds an http or https URL and `web_fetch` is on; or it holds no URL, asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web, a closing instruction ("and tell me what it is in three lines") and the filler words at either end (see below); a follow-up too short to stand alone gets the earlier question, as a file search does, and one that speaks only of the web searches for the earlier question alone |
-| `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, and the excerpts don't cover it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
+| `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, the excerpts don't cover it, and no earlier turn of the chat names it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
 
 The calls go through `dispatch` like any other. Their `tool_call` lines and
 `tool_calls` rows carry `caller = "meru"`, so `meru log` shows `by meru` in the
@@ -5533,7 +5619,8 @@ transcript lines hold. No level writes question or answer text. With
 ## Privacy boundary
 
 - The codebase contains no path to a cloud model. The engine talks only to a model
-  runtime on loopback, and refuses Ollama's cloud models, which Ollama would run on
+  runtime on loopback, the local Ollama or an `[[endpoints]]` entry with
+  `reach = "local"`, and refuses Ollama's cloud models, which Ollama would run on
   ollama.com.
 - You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable
   HTTP server needs `remote = true` in its config entry. `remote` says where

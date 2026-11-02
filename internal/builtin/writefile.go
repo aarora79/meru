@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,7 @@ func writeFileDescription(dir string) string {
 	return "Saves a text file for the user, such as a document, an email draft or an HTML page, in the folder " +
 		dir + ". Pass path relative to that folder, such as \"drafts/landlord-email.md\", and the whole file as content. " +
 		"It refuses to replace a file that exists unless overwrite is true. " +
-		"The result gives the full path; tell the user where the file is."
+		"The result gives a link to the file; give the user that link as it stands, so they can click it."
 }
 
 // writeFile checks args and writes the file inside t.outputDir. It returns
@@ -56,7 +57,7 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 	if err := dec.Decode(&a); err != nil {
 		return "", fmt.Errorf("write_file: the arguments aren't a valid JSON object for this tool: %v. Nothing was written", err)
 	}
-	rel, err := cleanRelPath(a.Path)
+	rel, err := cleanRelPath(t.insideOutput(a.Path))
 	if err != nil {
 		return "", fmt.Errorf("write_file: %w. Nothing was written", err)
 	}
@@ -78,9 +79,11 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 		return "", fmt.Errorf("write_file: %w. Nothing was written", err)
 	}
 	info, err := root.Lstat(rel)
+	verb := "Replaced" // what the result says happened
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		// A new file: the usual case.
+		verb = "Wrote a new file,"
 	case err != nil:
 		return "", fmt.Errorf("write_file: %s: %w. Nothing was written", a.Path, err)
 	case info.Mode()&fs.ModeSymlink != 0:
@@ -96,7 +99,76 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 		return "", fmt.Errorf("write_file: write %s: %w. Nothing was written", a.Path, err)
 	}
 	abs := filepath.Join(t.outputDir, rel)
-	return fmt.Sprintf("Wrote %d bytes to %s.", len(a.Content), abs), nil
+	return fmt.Sprintf("%s %d bytes, at %s.\n%s[%s](%s)", verb, len(a.Content), abs,
+		linkLead, filepath.Base(abs), FileURL(abs)), nil
+}
+
+// linkLead starts the last line of a write_file result, the link. Written
+// reads the link back from there.
+const linkLead = "Link for the user: "
+
+// Written returns the name and file:// link of the file a write_file
+// result reports, and false for any other text, such as a refusal. The
+// agent uses it to make sure an answer links each file a turn saved,
+// since a model may write "click the link above", pointing at a tool
+// result the user never sees.
+func Written(result string) (name, link string, ok bool) {
+	_, line, found := strings.Cut(result, "\n"+linkLead)
+	if !found {
+		return "", "", false
+	}
+	// The line reads [name](file:///…).
+	n, u, found := strings.Cut(strings.TrimPrefix(line, "["), "](")
+	if !found || !strings.HasSuffix(u, ")") {
+		return "", "", false
+	}
+	return n, strings.TrimSuffix(u, ")"), true
+}
+
+// insideOutput turns a path that already names the output folder into one
+// relative to it, and returns any other path unchanged for cleanRelPath to
+// check. A model that read a file at ~/meru-output/uploads/page.html tends
+// to pass that path, or "meru-output/uploads/page.html", back to
+// write_file. Taken as relative, the second wrote a new file in
+// ~/meru-output/meru-output/uploads/ while the user looked at the old one.
+// So "~/<output>/x", an absolute path inside the output folder, and a
+// relative path whose first folder has the output folder's name all mean x.
+// An absolute path anywhere else stays absolute, and cleanRelPath refuses
+// it.
+func (t *Tools) insideOutput(p string) string {
+	p = strings.TrimSpace(p)
+	if rest, ok := strings.CutPrefix(p, "~"); ok && (strings.HasPrefix(rest, "/") || strings.HasPrefix(rest, `\`)) {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, rest)
+		}
+	}
+	if filepath.IsAbs(p) {
+		// filepath.Rel finds the way from the output folder to p; one that
+		// starts ".." leaves it.
+		if rel, err := filepath.Rel(t.outputDir, filepath.Clean(p)); err == nil && rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return rel
+		}
+		return p
+	}
+	name := filepath.Base(t.outputDir)
+	parts := strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(parts) > 1 && parts[0] == name {
+		return strings.Join(parts[1:], "/")
+	}
+	return p
+}
+
+// FileURL returns the file:// URL for abs, an absolute path, with the
+// characters a URL can't hold, such as spaces, escaped. Both clients open
+// such a link with the system's opener.
+func FileURL(abs string) string {
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}
+	// A Windows path such as C:/x needs a "/" before the drive letter.
+	if !strings.HasPrefix(u.Path, "/") {
+		u.Path = "/" + u.Path
+	}
+	return u.String()
 }
 
 // cleanRelPath checks the path the model gave and returns it in the OS's

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="t d" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title id="t">One turn through the model router</title>
+  <desc id="d">A question goes to the router on the local fast model, which returns a route and a confidence. Meru picks the answer model: the fast model for a confident direct question with no picture, the large model when asked for, and the main model otherwise. If the pick runs off the machine and this chat has no consent yet, the client asks this time, this chat or no; a no answers on this machine. The answer model streams the answer, every tool runs locally through dispatch, and the answer shows which model wrote it. A weak answer from the fast model folds into a collapsed block and the question reruns once on the main model; a weak one from the main model offers the large model.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3c4043"/></marker>
+  </defs>
+  <rect width="960" height="380" fill="#ffffff"/>
+
+  <g font-size="13.5" text-anchor="middle">
+    <rect x="20" y="40" width="150" height="74" rx="10" fill="#f8f9fa" stroke="#9aa0a6"/>
+    <text x="95" y="70" font-weight="600" fill="#202124">1 Question</text>
+    <text x="95" y="90" font-size="11.5" fill="#5f6368">and any picture</text>
+
+    <rect x="200" y="40" width="160" height="74" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="280" y="66" font-weight="600" fill="#202124">2 Router</text>
+    <text x="280" y="86" font-size="11.5" fill="#5f6368">fast model, local</text>
+    <text x="280" y="102" font-size="11.5" fill="#5f6368">route + confidence</text>
+
+    <rect x="390" y="40" width="170" height="74" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="475" y="66" font-weight="600" fill="#202124">3 Pick</text>
+    <text x="475" y="86" font-size="11.5" fill="#5f6368">fast, main or large;</text>
+    <text x="475" y="102" font-size="11.5" fill="#5f6368">no extra model call</text>
+
+    <rect x="590" y="40" width="170" height="74" rx="10" fill="#fef7e0" stroke="#e9a82c"/>
+    <text x="675" y="66" font-weight="600" fill="#202124">4 Consent</text>
+    <text x="675" y="86" font-size="11.5" fill="#5f6368">only if the pick runs</text>
+    <text x="675" y="102" font-size="11.5" fill="#5f6368">off this machine</text>
+
+    <rect x="790" y="40" width="150" height="74" rx="10" fill="#e6f4f1" stroke="#0e7c7b"/>
+    <text x="865" y="66" font-weight="600" fill="#202124">5 Answer</text>
+    <text x="865" y="86" font-size="11.5" fill="#5f6368">streams; tools run</text>
+    <text x="865" y="102" font-size="11.5" fill="#5f6368">locally via dispatch</text>
+  </g>
+  <path d="M170 77 L196 77" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M360 77 L386 77" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M560 77 L586 77" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M760 77 L786 77" stroke="#3c4043" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- pick rules -->
+  <rect x="390" y="150" width="170" height="200" rx="10" fill="#ffffff" stroke="#0e7c7b" stroke-dasharray="5 4"/>
+  <text x="402" y="174" font-size="12" font-weight="700" fill="#202124">fast when</text>
+  <text x="402" y="192" font-size="11.5" fill="#5f6368">route direct, confident,</text>
+  <text x="402" y="208" font-size="11.5" fill="#5f6368">no picture, no skill</text>
+  <text x="402" y="234" font-size="12" font-weight="700" fill="#202124">large when</text>
+  <text x="402" y="252" font-size="11.5" fill="#5f6368">you ask for it</text>
+  <text x="402" y="278" font-size="12" font-weight="700" fill="#202124">main</text>
+  <text x="402" y="296" font-size="11.5" fill="#5f6368">for everything else</text>
+  <text x="402" y="322" font-size="11.5" fill="#0a5453">incognito and jobs:</text>
+  <text x="402" y="338" font-size="11.5" fill="#0a5453">always this machine</text>
+  <path d="M475 114 L475 146" stroke="#3c4043" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/>
+
+  <!-- consent card -->
+  <rect x="590" y="150" width="170" height="200" rx="10" fill="#ffffff" stroke="#e9a82c" stroke-dasharray="5 4"/>
+  <text x="602" y="174" font-size="12" font-weight="700" fill="#202124">Send to lab (near-edge)?</text>
+  <text x="602" y="194" font-size="11.5" fill="#5f6368">It carries your question,</text>
+  <text x="602" y="210" font-size="11.5" fill="#5f6368">3 earlier turns, 2 memories,</text>
+  <text x="602" y="226" font-size="11.5" fill="#5f6368">4 file excerpts, 1 picture,</text>
+  <text x="602" y="242" font-size="11.5" fill="#5f6368">and tool results</text>
+  <rect x="602" y="260" width="68" height="24" rx="6" fill="#fef7e0" stroke="#e9a82c"/>
+  <text x="636" y="276" font-size="11" text-anchor="middle" fill="#202124">This time</text>
+  <rect x="678" y="260" width="70" height="24" rx="6" fill="#fef7e0" stroke="#e9a82c"/>
+  <text x="713" y="276" font-size="11" text-anchor="middle" fill="#202124">This chat</text>
+  <rect x="602" y="292" width="146" height="24" rx="6" fill="#ffffff" stroke="#9aa0a6"/>
+  <text x="675" y="308" font-size="11" text-anchor="middle" fill="#202124">No: answer here</text>
+  <text x="602" y="338" font-size="11" fill="#5f6368">never "always"</text>
+  <path d="M675 114 L675 146" stroke="#3c4043" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/>
+
+  <!-- escalation -->
+  <rect x="790" y="150" width="150" height="200" rx="10" fill="#ffffff" stroke="#0e7c7b" stroke-dasharray="5 4"/>
+  <text x="802" y="174" font-size="12" font-weight="700" fill="#202124">Weak answer?</text>
+  <text x="802" y="194" font-size="11.5" fill="#5f6368">cut off, out of</text>
+  <text x="802" y="210" font-size="11.5" fill="#5f6368">rounds, gave up</text>
+  <text x="802" y="236" font-size="11.5" fill="#5f6368">from fast: fold it,</text>
+  <text x="802" y="252" font-size="11.5" fill="#5f6368">rerun once on main</text>
+  <text x="802" y="278" font-size="11.5" fill="#5f6368">from main: offer</text>
+  <text x="802" y="294" font-size="11.5" fill="#5f6368">"Ask the large model"</text>
+  <text x="802" y="322" font-size="11.5" fill="#0a5453">each answer names</text>
+  <text x="802" y="338" font-size="11.5" fill="#0a5453">its model</text>
+  <path d="M865 114 L865 146" stroke="#3c4043" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/>
+
+  <!-- local note -->
+  <rect x="20" y="150" width="340" height="200" rx="10" fill="#f8f9fa" stroke="#9aa0a6"/>
+  <text x="36" y="176" font-size="12" font-weight="700" fill="#202124">Stays on this machine, every turn</text>
+  <text x="36" y="200" font-size="11.5" fill="#5f6368">The router's call and the skill pick (fast model)</text>
+  <text x="36" y="220" font-size="11.5" fill="#5f6368">Search over files, memories and chats (embedding model)</text>
+  <text x="36" y="240" font-size="11.5" fill="#5f6368">Every tool call, through dispatch</text>
+  <text x="36" y="260" font-size="11.5" fill="#5f6368">Session summaries and web page answers</text>
+  <text x="36" y="280" font-size="11.5" fill="#5f6368">The transcript, with a line for each consent</text>
+  <text x="36" y="312" font-size="11.5" fill="#202124">Only step 5 may run elsewhere, and only</text>
+  <text x="36" y="330" font-size="11.5" fill="#202124">after step 4.</text>
+</svg>

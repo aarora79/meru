@@ -153,7 +153,7 @@ keeps the client thin.
 
 ```go
 type Builtin struct {
-    Tools   []string `toml:"tools"`   // default: all eighteen, from BuiltinTools()
+    Tools   []string `toml:"tools"`   // default: all nineteen, from BuiltinTools()
     Confirm []string `toml:"confirm"` // default ["write_file"]
     Off     []string `toml:"off"`     // default []: built-ins the user chose to keep off
 }
@@ -281,7 +281,7 @@ meaning altogether and keep only `grep` (see
 [Retrieval](../../ARCHITECTURE.md#retrieval)).
 
 `checkBuiltin` adds rules for `[builtin]`. A name in `tools` or `off` must be
-one of the eighteen in `builtinTools`, and the message lists them. A name in
+one of the nineteen in `builtinTools`, and the message lists them. A name in
 `confirm` must also be in `tools`; otherwise the confirm line would do nothing,
 which is almost always a typo. A name in both `tools` and `off` says on and off
 at once, so Load refuses it.
@@ -390,6 +390,18 @@ mean the same thing: thinking off, as the benchmark ran every model.
 `[models]` or in any set: `CloudModel` reads the tag after the last `:`, and
 `cloud` or a tag ending in `-cloud` means Ollama would run the model on
 ollama.com, prompt and all (#211). The engine checks again before each request.
+
+`checkEndpoints` (`endpoints.go`) checks the `[[endpoints]]` entries, the
+answer models on a model server other than the local Ollama. Each needs a
+name of letters, digits, `.`, `-` and `_`, used once; `reach = "local"` with a
+loopback `url`, since `near-edge` and `remote` wait for the consent prompt in
+#78; an `api` of `ollama`, `openai` or `anthropic`; a `model`; and a
+`context_length` of 2048 or more, because the OpenAI and Anthropic APIs don't
+report one. `api_key` must be `secret:<name>`, never the key itself, and an
+Ollama endpoint takes none. Then it reads each model name in `[models]` and
+the sets: `EndpointRef` says whether a name is `@name`, and only a `main` may
+be one, of an entry that exists. `tools` is a `*bool`, so `CallsTools` can tell
+"left out", which means true, from `false`.
 
 `checkSets` refuses an entry with no name, a name with anything but letters,
 digits, `.`, `-` and `_`, a name used twice, and a set that names no model. It

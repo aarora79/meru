@@ -409,11 +409,13 @@ func waitReady(t *testing.T, h *home, merud *proc, timeout time.Duration) {
 // model's startup load ended, well or badly, for every time merud started.
 // merud loads it in the background after it answers pings, with a call to
 // the fake Ollama that would take the reply a test queues for the answer
-// if it came later; waitReady waits for it first. A home that merud
+// if it came later; waitReady waits for it first. An endpoint's model
+// loads nothing, and logs that instead. A home that merud
 // started twice holds two "merud starting" lines, and needs two loads.
 func answerModelLoaded(log string) bool {
 	starts := strings.Count(log, `msg="merud starting"`)
-	loads := strings.Count(log, `msg="answer model warm"`) + strings.Count(log, `msg="couldn't load the answer model"`)
+	loads := strings.Count(log, `msg="answer model warm"`) + strings.Count(log, `msg="couldn't load the answer model"`) +
+		strings.Count(log, `msg="the answer model runs at an endpoint; nothing to load"`)
 	return loads >= starts
 }
 

@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/transcript"
@@ -54,9 +55,12 @@ const honestyRule = "Never say you did something, such as saved, moved, sent, de
 // questions about Meru itself to that tool.
 func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 	write := "You can't write files."
+	edits := slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.EditFile })
 	var cmds []string
 	for _, s := range tools {
 		switch {
+		case s.Name == builtin.WriteFile && outputDir != "" && edits:
+			write = "You can write files only inside " + outputDir + ", with write_file, and change text in them with edit_file."
 		case s.Name == builtin.WriteFile && outputDir != "":
 			write = "You can write files only inside " + outputDir + ", with write_file."
 		case toolKind(s.Name) == dispatch.KindCommand:
@@ -102,6 +106,27 @@ func selfLine(model string) string {
 		"Never give yourself another name, and never name another model as yours."
 }
 
+// endpointSelfLine is selfLine for an answer model on an endpoint: the
+// model's own name, model, and the endpoint's, name, since "through
+// Ollama" would be false. The model then names itself rightly when asked.
+func endpointSelfLine(name, model string) string {
+	return "Your name is Meru, and the model " + model + " writes your answers, through the model server " +
+		"Meru calls @" + name + " on this computer. " +
+		"Never give yourself another name, and never name another model as yours."
+}
+
+// selfIntro returns the self line for the answer model now: selfLine for a
+// model on the local Ollama, endpointSelfLine for one named "@name".
+func (a *Agent) selfIntro() string {
+	model := a.Main()
+	if name, ok := config.EndpointRef(model); ok {
+		if ep, found := config.FindEndpoint(a.endpoints, name); found {
+			return endpointSelfLine(name, ep.Model)
+		}
+	}
+	return selfLine(model)
+}
+
 // unbackedNotice is the warning a client shows under an answer that claims
 // an action when no tool call in the turn succeeded.
 const unbackedNotice = "Meru didn't run any tool for this answer, so nothing changed on your computer."
@@ -133,14 +158,24 @@ var (
 	// claimFirst matches "I've moved the folder" and "I sent the email",
 	// with one word allowed between, as in "I just saved".
 	claimFirst = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:moved|saved|sent|deleted|removed|renamed|copied|scheduled)\b`)
-	// claimMade matches "I've created", "I updated" and "I wrote". A model
-	// also creates, updates and writes text in the chat, so these verbs
+	// claimMade matches "I've created", "I updated", "I wrote" and "I've
+	// fixed". A model also creates, updates and fixes text in the chat, so
+	// these verbs
 	// count only when the sentence names a file, a folder, a note, an email,
 	// an event or a path (see namesThing).
-	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written)\b`)
+	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written|fixed|corrected|edited|changed|replaced|added)\b`)
+	// claimOpening matches a sentence that opens with the verb, with no
+	// "I": "Updated the HTML dashboard with a new column." A real turn
+	// said that after it had called no tool, and the rules above, which
+	// all want "I" or "has been", let it pass. The verb must be followed
+	// by "the", "your", "a", "an", "it" or "them", and the sentence must
+	// name a thing (see namesThing), so "Updated weekly" and "Added
+	// bonus: …" don't count.
+	claimOpening = regexp.MustCompile(`(?i)^[^\pL]*(?:moved|saved|sent|deleted|removed|renamed|copied|scheduled|replaced|created|updated|wrote|added|changed|edited)\s+(?:the|your|a|an|it|them)\b`)
 	// namesThing matches a word for something on the computer or in a
-	// service, or a path such as ~/notes or /tmp.
-	namesThing = regexp.MustCompile(`(?i)\b(?:file|files|folder|folders|directory|note|notes|email|event|reminder|calendar)\b|~/|(?:^|\s)/\w`)
+	// service, such as a file, a page or a spreadsheet, or a path such as
+	// ~/notes or /tmp.
+	namesThing = regexp.MustCompile(`(?i)\b(?:file|files|folder|folders|directory|note|notes|email|event|reminder|calendar|html|page|dashboard|document|report|draft|spreadsheet|sheet|csv)\b|~/|(?:^|\s)/\w`)
 	// notClaim matches a sentence that asks, offers, plans or denies
 	// instead of reporting: "I can move it", "Want me to save it",
 	// "if you like, I'll", "I couldn't move it". n't covers every
@@ -172,7 +207,7 @@ func claimsAction(text string) bool {
 		}
 		if claimDone.MatchString(s) || claimNowAt.MatchString(s) ||
 			claimPassive.MatchString(s) || claimFirst.MatchString(s) ||
-			(claimMade.MatchString(s) && namesThing.MatchString(s)) {
+			((claimMade.MatchString(s) || claimOpening.MatchString(s)) && namesThing.MatchString(s)) {
 			return true
 		}
 	}

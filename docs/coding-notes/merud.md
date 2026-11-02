@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `metrics.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `metrics.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`, `endpoints.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -864,11 +864,13 @@ question's images through the built-in tools' `Image`, which refuses any path
 outside the uploads folder, and asks the vision check whether the main model
 can look at them. It asks the tools check whether the main model can take a
 list of tools at all (see [agent](agent.md), "Answer models without tools").
-`capabilityCheck` needs `OllamaEngine.Capabilities`, which sits outside the
-`Engine` interface, so it asks with a *type assertion*:
-`oe, ok := eng.(*engine.OllamaEngine)` gives the concrete engine and `ok`
-true when `eng` holds one. The tests' fake engine isn't one, so
-`capabilityCheck` returns nil: the agent then refuses questions with images
+`capabilityCheck` needs `Capabilities`, which sits outside the `Engine`
+interface, so it asks with a *type assertion* to a one-method interface,
+`capabler`: `oe, ok := eng.(capabler)` gives `ok` true when the engine has the
+method, as `engine.Engines` does. Asking for the method, not for one concrete
+type, lets the check work on `Engines`, whose `Capabilities` answers an
+endpoint's model from its `[[endpoints]]` entry. The tests' fake engine has no
+such method, so `capabilityCheck` returns nil: the agent then refuses questions with images
 rather than send them to a model that might not see them, and offers tools
 without a check.
 
@@ -1868,10 +1870,36 @@ graphics processor (GPU). It sets the result with `SetWindow` and logs it at
 info as `answer model window`. `run`
 calls it for the answer model before `StartWarm`, so the model loads once with
 its window, and hands it to the model service, whose `switchMain` calls it
-before it loads a new answer model. It returns nil for an engine that isn't an
-`OllamaEngine`, and for `context_length = 0`, which leaves the windows to
-Ollama. `run` also gives the agent the engine's `Window`, so the agent's check
+before it loads a new answer model. It asks for the three methods it needs
+through `windower`, a small interface, and returns nil for an engine without
+them, and for `context_length = 0`, which leaves the windows to Ollama. An
+endpoint's model keeps its `context_length`: there is nothing to load here,
+so the function returns without asking. `run` also gives the agent the engine's `Window`, so the agent's check
 on a turn's prompt uses the same number.
+
+### merud: endpoints.go
+
+`newEngine` in `main.go` wraps the local `OllamaEngine` in `engine.Engines`
+with the endpoints `newEndpoints` builds, one per `[[endpoints]]` entry. It
+reads each `api_key` from `secrets.toml` with `Resolve` and builds the engine
+the entry's `api` names: `engine.NewOpenAI`, `engine.NewAnthropic`, or another
+`engine.NewOllama` with the entry's `context_length` as its window.
+`endpointDetails` turns `vision` and `tools` into the capability list
+`/api/show` would give, so the checks above treat both alike.
+
+A key missing from `secrets.toml` doesn't stop `merud`: the endpoint goes in
+the map with `errNoKey` in `Err`, `merud` logs a warning, and a question for
+that model fails with the same sentence: add the `api_key` entry to
+`secrets.toml`. `errNoKey` is a fixed sentence, so nothing read from
+`api_key`, not even the entry's name, reaches a log line or an error.
+CodeQL's check for secrets in logs flagged the first version, which logged
+`Resolve`'s error with the name in it. Only a `secrets.toml` that can't be
+read stops startup.
+
+`switchMain` in `models.go` loads nothing for an endpoint's model, since it
+runs elsewhere, and a switch to an endpoint that can't answer says to look in
+`merud.log`. `Engines.Unload` ignores an endpoint, so a switch away from one
+skips step 1.
 
 ### merud: machine.go
 

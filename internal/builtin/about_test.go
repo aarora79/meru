@@ -126,7 +126,7 @@ func TestAboutMeruTool(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatalf("Call = %+v, %v", res, err)
 	}
-	for _, want := range []string{"qwen3.6:35b", "Built-in tools: configure, datetime, about_meru, write_file, web_fetch.",
+	for _, want := range []string{"qwen3.6:35b", "Built-in tools: configure, datetime, about_meru, write_file, edit_file, web_fetch.",
 		"Output folder, where write_file saves: " + dir + "."} {
 		if !strings.Contains(res.Text, want) {
 			t.Errorf("the result lacks %q:\n%s", want, res.Text)

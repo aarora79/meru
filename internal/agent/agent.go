@@ -69,14 +69,22 @@ const whoIsWho = "The person asking is the user, and the files are theirs. " +
 func filesNote(folders []string, agentic bool) string {
 	if len(folders) == 0 {
 		return "Meru hasn't indexed any of the user's files yet. " +
-			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml."
+			"To search their files, the user lists folders under [index] folders in ~/.meru/config.toml. " + fileLinkRule
 	}
 	if agentic {
-		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + "."
+		return "Meru indexes the user's files in these folders: " + strings.Join(folders, ", ") + ". " + fileLinkRule
 	}
 	return "Meru indexes and searches the user's files in these folders: " + strings.Join(folders, ", ") + ". " +
-		"When a question needs them, Meru searches first and puts the best excerpts below."
+		"When a question needs them, Meru searches first and puts the best excerpts below. " + fileLinkRule
 }
+
+// fileLinkRule ends filesNote. A real session showed why: asked for a
+// clickable link to a page it had just saved, the model gave the path in
+// backticks, which both clients show as plain text. A Markdown link with a
+// file:// URL opens with a click, and write_file's result hands the model
+// one to copy.
+const fileLinkRule = "When you name a file on this computer, give it as a Markdown link to its full path, " +
+	"such as [report.html](file:///Users/you/meru-output/report.html), so the user can click it."
 
 // noResults stands in for the excerpts when a search finds nothing, or when
 // nothing is indexed yet, so the model answers without pretending it looked.
@@ -134,19 +142,20 @@ type Decision struct {
 type Agent struct {
 	engine      engine.Engine
 	router      Router
-	search      Searcher      // nil turns search off
-	tools       ToolRunner    // nil turns tools off
-	turns       TurnRecorder  // nil keeps no turn rows
-	profile     Profile       // nil leaves the profile out of the prompt
-	skills      Skills        // nil turns skills off; set by UseSkills
-	machine     string        // describes the user's computer; set by UseMachine
-	maxRounds   int           // model calls per turn, at most; see converse
-	maxTokens   int           // tokens one main-model call may write, thinking included
-	window      int           // [ollama] context_length, the tokens a prompt and answer share; 0 is Ollama's own
-	turnTimeout time.Duration // how long one turn may run; see Handle
-	agentic     bool          // [index] retrieval = "agentic": no search before the answer
-	models      config.Models // the models as config named them at startup; Main says which model answers now
-	folderNames []string      // last part of each [index] folder, lower case; see namesFolder
+	search      Searcher          // nil turns search off
+	tools       ToolRunner        // nil turns tools off
+	turns       TurnRecorder      // nil keeps no turn rows
+	profile     Profile           // nil leaves the profile out of the prompt
+	skills      Skills            // nil turns skills off; set by UseSkills
+	machine     string            // describes the user's computer; set by UseMachine
+	maxRounds   int               // model calls per turn, at most; see converse
+	maxTokens   int               // tokens one main-model call may write, thinking included
+	window      int               // [ollama] context_length, the tokens a prompt and answer share; 0 is Ollama's own
+	turnTimeout time.Duration     // how long one turn may run; see Handle
+	agentic     bool              // [index] retrieval = "agentic": no search before the answer
+	models      config.Models     // the models as config named them at startup; Main says which model answers now
+	endpoints   []config.Endpoint // the [[endpoints]] entries, for the self line of an "@name" model
+	folderNames []string          // last part of each [index] folder, lower case; see namesFolder
 	// folders, when set by UseFolders, returns the [index] folders as they
 	// are now, and a turn builds folderNames and filesNote from it.
 	folders     func() []string
@@ -242,6 +251,7 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		turnTimeout: timeout,
 		agentic:     agentic,
 		models:      cfg.Models,
+		endpoints:   cfg.Endpoints,
 		main:        cfg.Models.Main,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
@@ -498,6 +508,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	//
 	// A turn whose answer model can't call tools ran none (see
 	// notools.go), and says so in the same notice, first.
+	// An answer that leaves out a file the turn saved gets its link,
+	// streamed as the answer's last words, so it lands in the transcript
+	// and the next turn's history holds the true path. A turn that ran out
+	// of rounds after it saved a file gets the link too. See saved.go.
+	if add := savedLinks(t.saved, rep.text); add != "" {
+		if err := emit(rpc.Event{Type: rpc.EventToken, Text: add}); err != nil {
+			return err
+		}
+		rep.text += add
+	}
 	var notice string
 	if ended == "" && t.succeeded == 0 && claimsAction(rep.text) {
 		notice = unbackedNotice
@@ -774,7 +794,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// again. The search runs before the route event for this reason: the
 	// rule needs its excerpts.
 	if t.webFirst == "" && t.handoff == "" {
-		if name, ok := a.namedWebFirst(question, target, searched, found.results); ok {
+		if name, ok := a.namedWebFirst(question, target, searched, found.results, history); ok {
 			webCalls = namedCalls(name, question, a.tools.Tools())
 			t.webFirst = webFirstNamed
 			if r, ok := withTools(dec.Route); ok {
@@ -1577,7 +1597,7 @@ func (a *Agent) stablePart(ctx context.Context, toolsNote, skillList string) (sy
 			system += "\n\n" + part
 		}
 	}
-	add(selfLine(a.Main()))
+	add(a.selfIntro())
 	add(today(time.Now()))
 	add(a.machine)
 	profile = a.profileSection(ctx)

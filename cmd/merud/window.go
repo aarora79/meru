@@ -10,6 +10,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
 
@@ -20,11 +21,23 @@ import (
 // share is a cautious one there.
 const windowMemoryShare = 8
 
+// windower is the set of engine methods that size a model's window:
+// what the model can read, and the window to load it with. engine.Engines
+// and engine.OllamaEngine both have them.
+type windower interface {
+	Details(ctx context.Context, model string) (engine.ModelDetails, error)
+	SetWindow(model string, n int)
+	Window(model string) int
+}
+
 // windowFitter returns the function that sizes model's window and sets it
 // on eng, for startup and for each switch of the answer model. fallback
 // is [ollama] context_length and memGB the memory models load into:
 // platform.Machine.ModelMemoryGB, the GPU's own memory or main memory. It returns
-// nil when eng isn't an OllamaEngine, as in tests with a fake.
+// nil when eng has no windower methods, as in tests with a fake.
+//
+// An endpoint's window is its context_length, which it keeps: there is
+// nothing to load on this machine, so nothing to size.
 //
 // The function asks Ollama about model through Details, which caches the
 // answer, works the window out with engine.FitWindow, and logs it. When
@@ -32,12 +45,15 @@ const windowMemoryShare = 8
 // the model keeps fallback. Call it before the model loads: a model that
 // loaded with another window loads again on its next call.
 func windowFitter(eng engine.Engine, fallback, memGB int, log *slog.Logger) func(ctx context.Context, model string) {
-	oe, ok := eng.(*engine.OllamaEngine)
+	oe, ok := eng.(windower)
 	if !ok || fallback <= 0 {
 		return nil
 	}
 	budget := int64(memGB) << 30 / windowMemoryShare
 	return func(ctx context.Context, model string) {
+		if _, ok := config.EndpointRef(model); ok {
+			return
+		}
 		d, err := oe.Details(ctx, model)
 		if err != nil {
 			log.WarnContext(ctx, "answer model window: Ollama can't describe the model; it keeps [ollama] context_length",

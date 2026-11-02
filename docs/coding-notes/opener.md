@@ -56,6 +56,12 @@ so nothing in the URL can run as a command. The context carries a ten-second
 timeout, so an opener stuck without a display doesn't wait for ever. Standard
 output stays unset, so `Run` doesn't wait on a browser the opener leaves running.
 
+Before it runs anything, `Open` checks a `file://` link: `filePath` undoes
+the URL's escaping, and `os.Stat` asks for the file. A link to nothing fails
+with "can't open … there's no such file on this computer". Without the check,
+macOS's `open` exits 1 and the app showed "open: exit status 1", which said
+nothing about a file name the model had made up.
+
 `command` takes the system's name as a parameter and reads the opener from that
 system's row in [platform](platform.md), so one test checks all three systems on
 any machine.

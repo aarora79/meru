@@ -294,15 +294,15 @@ func TestLoadErrors(t *testing.T) {
 	}
 }
 
-// TestBuiltinConfirmDefault checks that write_file asks by default, and that
+// TestBuiltinConfirmDefault checks that write_file and edit_file ask by default, and that
 // a config that lists no built-ins gets an empty list, not the default.
 func TestBuiltinConfirmDefault(t *testing.T) {
 	cfg, err := Load(writeConfig(t, ""))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Builtin.Confirm, []string{"write_file"}) {
-		t.Errorf("default builtin.confirm = %q, want [write_file]", cfg.Builtin.Confirm)
+	if !reflect.DeepEqual(cfg.Builtin.Confirm, []string{"write_file", "edit_file"}) {
+		t.Errorf("default builtin.confirm = %q, want [write_file edit_file]", cfg.Builtin.Confirm)
 	}
 	cfg, err = Load(writeConfig(t, "[builtin]\nconfirm = []"))
 	if err != nil {
@@ -321,8 +321,8 @@ func TestBuiltinToolsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 18 {
-		t.Errorf("default builtin.tools = %q, want all eighteen: %q", cfg.Builtin.Tools, builtinTools)
+	if !reflect.DeepEqual(cfg.Builtin.Tools, builtinTools) || len(builtinTools) != 19 {
+		t.Errorf("default builtin.tools = %q, want all nineteen: %q", cfg.Builtin.Tools, builtinTools)
 	}
 	cfg, err = Load(writeConfig(t, "[builtin]\ntools = []\nconfirm = []"))
 	if err != nil {

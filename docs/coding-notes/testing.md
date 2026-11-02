@@ -88,6 +88,16 @@ response. Unscripted calls get "Hello from fake Ollama." `/api/tags` lists
 models loaded so far; `/api/show` answers a 404 for a model not in
 `Config.Models`, as Ollama does for one that isn't pulled.
 
+The fake also serves `POST /v1/chat/completions`, the OpenAI-style API the
+real Ollama serves too, from the same queue of replies (`openai.go`). It
+streams server-sent events, `data: {json}` lines ending in `data: [DONE]`, with
+text pieces, tool calls whose arguments are a JSON string, a finish reason
+and the token counts, and honours `max_tokens` the way `/api/chat` honours
+`num_predict`. An `[[endpoints]]` entry with `api = "openai"` and the fake's
+URL plus `/v1` then answers from the fake, which is how the end-to-end tests
+run an endpoint. `TestOpenAIRoute` checks the route with Meru's own
+`OpenAIEngine`.
+
 The fake speaks the same JSON as Ollama. A streamed reply is NDJSON
 (newline-delimited JSON): one object per line, the last with `"done": true`
 and the usage counters. The durations it reports are fixed (1 ms per prompt

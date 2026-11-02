@@ -31,20 +31,27 @@ func (s *toolService) handleAttach(ctx context.Context, req rpc.Request, emit fu
 	return emit(rpc.Event{Type: rpc.EventSaved, Text: up.Path, Kind: up.Kind})
 }
 
+// capabler is the engine method that says what a model can do: Ollama's
+// /api/show for a local model, the [[endpoints]] entry for an endpoint.
+// engine.Engines and engine.OllamaEngine both have it.
+type capabler interface {
+	Capabilities(ctx context.Context, model string) ([]string, error)
+}
+
 // capabilityCheck returns a check of whether a model lists capability,
 // such as engine.Vision or engine.ToolUse, among its capabilities. The
 // agent runs the vision check before it sends the main model a question's
-// images, and the tools check before it offers the main model tools. Only
-// OllamaEngine can say, through /api/show, so for any other engine, as in
-// tests, capabilityCheck returns nil: the agent then refuses questions
-// with images, and offers tools without a check.
+// images, and the tools check before it offers the main model tools. An
+// engine without Capabilities, as in tests, makes capabilityCheck return
+// nil: the agent then refuses questions with images, and offers tools
+// without a check.
 //
-// eng.(*engine.OllamaEngine) is a type assertion: it asks whether the
-// interface value eng holds that concrete type, and ok says whether it
-// does. Capabilities sits outside the Engine interface on purpose, which
-// keeps that interface at four methods (ARCHITECTURE.md, "Engine layer").
+// eng.(capabler) is a type assertion: it asks whether the interface value
+// eng also has the capabler method, and ok says whether it does.
+// Capabilities sits outside the Engine interface on purpose, which keeps
+// that interface at four methods (ARCHITECTURE.md, "Engine layer").
 func capabilityCheck(eng engine.Engine, capability string) func(ctx context.Context, model string) (bool, error) {
-	oe, ok := eng.(*engine.OllamaEngine)
+	oe, ok := eng.(capabler)
 	if !ok {
 		return nil
 	}

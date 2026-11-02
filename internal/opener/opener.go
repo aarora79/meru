@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -59,11 +60,20 @@ func allowed(u string) bool {
 }
 
 // Open checks u with Check, then opens it with the program command picks
-// for this machine. It fails when the check fails, or when the program
-// can't start, exits with an error or runs past the timeout.
+// for this machine. It fails when the check fails, when u is a file link
+// to a file that isn't there, or when the program can't start, exits with
+// an error or runs past the timeout.
 func Open(u string) error {
 	if err := Check(u); err != nil {
 		return err
+	}
+	// A file link to nothing makes macOS's open exit 1, which the app
+	// showed as "open: exit status 1". Saying which file is missing tells
+	// the user what went wrong: often a model made up the name.
+	if p, ok := filePath(u); ok {
+		if _, err := os.Stat(p); err != nil {
+			return fmt.Errorf("can't open %s: there's no such file on this computer", p)
+		}
 	}
 	argv := command(runtime.GOOS, u)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -79,6 +89,21 @@ func Open(u string) error {
 		return fmt.Errorf("%s: %w", argv[0], err)
 	}
 	return nil
+}
+
+// filePath returns the path a file:// link names, with its escaping undone,
+// and false for any other link. A Windows link, file:///C:/x, parses to
+// /C:/x, so the "/" before the drive letter goes.
+func filePath(u string) (string, bool) {
+	parsed, err := url.Parse(u)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "file") || parsed.Path == "" {
+		return "", false
+	}
+	p := parsed.Path
+	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		p = p[1:]
+	}
+	return p, true
 }
 
 // command returns the program, with its arguments, that opens u on goos,

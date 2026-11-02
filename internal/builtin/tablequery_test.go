@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -234,6 +235,33 @@ func TestStringList(t *testing.T) {
 	var got stringList
 	if err := json.Unmarshal([]byte(`7`), &got); err == nil {
 		t.Error("stringList took a number")
+	}
+}
+
+func TestObjectList(t *testing.T) {
+	tests := map[string][]aggArg{
+		`[{"fn":"count"}]`:                                           {{Fn: "count"}},
+		`"[{\"fn\":\"sum\",\"column\":\"Amount\"}]"`:                 {{Fn: "sum", Column: "Amount"}},
+		`"[{\"column\": Number, \"fn\": count}]"`:                    {{Fn: "count", Column: "Number"}},
+		`"[{\"fn\": percentile, \"column\": Total Due, \"p\": 90}]"`: {{Fn: "percentile", Column: "Total Due", P: new(90.0)}},
+	}
+	for in, want := range tests {
+		var got objectList[aggArg]
+		if err := json.Unmarshal([]byte(in), &got); err != nil || len(got) != len(want) {
+			t.Errorf("objectList from %s = %+v, %v; want %+v", in, got, err, want)
+			continue
+		}
+		for i := range want {
+			g, w := got[i], want[i]
+			if g.Fn != w.Fn || g.Column != w.Column || (w.P != nil && (g.P == nil || *g.P != *w.P)) {
+				t.Errorf("objectList from %s [%d] = %+v, want %+v", in, i, g, w)
+			}
+		}
+	}
+	var got objectList[aggArg]
+	err := json.Unmarshal([]byte(`"count the rows"`), &got)
+	if err == nil || !strings.Contains(err.Error(), "send it as JSON") {
+		t.Errorf("a string that holds no list: err = %v, want a hint", err)
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/retrieve"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // Why a turn went to the web first. The turn's info log line and span
@@ -586,16 +587,37 @@ func webFirstOf(t *turn) string {
 //   - web_search is on;
 //   - the question isn't about the user's own life (see aboutTheUser);
 //   - it names a thing (see namedThing), and the excerpts don't cover it
-//     (see filesCover).
-func (a *Agent) namedWebFirst(question, target string, searched bool, results []retrieve.Result) (string, bool) {
+//     (see filesCover);
+//   - no earlier turn of the chat names it (see inHistory);
+//   - the question carries no attached file: a question with a "Read this
+//     file" line is about that file, as in "replace Dan with Dana in this
+//     page", whose name the web knows nothing about.
+func (a *Agent) namedWebFirst(question, target string, searched bool, results []retrieve.Result, history []engine.Message) (string, bool) {
 	if !searched || target != "" || a.tools == nil || !offersWebSearch(a.tools.Tools()) || aboutTheUser(question) {
 		return "", false
 	}
 	name := namedThing(question)
-	if name == "" || filesCover(name, results) {
+	if name == "" || filesCover(name, results) || inHistory(name, history) ||
+		strings.Contains(question, "\n"+rpc.ReadThisFile) {
 		return "", false
 	}
 	return name, true
+}
+
+// inHistory reports whether name, ignoring case, appears in any earlier
+// message of the chat. A name the chat already uses belongs to the user's
+// own matter, such as a person in a file they attached, so the web has
+// nothing to add. A real chat about a family's call log searched the web
+// for a family member's name on every follow-up, which wasted a search
+// each turn and sent the name to the search engines.
+func inHistory(name string, history []engine.Message) bool {
+	n := strings.ToLower(name)
+	for _, m := range history {
+		if strings.Contains(strings.ToLower(m.Content), n) {
+			return true
+		}
+	}
+	return false
 }
 
 // runWebFirst makes calls through dispatch, as merud's own calls (see

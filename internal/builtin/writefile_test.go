@@ -70,6 +70,55 @@ func TestWriteFile(t *testing.T) {
 	}
 }
 
+// TestWriteFileNamesTheOutputFolder checks the three ways a model names a
+// file it read in the output folder: "~/meru-output/x", the absolute path,
+// and "meru-output/x". Each must write x itself, never a meru-output folder
+// inside the output folder, and the result must say whether it replaced the
+// file and give a link the user can click.
+func TestWriteFileNamesTheOutputFolder(t *testing.T) {
+	tools, out := writeTools(t)
+	// os.UserHomeDir reads HOME, so "~" is the folder above the output folder.
+	t.Setenv("HOME", filepath.Dir(out))
+	want := filepath.Join(out, "uploads", "page.html")
+	paths := []string{
+		"uploads/page.html",
+		"meru-output/uploads/page.html",
+		"~/meru-output/uploads/page.html",
+		filepath.ToSlash(want),
+	}
+	for i, p := range paths {
+		res := callWrite(t, tools, `{"path":"`+p+`","content":"v`+string(rune('1'+i))+`","overwrite":true}`)
+		if res.IsError {
+			t.Fatalf("%s: %s", p, res.Text)
+		}
+		verb := "Replaced"
+		if i == 0 {
+			verb = "Wrote a new file"
+		}
+		if !strings.HasPrefix(res.Text, verb) || !strings.Contains(res.Text, want) {
+			t.Errorf("%s: result = %q, want %q and the path", p, res.Text, verb)
+		}
+		if !strings.Contains(res.Text, "Link for the user: [page.html](file://") {
+			t.Errorf("%s: result = %q, want a file link", p, res.Text)
+		}
+	}
+	if got, _ := os.ReadFile(want); string(got) != "v4" { // #nosec G304 -- a test temp dir
+		t.Errorf("the file holds %q, want the last write", got)
+	}
+	if _, err := os.Stat(filepath.Join(out, "meru-output")); err == nil {
+		t.Error("write_file made a meru-output folder inside the output folder")
+	}
+}
+
+func TestFileURL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix paths")
+	}
+	if got, want := FileURL("/Users/me/meru-output/a b.html"), "file:///Users/me/meru-output/a%20b.html"; got != want {
+		t.Errorf("FileURL = %q, want %q", got, want)
+	}
+}
+
 func TestWriteFileRefuses(t *testing.T) {
 	tests := []struct {
 		name string
@@ -163,8 +212,8 @@ func TestWriteFileBackend(t *testing.T) {
 		t.Error("Tools doesn't offer write_file")
 	}
 	st := tools.Status()[0].Tools
-	if len(st) != 4 || st[2].Name != WriteFile || !st[2].Confirm {
-		t.Errorf("Status tools = %+v, want configure, datetime, write_file, which asks, and web_fetch", st)
+	if len(st) != 5 || st[2].Name != WriteFile || !st[2].Confirm || st[3].Name != EditFile {
+		t.Errorf("Status tools = %+v, want configure, datetime, write_file, which asks, edit_file and web_fetch", st)
 	}
 
 	none := New("config.toml", config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, "", nil, nil, nil)
@@ -191,5 +240,19 @@ func checkMode(t *testing.T, path string, want os.FileMode) {
 	}
 	if got := info.Mode().Perm(); got != want {
 		t.Errorf("%s mode = %o, want %o", path, got, want)
+	}
+}
+
+// TestWritten checks that Written reads back the name and link of the file
+// a write_file result names, and nothing from a refusal.
+func TestWritten(t *testing.T) {
+	tools, out := writeTools(t)
+	res := callWrite(t, tools, `{"path":"r e.html","content":"x"}`)
+	name, link, ok := Written(res.Text)
+	if !ok || name != "r e.html" || link != FileURL(filepath.Join(out, "r e.html")) {
+		t.Errorf("Written(%q) = %q, %q, %v", res.Text, name, link, ok)
+	}
+	if _, _, ok := Written("write_file: r.html already exists. Nothing was written"); ok {
+		t.Error("Written read a link from a refusal")
 	}
 }

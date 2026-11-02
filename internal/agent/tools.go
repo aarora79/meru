@@ -176,6 +176,9 @@ type ToolRunner interface {
 // turn holds what the rounds need to know about the turn they run in.
 // Handle fills it in as the turn goes.
 type turn struct {
+	// saved lists the files write_file wrote this turn, in order, for the
+	// links savedLinks adds under the answer.
+	saved  []savedFile
 	sess   *transcript.Session
 	source rpc.Source
 	// scope is where the user let the turn look, one of the rpc.Scope
@@ -213,9 +216,13 @@ type turn struct {
 	// planNudged is true once the turn has asked the model to take the step
 	// it announced; see planNudge. A turn gets one nudge.
 	planNudged bool
-	// succeeded counts the calls that ended "ok". A turn where it stays 0
-	// changed nothing, so Handle checks its answer for a claim that it
-	// did; see claimsAction.
+	// succeeded counts the calls that ended "ok" and could have changed
+	// something: every call but a built-in that only reads (see
+	// builtin.ReadOnly). A turn where it stays 0 changed nothing, so Handle
+	// checks its answer for a claim that it did; see claimsAction. A real
+	// turn ran grep three times, wrote nothing, and answered "I've fixed
+	// all instances in the HTML file"; when every success counted, the
+	// greps hid the claim.
 	succeeded int
 	// question is what the user typed, for dispatch.Call.Question: see
 	// userWords.
@@ -913,8 +920,13 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		if o != dispatch.OutcomeOK {
 			continue
 		}
-		if caller == "" {
+		if caller == "" && !builtin.ReadOnly(calls[i].Name) {
 			t.succeeded++
+		}
+		if calls[i].Name == builtin.WriteFile || calls[i].Name == builtin.EditFile {
+			if name, link, ok := builtin.Written(out[i].Content); ok {
+				t.saved = append(t.saved, savedFile{name: name, link: link})
+			}
 		}
 		t.web = append(t.web, webHitsOf(calls[i].Name, out[i].Content)...)
 	}

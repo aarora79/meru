@@ -352,6 +352,8 @@ func TestNamedWebFirst(t *testing.T) {
 		{"about the user", "when does my Acme Flow plan renew?", "search", nil, web, "", "search"},
 		{"names nothing", "how do I bake bread?", "search", nil, web, "", "search"},
 		{"web_search off", "what is Acme Flow?", "search", nil, names("web_fetch", "read_file"), "", "search"},
+		{"an attached file", "replace Acme Flow with Acme Relay in this page\nRead this file: ~/meru-output/uploads/page.html",
+			"search", nil, web, "", "search"},
 		{"a mail question", "what did the Acme Flow email say?", "tools", nil,
 			append(names("google.search_gmail_messages"), web...), "", "tools"},
 	}
@@ -673,5 +675,20 @@ func TestWebFirstLogField(t *testing.T) {
 				t.Errorf("info log lacks %q:\n%s", tt.want, buf.String())
 			}
 		})
+	}
+}
+
+// TestInHistory checks the rule that keeps merud from searching the web
+// for a name the chat already used, such as a person in an attached file.
+func TestInHistory(t *testing.T) {
+	history := []engine.Message{
+		{Role: engine.RoleUser, Content: "Summarize Dana's call log in ~/meru-output/uploads/dana-calls.csv"},
+		{Role: engine.RoleAssistant, Content: "Dana made 40 calls in October."},
+	}
+	if !inHistory("Dana", history) || !inHistory("DANA", history) {
+		t.Error("a name from an earlier turn didn't count")
+	}
+	if inHistory("Acme Flow", history) || inHistory("Dana", nil) {
+		t.Error("a name the chat never used counted")
 	}
 }

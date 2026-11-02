@@ -1,7 +1,7 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
-`about.go`, `remember.go`, `writefile.go`, `files.go`, `chats.go`, `search.go`,
+`about.go`, `remember.go`, `writefile.go`, `editfile.go`, `files.go`, `chats.go`, `search.go`,
 `web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`,
 `table.go`, `tablequery.go`, and the tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
 `chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
@@ -26,8 +26,8 @@ Some tools live inside `merud` instead of an MCP server. This package holds them
 behind the same `dispatch.Backend` interface the MCP pool and the A2A client use,
 so every call still goes through `dispatch` (AGENTS.md, non-negotiable 4).
 
-There are eighteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
-the model may use: all eighteen by default. When you say "connect my Gmail" in chat, the model calls
+There are nineteen built-ins, and `[builtin] tools` in `config.toml` lists the ones
+the model may use: all nineteen by default. When you say "connect my Gmail" in chat, the model calls
 `configure` with `{"action": "add_mcp_server", "catalog": "google"}`, and
 `configure` adds the `google` entry to `config.toml`. You still start that server
 yourself; `merud` connects to it on the next turn on a tools route. It can also add a server outside
@@ -346,7 +346,12 @@ checks too.
 in this order, and each refusal ends with "Nothing was written" so the model
 can't mistake it for a success:
 
-1. `cleanRelPath` turns down an empty path, an absolute one (`/etc/x`, `\x`,
+1. `insideOutput` first turns a path that already names the output folder
+   into one inside it: `~/meru-output/uploads/page.html`, its absolute form and
+   `meru-output/uploads/page.html` all become `uploads/page.html`. A model that
+   read a file there passes its path back, and taken as relative the last form
+   once wrote a second copy in `~/meru-output/meru-output/` while the user
+   looked at the first. Then `cleanRelPath` turns down an empty path, an absolute one (`/etc/x`, `\x`,
    `C:\x`) and any path with a `..` part. It splits at both `/` and `\`, so
    `a\..\..\x` can't slip a `..` past a check that only knows one separator.
 2. It refuses content over 1 MiB. A model that writes that much is most likely
@@ -365,12 +370,48 @@ can't mistake it for a success:
    happens in one step, so nobody sees half a file, and a failed write leaves the
    old file as it was.
 
-The result reads `Wrote 1234 bytes to /Users/you/meru-output/dns/explainer.html.`
-The model passes the path on to you, and the client shows it in the tool result.
+The result says whether the file is new or replaced, and gives a link:
+
+```text
+Wrote a new file, 1234 bytes, at /Users/you/meru-output/dns/explainer.html.
+Link for the user: [explainer.html](file:///Users/you/meru-output/dns/explainer.html)
+```
+
+`FileURL` builds the link with `net/url`, so a space becomes `%20`.
+`Written` reads the name and link back from a result, for the agent, which
+adds the link under an answer that leaves it out (see [agent](agent.md)). The model
+passes the link on, and both clients open a `file://` link with a click. Before
+the link, a model asked for a clickable link wrote the path in backticks, which
+shows as plain text.
 
 `write_file` asks before each call, because the shipped `[builtin] confirm` is
 `["write_file"]`. A file outlives the chat, so the default is to ask. Take it out
 of the list to let it write without asking.
+
+### editfile.go
+
+`edit_file` replaces exact text in a file in the output folder. It takes
+`path`, `old`, `new` and an optional `all`. Before it, the only way to change
+a saved file was `write_file` with the whole file as content; asked to fix two
+names in a 14 KB page, a model said it couldn't, and another claimed it had.
+
+It shares `write_file`'s guards: `insideOutput` and `cleanRelPath` on the path,
+an `os.Root` on the output folder, no symbolic links, and the 1 MiB cap. Then:
+
+1. It refuses a file that isn't there ("write_file makes a new file") and an
+   empty `old`.
+2. `strings.Count` counts the matches. None fails with "isn't in", so the model
+   reads the file and tries its exact text. More than one fails unless `all`
+   is true, so an edit meant for one place can't change three.
+3. `writeAtomic` saves the file as it was to a hidden `.<name>.bak` beside it,
+   replacing the last one, then writes the edited text the same way.
+
+Every refusal ends "Nothing changed". The result reads "Replaced 2 places in
+/Users/you/meru-output/reports/oct.html." and ends with the same link line as
+`write_file`'s, so `Written` reads it and the agent links an edited file under
+the answer too. `edit_file` asks before each call, since the shipped `confirm`
+list names it, and it is on by default. `ReadOnly` leaves it out, so a
+successful edit backs a claim that the file changed.
 
 ### files.go
 
@@ -708,6 +749,16 @@ otherwise reads quartiles off a sorted list by eye.
 `stringList`, whose `UnmarshalJSON` method takes a list, one string, or a
 string that holds a list, quoted or not (`"[daily]"`). Models send all three,
 and refusing them costs a round.
+
+`where`, `aggregate` and `sort` are lists of objects, and a model sends those
+as strings too. One real call sent `aggregate` as
+`"[{\"column\": Number, \"fn\": count}]"`: a string, with the values left
+bare. `objectList[T]` takes a list, or a string that holds one, and
+`quoteBareWords` puts quotes round a bare value such as `count` before it
+tries again, leaving numbers, `true`, `false` and `null` alone. A string it
+still can't read fails with an example of the JSON to send. The `[T any]` makes
+the type generic: one type serves `condition`, `aggArg` and `sortKey` (see
+[generics](go-basics/generics.md)).
 
 ### search.go
 
@@ -1126,6 +1177,8 @@ It returns the bytes, and the agent puts them on the question's message.
 - **A custom `UnmarshalJSON`**: `stringList` decodes a list, a string, or a
   string that holds a list. More in
   [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
+- **Generics**: `objectList[T]` is one list type for three kinds of object.
+  More in [go-basics/generics.md](go-basics/generics.md).
 - **`net/http` clients** — an `http.Client` holds the timeout, the redirect rule
   and the `Transport`, which holds the proxy setting and the dialer. Each web tool
   builds its own, so one tool's rules can't leak into the other's. More in
@@ -1264,7 +1317,7 @@ the cases with one readable file it also calls `read_file` on the same file
 and checks that a built-in's result gets nothing added.
 
 `TestBuiltinToolsSwitch` builds `Tools` three times. With every setting there,
-the eighteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
+the nineteen names from `config.BuiltinTools()` are exactly what `Tools` offers and
 `Status` lists, which also proves the config list and this package agree. With
 `[builtin] tools` cut to `datetime` and `grep`, only those two show up, and a
 call to any other built-in fails. With no settings, `Off` names `about_meru`,
@@ -1357,7 +1410,7 @@ tool stays off without a searcher or without `[index] folders`.
   about it, and turning `read_file` off shouldn't stop a photo.
 
 - **One switch per built-in.** `[builtin] tools` turns each tool on or off, the
-  same way for all eighteen. `web_fetch` had its own key under `[web]` before; two
+  same way for all nineteen. `web_fetch` had its own key under `[web]` before; two
   places to look for one question made the config harder to read.
 
 - **Facts from `merud`, text from here.** `merud` owns the engine, the store,

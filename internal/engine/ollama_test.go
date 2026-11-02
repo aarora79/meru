@@ -320,6 +320,20 @@ func TestStreamHTTPErrorIsNotModelOutput(t *testing.T) {
 	}
 }
 
+// TestStreamParserErrorBeforeTextIsModelOutput checks that Ollama's parser
+// error sent as a 500 before any text, as a real turn got it, counts as
+// bad model output, which the agent retries, and stays an *APIError.
+func TestStreamParserErrorBeforeTextIsModelOutput(t *testing.T) {
+	f := newFakeOllama(t, map[string]route{"/api/chat": {500,
+		`{"error":"XML syntax error on line 8: element <function> closed by </parameter>"}`}})
+	e := newTestEngine(t, f, "")
+	_, err := e.Stream(context.Background(), nil, nil, Options{Model: "m"})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !errors.Is(err, ErrModelOutput) {
+		t.Errorf("Stream error = %v, want an *APIError that wraps ErrModelOutput", err)
+	}
+}
+
 func TestStreamStopsWhenCallerBreaks(t *testing.T) {
 	stream := `{"message":{"content":"a"},"done":false}` + "\n" + `{"message":{"content":"b"},"done":false}` + "\n"
 	f := newFakeOllama(t, map[string]route{"/api/chat": {200, stream}})

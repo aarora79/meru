@@ -405,6 +405,12 @@ const (
 	AttachFile = "file"
 )
 
+// ReadThisFile starts the line both clients add to a question for each
+// attached file that isn't an image: "Read this file: <path>", on a line
+// of its own after the user's words. merud reads it too: a question about
+// an attached file isn't one to search the web for.
+const ReadThisFile = "Read this file: "
+
 // EventType names what an Event carries.
 type EventType string
 

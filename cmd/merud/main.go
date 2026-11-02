@@ -321,7 +321,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	if fit := windowFitter(eng, cfg.Ollama.ContextLength, host.ModelMemoryGB(), log); fit != nil {
 		fit(gctx, a.Main())
 		svc.models.fitWindow = fit
-		a.UseWindow(eng.(*engine.OllamaEngine).Window)
+		a.UseWindow(eng.(windower).Window)
 	}
 	// The scheduler runs [[jobs]] through the same agent, in a loop beside
 	// the server; see jobs.go.
@@ -577,10 +577,11 @@ func openLog(path, level string) (*slog.Logger, func(), error) {
 type engineBuilder func(config.Config, *slog.Logger) (engine.Engine, error)
 
 // newEngine builds the engine merud answers with: an OllamaEngine on the
-// loopback address from config, which also knows the embed model for Embed.
-// A nil *http.Client makes the engine use its own default client. The
-// engine asks Ollama for [ollama] context_length tokens of room on every
-// chat call, and gives the embed model the prefixes and context that
+// loopback address from config, which also knows the embed model for Embed,
+// wrapped with the answer models in [[endpoints]] (see endpoints.go). A nil
+// *http.Client makes each engine use its own default client. The Ollama
+// engine asks for [ollama] context_length tokens of room on every chat
+// call, and gives the embed model the prefixes and context that
 // config.FindEmbedModel lists for it, or none for a model it doesn't know.
 func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
 	e, err := engine.NewOllama(cfg.Ollama.BaseURL, cfg.Ollama.KeepAlive, cfg.Models.Embed, nil, log)
@@ -591,7 +592,11 @@ func newEngine(cfg config.Config, log *slog.Logger) (engine.Engine, error) {
 	em := config.FindEmbedModel(cfg.Models.Embed)
 	e.EmbedPrompts = engine.Prompts{Query: em.Query, Document: em.Document}
 	e.EmbedContext = em.Context
-	return e, nil
+	endpoints, err := newEndpoints(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	return engine.NewEngines(e, endpoints), nil
 }
 
 // newRouter builds the router the agent asks for each turn's route: the
