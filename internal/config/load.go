@@ -335,6 +335,7 @@ func validate(cfg Config) error {
 	}
 
 	errs = append(errs, checkCloudModels(cfg.Models)...)
+	errs = append(errs, checkEndpoints(cfg.Endpoints, cfg.Models)...)
 	for _, err := range checkSets(cfg.Models.Sets) {
 		add("%w", err)
 	}

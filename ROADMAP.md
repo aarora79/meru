@@ -263,6 +263,11 @@ that fits the graphics card, and `merud` as a systemd user service.
   ([#150](https://github.com/aarora79/meru/issues/150))
 - [x] New built-in tools reach configs that list them by hand
   ([#123](https://github.com/aarora79/meru/issues/123))
+- [ ] A model router: easy questions on the fast model, and answer models on
+  endpoints you name, local, on your network or hosted, asking before a chat
+  leaves the machine ([#78](https://github.com/aarora79/meru/issues/78),
+  [design](docs/design/model-router.md)). The engines for endpoints on this
+  machine come first.
 - [ ] Fixes: text from tool rounds runs together
   ([#154](https://github.com/aarora79/meru/issues/154)); metrics miss the fixed
   prompt and the fast and embed calls
@@ -278,8 +283,6 @@ Google and Obsidian do.
 ## Later, maybe
 - Voice beyond speech to text: answers read aloud and a wake word
 - Menu-bar companion app, next to the desktop app
-- Escalation to a larger model without asking: you can switch models by hand, and
-  the switch unloads the old one first, but Meru never picks the larger model itself
 - `LlamaCppEngine`: llama.cpp embedded via cgo, no Ollama needed
 - `MLXEngine`, if Go bindings become practical
 - Windows service and a Windows test pass ([#85](https://github.com/aarora79/meru/issues/85))

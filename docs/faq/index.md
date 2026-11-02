@@ -13,6 +13,7 @@ steps and links to [running.md](../running.md) for the full story.
 ## Models
 
 - [How do I change the model that answers?](change-model.md)
+- [How do I answer with a model from another model server?](answer-endpoints.md)
 
 ## Your files
 

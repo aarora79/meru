@@ -23,7 +23,7 @@ profile = "lite"
 # An empty name takes the profile's model. A name here overrides the
 # profile for that tier, so leave these empty unless you want your own
 # model. The comments show what "lite" gives; `ollama list` shows names.
-fast  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; routes and quick answers
+fast  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; routes, picks skills, summarizes
 main  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; writes the answer
 embed = ""   # lite: embeddinggemma-2:440m; turns text into vectors for search
 # true lets the main model think before it answers, when no set below is
@@ -54,6 +54,26 @@ think = false
 # name  = "qwen-dense"
 # main  = "qwen3.8:27b-mlx"
 # think = false
+
+# An answer model on a model server other than the local Ollama. main, or
+# a set's main, names it as "@name"; the fast and embed models always run
+# on the local Ollama. For now an endpoint must be on this machine:
+# reach = "local" and a loopback url. api is "ollama", "openai" (chat
+# completions) or "anthropic" (Messages). For openai and anthropic, url is
+# the API's base up to its version, such as .../v1, and context_length
+# says how many tokens the model reads, which those APIs don't report.
+# api_key, when the server needs one, names an entry in secrets.toml.
+#
+# [[endpoints]]
+# name           = "ollama-v1"
+# reach          = "local"
+# api            = "openai"
+# url            = "http://127.0.0.1:11434/v1"
+# model          = "qwen3.6:35b-a3b-mxfp8"
+# context_length = 32768
+# vision         = true      # it reads pictures
+# tools          = true      # it calls tools; true unless set to false
+# api_key        = ""        # such as "secret:my_server_key"
 
 [ollama]
 # Where Ollama listens. Loopback only: 127.0.0.1, ::1 or localhost.

@@ -1,0 +1,88 @@
+// This file builds the engines for [[endpoints]]: answer models on a
+// server other than the local Ollama, which [models] main and the sets
+// name as "@name". See docs/design/model-router.md.
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+
+	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/secrets"
+)
+
+// newEndpoints returns an engine.Endpoint for each [[endpoints]] entry, by
+// name. Config has checked each entry already.
+//
+// An endpoint whose key secrets.toml lacks still goes in the map, with the
+// reason in its Err: merud starts, the rest of Meru works, and a question
+// for that model says what to fix. newEndpoints fails only when
+// secrets.toml can't be read at all.
+func newEndpoints(cfg config.Config, log *slog.Logger) (map[string]engine.Endpoint, error) {
+	out := map[string]engine.Endpoint{}
+	if len(cfg.Endpoints) == 0 {
+		return out, nil
+	}
+	sec, err := secrets.Load(secrets.Path(cfg.Dir))
+	if err != nil {
+		return nil, fmt.Errorf("endpoints: %w", err)
+	}
+	for _, c := range cfg.Endpoints {
+		ep := engine.Endpoint{Model: c.Model, Details: endpointDetails(c)}
+		ep.Engine, ep.Err = newEndpointEngine(c, sec, log)
+		if ep.Err != nil {
+			log.Warn("an answer model in [[endpoints]] can't answer", "endpoint", c.Name, "err", ep.Err)
+		} else {
+			log.Info("answer endpoint", "endpoint", c.Name, "api", c.API, "reach", c.Reach, "model", c.Model)
+		}
+		out[c.Name] = ep
+	}
+	return out, nil
+}
+
+// newEndpointEngine builds the engine for one entry, with its key read
+// from sec. It fails when the key's entry is missing from secrets.toml.
+func newEndpointEngine(c config.Endpoint, sec *secrets.Secrets, log *slog.Logger) (engine.Engine, error) {
+	key := ""
+	if c.APIKey != "" {
+		var err error
+		if key, err = sec.Resolve(c.APIKey); err != nil {
+			return nil, fmt.Errorf("api_key: %w", err)
+		}
+	}
+	ec := engine.EndpointConfig{Name: c.Name, URL: c.URL, Key: key, Model: c.Model}
+	switch c.API {
+	case config.APIOpenAI:
+		return engine.NewOpenAI(ec, nil, log)
+	case config.APIAnthropic:
+		return engine.NewAnthropic(ec, nil, log)
+	case config.APIOllama:
+		// Another Ollama: the same engine as the local one, with no
+		// embedding model and the entry's window on every call.
+		o, err := engine.NewOllama(c.URL, "", "", nil, log)
+		if err != nil {
+			return nil, err
+		}
+		o.ContextLength = c.ContextLength
+		return o, nil
+	}
+	// Config refuses any other api, so this is a programmer's mistake.
+	return nil, errors.New("unknown api " + c.API)
+}
+
+// endpointDetails returns what an entry says its model can do, in the form
+// Ollama's /api/show gives for a local model, so the vision and tool
+// checks and the prompt's budget treat both alike.
+func endpointDetails(c config.Endpoint) engine.ModelDetails {
+	caps := []string{"completion"}
+	if c.Vision {
+		caps = append(caps, engine.Vision)
+	}
+	if c.CallsTools() {
+		caps = append(caps, engine.ToolUse)
+	}
+	return engine.ModelDetails{Capabilities: caps, ContextLength: c.ContextLength}
+}

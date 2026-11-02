@@ -267,13 +267,14 @@ func (f *Fake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		method  string
 		handler func(http.ResponseWriter, *http.Request, []byte, int)
 	}{
-		"/api/version":  {http.MethodGet, f.serveVersion},
-		"/api/ps":       {http.MethodGet, f.servePS},
-		"/api/tags":     {http.MethodGet, f.serveTags},
-		"/api/chat":     {http.MethodPost, f.serveChat},
-		"/api/generate": {http.MethodPost, f.serveGenerate},
-		"/api/embed":    {http.MethodPost, f.serveEmbed},
-		"/api/show":     {http.MethodPost, f.serveShow},
+		"/api/version":         {http.MethodGet, f.serveVersion},
+		"/api/ps":              {http.MethodGet, f.servePS},
+		"/api/tags":            {http.MethodGet, f.serveTags},
+		"/api/chat":            {http.MethodPost, f.serveChat},
+		"/api/generate":        {http.MethodPost, f.serveGenerate},
+		"/api/embed":           {http.MethodPost, f.serveEmbed},
+		"/api/show":            {http.MethodPost, f.serveShow},
+		"/v1/chat/completions": {http.MethodPost, f.serveOpenAIChat},
 	}
 	route, ok := routes[r.URL.Path]
 	if !ok {

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/rpc"
@@ -441,5 +442,23 @@ func TestMissingFileNotice(t *testing.T) {
 	}
 	if want := missingNotice([]string{gone}); evs[i].Text != want {
 		t.Errorf("notice = %q, want %q", evs[i].Text, want)
+	}
+}
+
+// TestSelfIntroForAnEndpoint checks that an answer model on an endpoint
+// names its own model and the endpoint, not Ollama.
+func TestSelfIntroForAnEndpoint(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Endpoints = []config.Endpoint{{Name: "lab", Model: "big-model"}}
+	a := New(cfg, &fakeEngine{}, &fakeRouter{}, nil, nil, nil, nil, quietLog())
+	a.SetMain("@lab", true)
+	want := "Your name is Meru, and the model big-model writes your answers, through the model server " +
+		"Meru calls @lab on this computer. Never give yourself another name, and never name another model as yours."
+	if got := a.selfIntro(); got != want {
+		t.Errorf("selfIntro() = %q\nwant %q", got, want)
+	}
+	a.SetMain("qwen3.6:35b", true)
+	if got := a.selfIntro(); got != selfLine("qwen3.6:35b") {
+		t.Errorf("a local model's selfIntro() = %q", got)
 	}
 }

@@ -170,7 +170,10 @@ Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/w
    provider, stop and raise it instead. The only model HTTP traffic goes to Ollama on
    loopback, and never to one of Ollama's cloud models, which Ollama runs on
    ollama.com: config refuses one by name, and the engine refuses one Ollama
-   describes as remote.
+   describes as remote. An answer model in `[[endpoints]]`, a model server
+   that speaks Ollama's, the OpenAI or the Anthropic API, must be on loopback
+   too (`reach = "local"`) until the consent prompt in #78 exists; the user
+   types its URL, and the code holds no provider's address.
 2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
    Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
    the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
@@ -244,7 +247,8 @@ cmd/
                      gates requests until merud is ready; runtime.go warms the models;
                      machine.go describes the computer for the system prompt; jobs.go runs [[jobs]]
                      through the agent and answers the job ops; window.go sizes the
-                     answer model's context window; metrics.go serves
+                     answer model's context window; endpoints.go builds the
+                     engines for [[endpoints]]; metrics.go serves
                      /metrics; speech.go answers the transcribe op
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
@@ -263,7 +267,9 @@ cmd/
 internal/
   config/            config.toml: defaults, profiles, validation; template.toml is the source of
                      config.example.toml and `meru config template`
-  engine/            the Engine interface and OllamaEngine (chat, stream, embed, info)
+  engine/            the Engine interface and OllamaEngine (chat, stream, embed, info); OpenAIEngine
+                     and AnthropicEngine for the answer models in [[endpoints]] (openai.go,
+                     anthropic.go, endpoint.go), and Engines, which sends each call to its engine
   router/            the one-token route classifier (docs/fast-router.md); labelled questions in testdata/
   store/             meru.db: documents, chunks, vectors, the keyword index, memories, messages
                      and session turns, tool_calls

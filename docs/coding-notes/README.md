@@ -84,6 +84,7 @@ Read them in this order; each builds on the ones before it.
 - [os.Root](go-basics/os-root.md)
 - [Byte slices](go-basics/byte-slices.md)
 - [XML streaming](go-basics/xml-streaming.md)
+- [Server-sent events](go-basics/server-sent-events.md)
 
 ## Rules for writing a note
 

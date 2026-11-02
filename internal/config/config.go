@@ -50,6 +50,10 @@ type Config struct {
 	// reads it yet; the connector supervisor will (ARCHITECTURE.md,
 	// "Connectors and the supervisor").
 	Connectors map[string]Connector `toml:"connectors"`
+	// Endpoints lists answer models on servers other than the local
+	// Ollama, which [models] main and the sets name as "@name"; see
+	// endpoints.go.
+	Endpoints []Endpoint `toml:"endpoints"`
 
 	// Dir is the Meru home directory, usually ~/.meru. It isn't in the file;
 	// Load fills it in.

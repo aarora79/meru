@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
 )
 
@@ -85,6 +86,13 @@ func (a *Agent) WaitWarm(ctx context.Context) error {
 // then fails with Ollama's reason.
 func (a *Agent) warm(ctx context.Context) {
 	model, noThink := a.mainModel()
+	// An endpoint's model runs on another server, so there is nothing to
+	// load here, and the warm-up's prompt holds the profile and memories,
+	// which go to an endpoint only with a real question.
+	if _, ok := config.EndpointRef(model); ok {
+		a.log.InfoContext(ctx, "the answer model runs at an endpoint; nothing to load", "model", model)
+		return
+	}
 	start := time.Now()
 	specs := a.toolSpecs("direct")
 	if a.canCallTools != nil {

@@ -227,8 +227,8 @@ conversation, and never make up what a tool would give, such as a time, a
 file's contents or a search result. Asked the time, a model had made one up,
 and then said "I called the `datetime` tool" when asked how it knew.
 
-After `honestyRule` comes `selfLine(a.Main())`, also in `honest.go`, which
-names Meru and the answer model:
+After `honestyRule` comes `a.selfIntro()`, also in `honest.go`, which
+names Meru and the answer model through `selfLine`:
 
 ```text
 Your name is Meru, and the model qwen3.6:35b writes your answers, through
@@ -243,7 +243,9 @@ it didn't. A fact in the prompt needs no tool call. `a.Main()` reads the answer
 model under its lock, so a model switch shows up on the next turn. The switch
 also loads another model, whose cache starts empty, so the line can sit with
 the parts Ollama reuses. `selfLine` returns "" when no model is set, and `add`
-then leaves the line out.
+then leaves the line out. For an answer model on an endpoint, `@lab`,
+`selfIntro` uses `endpointSelfLine` instead, with the model's name from its
+`[[endpoints]]` entry and the endpoint's: "through Ollama" would be false.
 
 `New` also keeps `displayDir(home, cfg.Skills.OutputDir)` in `a.outputDir`:
 the folder `write_file` writes in, as the model should read it, such as
@@ -723,6 +725,13 @@ the model set's think setting. `prompt` builds its own opening with
 the first question to reuse. It logs `loading the answer model`, then `answer
 model warm` with the time it took, or `couldn't load the answer model` with
 the `ollama pull` command to run.
+
+An answer model on an endpoint, `@name` (see [engine](engine.md)), gets no
+warm-up: it runs on another server, so there is nothing to load here, and the
+warm-up's prompt holds the profile and memories, which should reach an
+endpoint only with a real question. `warm` logs `the answer model runs at an
+endpoint; nothing to load` and returns. `TestWarmSkipsAnEndpoint`, in
+`warm_test.go`, checks that a local model gets one call and an endpoint none.
 
 Why not "hi" alone: in a real session `merud` warmed a 38 GB
 mixture-of-experts model with "hi", and Ollama kept it loaded, yet the first

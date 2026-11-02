@@ -268,7 +268,7 @@
     <li><a href="#harness"><code>merud</code> as an agent harness</a></li>
     <li><a href="#end-to-end">A question, end to end</a></li>
     <li><a href="#tiers">Three model jobs, two profiles</a></li>
-    <li><a href="#engine">The engine: four methods, one runtime</a></li>
+    <li><a href="#engine">The engine: four methods, three APIs</a></li>
     <li><a href="#storage">Storage: files hold the truth</a></li>
     <li><a href="#getting-your-content-in">Getting your content in</a></li>
     <li><a href="#retrieval">Finding the right text: hybrid search</a></li>
@@ -302,7 +302,7 @@
 <p>Six principles shape every choice below:</p>
 
 <ol>
-  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, and to the public web pages the model fetches with <code>web_fetch</code>, which you turn off by taking it out of <code>[builtin] tools</code>. A page URL that no search result or question of yours gave asks you first, so the model can't send your data out in a URL. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
+  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, and to the public web pages the model fetches with <code>web_fetch</code>, which you turn off by taking it out of <code>[builtin] tools</code>. A page URL that no search result or question of yours gave asks you first, so the model can't send your data out in a URL. Meru measures itself, but no telemetry leaves the machine, and the codebase has no path that sends a prompt to a cloud model. An answer model named in <code>[[endpoints]]</code> must be on this machine too, for now (see <a href="#answer-endpoints">Answer endpoints</a>). Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
   <li><b>Files are the source of truth; SQLite is a projection.</b> Meru can rebuild everything in the database from your files and config. Delete <code>meru.db</code> and it re-indexes. The one exception is the tool log of an incognito or deleted chat, which has no file behind it on purpose (see <a href="#organizing">Organizing past chats</a> and <a href="#incognito">Incognito chats</a>).</li>
   <li><b>You can inspect everything.</b> Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn, so you can find out why it said something and why it took so long.</li>
   <li><b>Few, narrow abstractions.</b> One engine interface, one store, one agent loop we own, and two wire protocols: <b>MCP</b> (Model Context Protocol) for tools and <b>A2A</b> (Agent2Agent) for other agents. Broad frameworks for large language models change their APIs every few releases, and we don't want to chase them.</li>
@@ -1082,11 +1082,13 @@ off     = []               # built-ins you chose to keep off; see below</code></
 <div class="tbl"><table>
   <thead><tr><th>Tier</th><th>Job</th></tr></thead>
   <tbody>
-    <tr><td><code>fast</code></td><td>routing, classification, trivial answers</td></tr>
+    <tr><td><code>fast</code></td><td>routing, picking a turn's skill, session summaries, answers about a fetched page</td></tr>
     <tr><td><code>main</code></td><td>reasoning, writing the answer, choosing tools</td></tr>
     <tr><td><code>embed</code></td><td>embeddings for the index and for queries</td></tr>
   </tbody>
 </table></div>
+
+<p><code>fast</code> and <code>embed</code> always run on the local Ollama: the router needs token probabilities, which only Ollama reports, and search must never send a file or a question anywhere. <code>main</code> may instead name an answer model on another model server, as <code>@name</code> (see <a href="#answer-endpoints">Answer endpoints</a>).</p>
 
 <p>An <b>embedding</b> is a list of numbers that stands for a text's meaning, so two passages that say the same thing in different words get nearby lists. The length of that list is its <b>dimension</b> count.</p>
 
@@ -1248,7 +1250,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 <p><code>context_length</code> is the fallback for a model whose shape Ollama doesn't report, such as <code>gemma4</code>, and <code>context_length = 0</code> leaves every window to Ollama and <code>OLLAMA_CONTEXT_LENGTH</code>. The agent loop reads the answer model's window, to keep a turn's tool rounds inside it (see <a href="#agent-loop">Agent loop</a>, step 5). <code>merud.log</code> says what it chose at info: <code>answer model window model=qwen3.6:35b window=262144 model_max=262144 cache_mb=5120</code>.</p>
 
 <!-- ============================================================ -->
-<h2 id="engine">The engine: four methods, one runtime</h2>
+<h2 id="engine">The engine: four methods, three APIs</h2>
 
 <p>An <b>interface</b> in Go names a set of methods a type must have. Everything in Meru that talks to a model goes through this one, which has four methods:</p>
 
@@ -1259,7 +1261,7 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
     Info(ctx context.Context) (ModelInfo, error)
 }</code></pre>
 
-<p><b><code>OllamaEngine</code> is the only implementation.</b> It talks to Ollama over HTTP on loopback and refuses to start if the configured URL points anywhere else. It is the codebase's only HTTP client for a model runtime, and it can't reach a cloud model, so principle 1 holds whatever config says.</p>
+<p><b><code>OllamaEngine</code> is the main implementation.</b> It talks to Ollama over HTTP on loopback and refuses to start if the configured URL points anywhere else. Two more answer the models in <code>[[endpoints]]</code>, and <code>Engines</code>, the engine <code>merud</code> holds, sends each call to the right one (see <a href="#answer-endpoints">Answer endpoints</a>). None of them can reach a cloud model, so principle 1 holds whatever config says.</p>
 <p>Ollama itself can: once signed in to ollama.com, a model whose tag ends in <code>cloud</code>, such as <code>gpt-oss:120b-cloud</code>, answers through the local API while Ollama passes the whole prompt to ollama.com. The loopback check can't see that, so Meru refuses such a model twice. Config refuses a cloud tag in <code>[models]</code> and in every model set when it loads. Before its first chat or embedding request for a model, the engine asks <code>/api/show</code> about it and refuses one whose reply names a remote host, which also catches a cloud model copied to a plain name (<code>ErrCloudModel</code>).</p>
 
 <p>Each model writes tool calls in its own format. Ollama converts them to structured JSON, and the engine converts that JSON to Meru's own types, so the agent loop never sees a model-specific token. When Ollama's parser rejects what the model wrote, it sends an <code>{"error": ...}</code> line part way through a stream it had answered 200 OK. <code>Stream</code> wraps any such line in <code>ErrModelOutput</code>, and the agent loop tests for it with <code>errors.Is</code> to retry the round (see <a href="#loop">Agent loop</a>). A failure before the stream starts, such as Ollama down or a model not pulled, stays an <code>*APIError</code> or a transport error, and fails the turn as before. Each <code>Completion</code> also carries Ollama's counters (<code>prompt_eval_count</code>, <code>eval_count</code>, <code>load_duration</code>, <code>prompt_eval_duration</code>, <code>eval_duration</code>), which feed the metrics described in <a href="#observability">Seeing where the time went</a>.</p>
@@ -1273,6 +1275,32 @@ gemma4:26b-mxfp8          38     610ms   31.7     59          7       0</code></
 <p>For images, <code>Message</code> gains <code>Images</code>, the raw bytes of each picture: on the user message for an attached image, and on the tool message for a picture <code>view_image</code> opened. <code>OllamaEngine</code> sends them as the message's <code>images</code> array in <code>/api/chat</code>, which Ollama documents as base64 strings; Go's <code>encoding/json</code> writes a <code>[]byte</code> that way with no code of ours. Only a model with the <code>vision</code> capability can read them, and Ollama's <code>POST /api/show</code> lists a model's capabilities, such as <code>["completion", "vision", "tools", "thinking"]</code>. <code>OllamaEngine.Details</code> asks it for the capabilities, the size in parameters, the quantization and the context length, and keeps each model's answer for the life of the engine; a failed call keeps nothing. <code>Capabilities</code> reads the list through <code>Details</code>, and <code>Pulled</code> reads <code>GET /api/tags</code>, the models Ollama has on disk. These sit outside the interface, which keeps its four methods: <code>merud</code> hands the agent a check built on <code>Capabilities</code> for image turns and another for whether the answer model can take tools; <code>about_meru</code> and the models in Settings need <code>Details</code>, and only the models in Settings need <code>Pulled</code>. The "ollama http" debug line counts a request's images; no log line or span holds their bytes.</p>
 
 <p>Speech to text doesn't go through the interface: it runs in whisper.cpp's server, not in Ollama, and <code>internal/speech</code> talks to it (see <a href="#speech-to-text">Speech to text</a>).</p>
+
+<h3 id="answer-endpoints">Answer endpoints</h3>
+
+<p>An answer model can run on a model server other than the local Ollama: Ollama's own OpenAI-style API, vLLM, llama.cpp's server, LM Studio, or another Ollama. A <code>[[endpoints]]</code> entry names it, and <code>[models] main</code>, or a model set's <code>main</code>, refers to it as <code>@name</code>:</p>
+
+<pre><code>[models]
+main = "@ollama-v1"
+
+[[endpoints]]
+name           = "ollama-v1"
+reach          = "local"                     # this machine only, for now
+api            = "openai"                    # "ollama", "openai" or "anthropic"
+url            = "http://127.0.0.1:11434/v1"
+model          = "qwen3.6:35b-a3b-mxfp8"     # the name the server knows
+context_length = 32768
+vision         = true
+api_key        = "secret:my_server_key"      # optional; never the key itself</code></pre>
+
+<ul>
+  <li><b>Only an answer model.</b> Config refuses <code>@name</code> for <code>fast</code> and <code>embed</code>.</li>
+  <li><b>On this machine.</b> <code>reach</code> must be <code>local</code> and the URL loopback, checked at load and again when the engine starts, and no engine follows a redirect. Endpoints on another machine wait for a prompt that asks you before a question leaves it (<a href="https://github.com/aarora79/meru/issues/78">#78</a>, <a href="../design/model-router.md">the design</a>).</li>
+  <li><b>Three APIs.</b> <code>api = "ollama"</code> uses <code>OllamaEngine</code> against the other server. <code>OpenAIEngine</code> speaks OpenAI chat completions (<code>POST &lt;url&gt;/chat/completions</code>) and <code>AnthropicEngine</code> the Anthropic Messages API (<code>POST &lt;url&gt;/messages</code>). Both read a stream of server-sent events, join a tool call's arguments as they arrive in pieces, hand the calls out on the last <code>Delta</code> as Ollama does, and leave the model's reasoning out of the answer. Neither embeds (<code>ErrNoEmbed</code>) or reports token probabilities (<code>ErrNoLogProbs</code>). Both map their stop reasons to Meru's, so an answer cut at its token cap ends <code>length</code>.</li>
+  <li><b>Details from config.</b> Those two APIs report neither a model's context length nor what it can do, so the entry gives <code>context_length</code>, <code>vision</code> and <code>tools</code>, and <code>Engines.Details</code> returns them where <code>OllamaEngine</code> would ask <code>/api/show</code>. The window, the vision check and the tools check then treat an endpoint like a local model. <code>Pulled</code> lists each endpoint as <code>@name</code>, so a model set may name one.</li>
+  <li><b>Nothing loads.</b> The warm-up and a switch to an endpoint's model send it nothing; the warm-up's prompt holds the profile and memories.</li>
+  <li><b>The key.</b> <code>merud</code> reads <code>api_key</code> from <code>secrets.toml</code> when it starts and sends it in the API's own header. An entry whose secret is missing leaves <code>merud</code> running; a question for that model fails with the secret named.</li>
+</ul>
 
 <p>Two engines may come later, behind the same interface:</p>
 <ul>
@@ -3366,7 +3394,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 <h2 id="privacy">The privacy boundary</h2>
 
 <ul>
-  <li>The codebase contains no path to a cloud model. The engine talks only to a model runtime on loopback, and refuses Ollama's cloud models, which Ollama would run on ollama.com.</li>
+  <li>The codebase contains no path to a cloud model. The engine talks only to a model runtime on loopback, the local Ollama or an <code>[[endpoints]]</code> entry with <code>reach = "local"</code>, and refuses Ollama's cloud models, which Ollama would run on ollama.com.</li>
   <li>You allow MCP tools and A2A skills one by one. A remote A2A agent or Streamable HTTP server needs <code>remote = true</code> in its config entry. <code>remote</code> says where <code>merud</code> may connect, not what the server reaches: a loopback server such as <code>google</code> still talks to Google. The A2A client checks each address again as it connects and follows no redirects, so an agent card can't send your messages elsewhere.</li>
   <li>API keys live in <code>~/.meru/secrets.toml</code>, which <code>merud</code> refuses to read when other users can. Config names them, never holds them, and <code>dispatch</code> strips their values from transcripts, <code>tool_calls</code>, logs and spans. No key passes through the model: <code>configure</code> sends you to <code>meru mcp add</code> to type one. <code>about_meru</code> reports server names and counts, never a value from <code>secrets.toml</code>, an env value or a header. The <code>gh</code> commands leave GitHub's token with <code>gh</code>.</li>
   <li>Web search sends the search words to SearXNG on loopback, and SearXNG sends them to the search engines it asks. That is the one part of a question that leaves the machine when the model searches. <code>merud</code> also searches on its own before the model's first round (see <a href="#web-first">Web first</a>): for a question that asks for the web, and for a name your files don't cover, in quotes with a few words of the question. A question that says "my" or "our", or one about mail, a calendar or notes, never gets the second search.</li>

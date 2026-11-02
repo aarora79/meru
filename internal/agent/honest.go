@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/aarora79/meru/internal/builtin"
+	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/transcript"
@@ -100,6 +101,27 @@ func selfLine(model string) string {
 	}
 	return "Your name is Meru, and the model " + model + " writes your answers, through Ollama on this computer. " +
 		"Never give yourself another name, and never name another model as yours."
+}
+
+// endpointSelfLine is selfLine for an answer model on an endpoint: the
+// model's own name, model, and the endpoint's, name, since "through
+// Ollama" would be false. The model then names itself rightly when asked.
+func endpointSelfLine(name, model string) string {
+	return "Your name is Meru, and the model " + model + " writes your answers, through the model server " +
+		"Meru calls @" + name + " on this computer. " +
+		"Never give yourself another name, and never name another model as yours."
+}
+
+// selfIntro returns the self line for the answer model now: selfLine for a
+// model on the local Ollama, endpointSelfLine for one named "@name".
+func (a *Agent) selfIntro() string {
+	model := a.Main()
+	if name, ok := config.EndpointRef(model); ok {
+		if ep, found := config.FindEndpoint(a.endpoints, name); found {
+			return endpointSelfLine(name, ep.Model)
+		}
+	}
+	return selfLine(model)
 }
 
 // unbackedNotice is the warning a client shows under an answer that claims

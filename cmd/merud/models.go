@@ -377,7 +377,12 @@ func (m *modelService) switchMain(ctx context.Context, to string, noThink bool) 
 	if err != nil {
 		return fmt.Errorf("switch to %s: ask Ollama which models it has: %w", to, err)
 	}
-	if !hasModel(names(pulled), to) {
+	_, toEndpoint := config.EndpointRef(to)
+	switch {
+	case toEndpoint && !hasModel(names(pulled), to):
+		// The engine leaves an endpoint that can't answer off the list.
+		return fmt.Errorf("switch to %s: that endpoint can't answer; merud.log says why", to)
+	case !hasModel(names(pulled), to):
 		return fmt.Errorf("switch to %s: Ollama doesn't have it yet; fetch it first with: ollama pull %s", to, to)
 	}
 
@@ -399,8 +404,11 @@ func (m *modelService) switchMain(ctx context.Context, to string, noThink bool) 
 	if m.fitWindow != nil {
 		m.fitWindow(ctx, to)
 	}
+	// An endpoint's model runs elsewhere, so there is nothing to load here.
 	hello := []engine.Message{{Role: engine.RoleUser, Content: "hi"}}
-	if _, err := m.eng.Generate(ctx, hello, nil, engine.Options{Model: to, MaxTokens: 1, NoThink: noThink}); err != nil {
+	if toEndpoint {
+		m.log.InfoContext(ctx, "the new answer model runs at an endpoint; nothing to load", "to", to)
+	} else if _, err := m.eng.Generate(ctx, hello, nil, engine.Options{Model: to, MaxTokens: 1, NoThink: noThink}); err != nil {
 		return fmt.Errorf("switch to %s: step 3 of 3, load %s: %w; %s stays the answer model, and Ollama loads "+
 			"it again on the next question", to, to, err, from)
 	}

@@ -1,10 +1,12 @@
 # engine
 
 **Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`,
-`observe_test.go`, `images_test.go`), and the loopback check in `internal/loopback/loopback.go`
+`engines.go`, `endpoint.go`, `openai.go`, `openai_wire.go`, `anthropic.go`,
+`anthropic_wire.go`, `observe_test.go`, `images_test.go`), and the loopback
+check in `internal/loopback/loopback.go`
 **Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
 `Capabilities` with the desktop app's image attachments; `Details` with the
-`about_meru` tool
+`about_meru` tool; `Engines` and the endpoint engines with #78
 **Architecture:** [Engine layer](../../ARCHITECTURE.md#engine-layer), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
 ## What it does
@@ -14,6 +16,12 @@ The engine package is the only code in Meru that talks to a model. It defines th
 `OllamaEngine`, which implements them by sending HTTP (Hypertext Transfer Protocol)
 requests to Ollama on this machine. The agent loop and the router call the
 interface and never see Ollama's JSON (JavaScript Object Notation).
+
+Two more engines answer for the models in `[[endpoints]]`: `OpenAIEngine`
+speaks the OpenAI chat completions API, and `AnthropicEngine` the Anthropic
+Messages API. `Engines` holds all of them and is the engine `merud` uses: a
+call whose model starts with `@`, such as `@ollama-v1`, goes to that endpoint,
+and everything else, every embedding included, goes to the local Ollama.
 
 ## The picture
 
@@ -27,7 +35,15 @@ flowchart LR
     E -->|POST /api/embed| O
     E -->|GET /api/version, /api/ps| O
     E -->|POST /api/show| O
+    EN["Engines"] -->|any other model, Embed| E
+    EN -->|"@name, api = openai"| OA["OpenAIEngine"]
+    EN -->|"@name, api = anthropic"| AN["AnthropicEngine"]
+    OA -->|POST url/chat/completions| S["a model server on 127.0.0.1"]
+    AN -->|POST url/messages| S
 ```
+
+The agent, the router and the indexer all hold `Engines`. Only the answer
+model can name an endpoint; config refuses `@name` for `fast` and `embed`.
 
 ## Walk through the code
 
@@ -240,6 +256,72 @@ The stream's span stays open while the caller reads the stream, and the
 iterator ends it when the stream ends. No span or log line holds a message's
 text, and none holds an image: the `images` field counts them.
 
+### engines.go
+
+`Engines` keeps the local `*OllamaEngine` and a map of `Endpoint` values by
+name. Each method looks at the model first:
+
+```go
+ep, ok, err := e.endpoint(opts.Model) // "@lab" → the "lab" entry
+if !ok {
+    return e.local.Generate(ctx, msgs, tools, opts)
+}
+opts.Model = ep.Model // the name the server knows
+return ep.Engine.Generate(ctx, msgs, tools, opts)
+```
+
+`Engines` also has the methods `merud` asks of Ollama outside the interface:
+`Details`, `Capabilities`, `Pulled`, `Unload`, `SetWindow` and `Window`. For an
+endpoint they answer from its `[[endpoints]]` entry: `Details` gives the
+entry's `context_length` and capabilities (`vision`, `tools`), `Window` the
+`context_length`, `Unload` and `SetWindow` do nothing, and `Pulled` adds each
+working endpoint as `@name`. So the vision check, the tools check, the prompt's
+budget and a model switch treat an endpoint the way they treat a local model.
+An `Endpoint` with `Err` set, such as one whose key `secrets.toml` lacks, fails
+each call with that error, and the rest of Meru keeps working.
+
+### endpoint.go
+
+What the two endpoint engines share:
+
+- `newEndpointAPI` checks that the URL is loopback, as `NewOllama` does, and
+  refuses redirects. Endpoints off the machine wait for the consent prompt in
+  [#78](https://github.com/aarora79/meru/issues/78).
+- `post` sends one request with its span (`POST /chat/completions`, with a
+  `meru.endpoint` attribute) and turns a non-2xx reply into an
+  `*EndpointError`, whose message says what to do for a 401 (check the key in
+  `secrets.toml`) or a 429 (try again in a minute). The key travels only in a
+  request header, and nothing here logs headers.
+- `readSSE` reads a server-sent event stream; see
+  [server-sent events](go-basics/server-sent-events.md).
+- `toolCallIDs` ties each tool result to its call. Both APIs match them by ID,
+  while Meru's messages carry the tool's name in call order. A call with no ID
+  gets `call_<message>_<n>`.
+
+### openai.go and anthropic.go
+
+Each `Stream` ranges over `readSSE` and yields text as it arrives. A tool
+call arrives in pieces: the OpenAI API numbers them with `index`, sends the
+ID and name in the first piece, and splits the arguments anywhere, even
+inside a string. The Anthropic API sends a `content_block_start` with the ID
+and name, then `input_json_delta` fragments. Both engines join the pieces and
+hand the whole calls out on the last `Delta`, as `OllamaEngine` does, so the
+agent loop sees one shape.
+
+Neither engine reads the model's reasoning: the OpenAI-style servers send it in
+fields such as `reasoning_content`, which the wire types leave out, and the
+Anthropic API in `thinking` blocks, which the engine skips. Both map their stop
+reasons to Meru's: `length` and `max_tokens` become `length`, which the agent
+reads as an answer cut off. The Anthropic API requires `max_tokens`, so a call
+without a cap sends `defaultMaxTokens`, 8,192.
+
+`toOAMessages` and `toAnMessages` in the `_wire.go` files turn Meru's messages
+into each API's. A tool result goes back as a `tool` message tied by ID (OpenAI)
+or a `tool_result` block in a user message (Anthropic). A picture goes as a
+`data:` URL part (OpenAI) or a base64 `image` block (Anthropic). An OpenAI `tool`
+message can't hold a picture, so the pictures `view_image` returned follow in
+one user message after the round's results.
+
 ### ollama_wire.go
 
 Ollama's own JSON shapes (`chatRequest`, `chatResponse`, `wireLogProb`, …) and the
@@ -292,6 +374,11 @@ the two shapes of `/api/show`; Meru reads only `capabilities` from the reply.
   [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
 - **`sync.Mutex`** — `mu.Lock()` lets one goroutine at a time into the
   capabilities map. More in [go-basics/goroutines.md](go-basics/goroutines.md).
+- **Server-sent events**: the OpenAI and Anthropic APIs stream `data:` lines,
+  read with `bufio.Scanner`. More in
+  [go-basics/server-sent-events.md](go-basics/server-sent-events.md).
+- **`any`**: `oaMessage.Content` holds a string or a list of parts, and
+  `encoding/json` writes whichever it holds.
 
 ## Try it
 
@@ -320,12 +407,30 @@ go test -tags integration -v -run Integration ./internal/engine/
 
 You should see the one-token call pick `B` with a log probability near 0.
 
+The endpoint engines have their own tests. `openai_test.go` and
+`anthropic_test.go` run each engine against `fakeEndpoint`, an `httptest`
+server: text, tool calls split mid-string, pictures, a cut-off answer, an
+error event, a stream cut short and a cancelled turn. `endpoint_test.go`
+checks the event reader, the ID pairing, the loopback check, a refused
+redirect, and that an error never holds the key. `engines_test.go` checks
+that each call goes to its engine. `openai_integration_test.go` runs
+`OpenAIEngine` against the real Ollama's own `/v1`, with no key:
+
+```sh
+go test -tags integration -v -run IntegrationOpenAI ./internal/engine/
+```
+
 ## Why it's built this way
 
 - **Native `/api/chat`, not Ollama's OpenAI-compatible endpoint.** The native API
   returns the counters (`load_duration`, `eval_count`, …) that
-  [Observability](../../ARCHITECTURE.md#observability) needs, and takes
-  `keep_alive`.
+  [Observability](../../ARCHITECTURE.md#observability) needs, takes
+  `keep_alive`, and gives the router token probabilities. The OpenAI-style
+  engine exists for other model servers, and Ollama's `/v1` is its test.
+- **Two small engines, no SDK.** The standard library reads both APIs and
+  their event streams. A provider's SDK would put a cloud client in the
+  module graph, which the policy tests forbid, and the user types every URL,
+  so the code names no provider's address.
 - **`/api/chat` for the router too.** The design note sketches `/api/generate`, but
   Ollama 0.34 returns log probabilities from `/api/chat`, so one endpoint covers
   every answer. `/api/generate` with a raw prompt would also skip the model's chat
