@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -42,20 +44,23 @@ func (a *Agent) useLarge(t *turn) error {
 
 // pickFast gives the turn to the fast model when the question is easy:
 // with [router] answers = "routed", the route is direct and the router
-// chose it itself, at least easy_above sure, and the turn carries no
-// picture, no skill, no web search and no hand-off from a Continue. The
-// fast model then starts in a fraction of the time the main model takes.
-// Anything else stays with the main model, and so does a turn that
-// escalated, or one asked of the large model.
+// chose it itself, at least easy_above sure, the question asks for no
+// facts (see asksForFacts), and the turn carries no picture, no skill, no
+// web search and no hand-off from a Continue. The fast model then starts
+// in a fraction of the time the main model takes. Anything else stays
+// with the main model, and so does a turn that escalated, or one asked of
+// the large model.
 //
 // It reads the route after every rule in respond has had its say, so a
 // direct question that names an indexed folder, which a rule sends to
 // search, stays with main. It reports whether it picked the fast model.
-func (a *Agent) pickFast(t *turn, dec Decision, skills []string) bool {
+func (a *Agent) pickFast(t *turn, dec Decision, question string, skills []string) bool {
 	switch {
 	case a.answers != config.AnswersRouted, t.tier != tierMain, t.noFast:
 		return false
 	case dec.Route != "direct" || dec.Outcome != "ok" || dec.Confidence < a.easyAbove:
+		return false
+	case asksForFacts(question):
 		return false
 	case len(t.images) > 0 || len(skills) > 0 || t.webFirst != "" || t.handoff != "":
 		return false
@@ -64,6 +69,38 @@ func (a *Agent) pickFast(t *turn, dec Decision, skills []string) bool {
 	}
 	t.model, t.noThink, t.tier = a.models.Fast, true, tierFast
 	return true
+}
+
+// factOpeners are the first words of a turn that asks for facts: the
+// question words, the verbs a yes-or-no question opens with, and the
+// commands that ask for knowledge, such as "tell me" and "explain".
+var factOpeners = []string{
+	"what", "what's", "whats", "who", "who's", "whom", "whose", "when", "where",
+	"which", "why", "how", "is", "are", "was", "were", "am", "do", "does", "did",
+	"can", "could", "will", "would", "should", "shall", "may", "might", "has",
+	"have", "had", "tell", "explain", "define", "describe", "list", "name",
+	"give", "show", "find", "compare",
+}
+
+// asksForFacts reports whether question asks for facts: it ends with a
+// question mark, or its first word is one of factOpeners. The fast model
+// is small, and it states a wrong fact as surely as a right one: asked
+// for the capital of Japan, it once answered "Nara". Its weak-answer
+// checks can't see a wrong fact, so a question that asks for one goes to
+// the main model, and the fast model keeps the turns that need no
+// knowledge, such as a greeting, thanks, or rewording text the user gives.
+func asksForFacts(question string) bool {
+	q := strings.ToLower(strings.TrimSpace(question))
+	if strings.HasSuffix(q, "?") {
+		return true
+	}
+	// strings.Fields splits on runs of spaces. Trim drops the punctuation a
+	// first word may carry, so "What," counts as "what".
+	words := strings.Fields(q)
+	if len(words) == 0 {
+		return false
+	}
+	return slices.Contains(factOpeners, strings.Trim(words[0], ",.!:;"))
 }
 
 // weakEnding reports whether a turn that ended as ended gave a weak

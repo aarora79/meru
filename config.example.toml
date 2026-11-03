@@ -131,8 +131,9 @@ decision         = "top"         # "top" or "marginal"
 search_threshold = 0.30          # 0 to 1; "marginal" only
 tools_threshold  = 0.25          # 0 to 1; "marginal" only
 # Which model writes each answer. "main": the main model, every time.
-# "routed": a question the router is sure needs no files and no tools, with
-# no picture, gets the fast model, which starts faster; everything else gets
+# "routed": a turn the router is sure needs no files and no tools, with no
+# picture, that asks for no facts (a greeting, thanks, text to reword) gets
+# the fast model, which starts faster; everything else gets
 # main, and a fast answer that ends early is asked again of main. The large
 # model, when set, answers only when you ask for it.
 answers          = "main"        # "main" or "routed"

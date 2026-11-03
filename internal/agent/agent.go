@@ -851,7 +851,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	res.route = dec.Route
 	// With every rule above done, an easy question may go to the fast
 	// model; see pick.go.
-	if a.pickFast(t, dec, picked.names) {
+	if a.pickFast(t, dec, question, picked.names) {
 		a.log.DebugContext(ctx, "the fast model answers: an easy direct question", "confidence", dec.Confidence)
 	}
 	// Any outcome but "ok" means the router wasn't sure and used the

@@ -45,8 +45,9 @@ func TestPickFast(t *testing.T) {
 		req     rpc.Request
 		want    string
 	}{
-		{"routed, an easy question", config.AnswersRouted, sure, rpc.Request{Text: "what is 2 + 2?"}, "fast-model"},
-		{"routing off", config.AnswersMain, sure, rpc.Request{Text: "what is 2 + 2?"}, "main-model"},
+		{"routed, a greeting", config.AnswersRouted, sure, rpc.Request{Text: "thanks, that helps"}, "fast-model"},
+		{"routing off", config.AnswersMain, sure, rpc.Request{Text: "thanks, that helps"}, "main-model"},
+		{"a fact question", config.AnswersRouted, sure, rpc.Request{Text: "what is the capital of Japan?"}, "main-model"},
 		{"not sure enough", config.AnswersRouted, Decision{Route: "direct", Confidence: 0.6, Outcome: "ok"}, rpc.Request{Text: "q"}, "main-model"},
 		{"the fallback route", config.AnswersRouted, Decision{Route: "direct", Confidence: 0.9, Outcome: "low_confidence"}, rpc.Request{Text: "q"}, "main-model"},
 		{"a search route", config.AnswersRouted, Decision{Route: "search", Confidence: 0.95, Outcome: "ok"}, rpc.Request{Text: "q"}, "main-model"},
@@ -73,11 +74,11 @@ func TestPickFast(t *testing.T) {
 func TestEscalation(t *testing.T) {
 	// The fast model's answer is cut off; the main model answers in full.
 	eng := &fakeEngine{rounds: []fakeRound{
-		{pieces: []string{"Paris is the cap"}, done: "length"},
-		{pieces: []string{"Paris is the capital of France."}},
+		{pieces: []string{"Bon"}, done: "length"},
+		{pieces: []string{"Bonjour."}},
 	}}
 	a, cfg := pickAgent(t, config.AnswersRouted, Decision{Route: "direct", Confidence: 0.95, Outcome: "ok"}, eng)
-	evs, err := run(context.Background(), a, rpc.Request{Text: "What is the capital of France?"})
+	evs, err := run(context.Background(), a, rpc.Request{Text: "Say hello in French"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestEscalation(t *testing.T) {
 	// The transcript keeps the main model's answer alone.
 	lines := readLines(t, cfg, evs[0].Session)
 	answer := lines[len(lines)-1]
-	if answer.Type != transcript.TypeAssistant || answer.Text != "Paris is the capital of France." {
+	if answer.Type != transcript.TypeAssistant || answer.Text != "Bonjour." {
 		t.Errorf("assistant line = %+v", answer)
 	}
 }
@@ -127,5 +128,30 @@ func TestNoLargeModel(t *testing.T) {
 	a.models.Large = ""
 	if _, err := run(context.Background(), a, rpc.Request{Text: "q", Large: true}); err == nil || !strings.Contains(err.Error(), "[models] large") {
 		t.Errorf("err = %v, want one that names [models] large", err)
+	}
+}
+
+func TestAsksForFacts(t *testing.T) {
+	tests := []struct {
+		question string
+		want     bool
+	}{
+		{"what is the capital of Japan?", true},
+		{"Who wrote Hamlet", true},
+		{"What, in short, is a mortgage", true},
+		{"tell me about the moon", true},
+		{"Explain compound interest", true},
+		{"is it raising rates", true},
+		{"the capital of Japan?", true},
+		{"thanks!", false},
+		{"hello", false},
+		{"Rewrite this more kindly: send it now", false},
+		{"Say hello in French", false},
+		{"   ", false},
+	}
+	for _, tt := range tests {
+		if got := asksForFacts(tt.question); got != tt.want {
+			t.Errorf("asksForFacts(%q) = %v, want %v", tt.question, got, tt.want)
+		}
 	}
 }

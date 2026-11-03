@@ -60,9 +60,9 @@ Mac's memory, and never less than `[ollama] context_length`, 32,768 by default.
 the window at startup and on each switch: `answer model window`. No Ollama
 setting is needed.
 
-**Let easy questions use the fast model.** With this in `config.toml`, a
-question the router is sure needs no files, no tools and no picture gets the
-fast model, which starts writing sooner; everything else gets the answer
+**Let easy turns use the fast model.** With this in `config.toml`, a turn
+the router is sure needs no files, no tools and no picture, and that asks for
+no facts, such as a greeting, thanks or text to reword, gets the fast model, which starts writing sooner; everything else gets the answer
 model, and a fast answer that ends early is asked again of it:
 
 ```toml

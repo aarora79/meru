@@ -45,7 +45,7 @@ graphics card.
 > It reads Word, Excel and CSV files, and adds up a sheet's rows exactly, with
 > medians and percentiles worked out by its own code, never by the model.
 > It refuses the cloud models Ollama offers, which would send your prompt off the machine.
-> With routing on, the fast model answers easy questions, and an answer model can run
+> With routing on, the fast model answers greetings and rewording, and an answer model can run
 > on a computer on your own network, after you say yes.
 > [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 
