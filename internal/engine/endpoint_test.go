@@ -1,6 +1,6 @@
 // This file tests what the endpoint engines share: the server-sent event
 // reader, the pairing of tool calls with their results, and the fake
-// endpoint the OpenAI and Anthropic tests use.
+// endpoint the OpenAI tests use.
 
 package engine
 
@@ -166,9 +166,6 @@ func TestEndpointMustBeOnThisMachine(t *testing.T) {
 	if _, err := NewOpenAI(cfg, nil, nil); err == nil {
 		t.Error("NewOpenAI took a URL off this machine")
 	}
-	if _, err := NewAnthropic(cfg, nil, nil); err == nil {
-		t.Error("NewAnthropic took a URL off this machine")
-	}
 	cfg.URL, cfg.Model = "http://127.0.0.1:1/v1", ""
 	if _, err := NewOpenAI(cfg, nil, nil); err == nil {
 		t.Error("NewOpenAI took an endpoint with no model")
@@ -264,14 +261,11 @@ func TestReach(t *testing.T) {
 		t.Errorf("near-edge to a public address: err = %v, want a refusal", err)
 	}
 
-	if _, err := NewAnthropic(EndpointConfig{Name: "far", Reach: "remote", URL: "http://models.example.com/v1", Model: "m"}, nil, nil); err == nil ||
-		!strings.Contains(err.Error(), "https") {
-		t.Errorf("remote over http: err = %v, want a refusal", err)
-	}
-	if _, err := NewOpenAI(EndpointConfig{Name: "far", Reach: "remote", URL: "https://models.example.com/v1", Model: "m"}, nil, nil); err != nil {
-		t.Errorf("remote over https: %v", err)
-	}
-	if _, err := NewOllamaEndpoint(EndpointConfig{Name: "box", Reach: "nowhere", URL: f.srv.URL}, nil); err == nil {
-		t.Error("an unknown reach passed")
+	// Meru has no reach for the internet: "remote" is unknown.
+	for _, reach := range []string{"remote", "nowhere"} {
+		if _, err := NewOpenAI(EndpointConfig{Name: "far", Reach: reach, URL: "https://models.example.com/v1", Model: "m"}, nil, nil); err == nil ||
+			!strings.Contains(err.Error(), "unknown") {
+			t.Errorf("reach %q: err = %v, want it unknown", reach, err)
+		}
 	}
 }

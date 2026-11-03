@@ -33,11 +33,14 @@ machine: a cloud-model SDK (software development kit) in `go.mod`, an update che
 crash reporter, an OTLP (OpenTelemetry Protocol) endpoint on the network, or a check
 that treats the string `localhost` as proof of loopback.
 
-**The rule.** No prompt leaves the machine without the user's yes. The fast and
-embedding models talk only to Ollama on loopback. An answer model in `[[endpoints]]`
-may sit at `near-edge` (every address it connects to passes `loopback.NearEdge`) or
-`remote` (https only), and a turn goes there only after `agent.consent` asks "this
-time" or "this chat"; an incognito chat and a scheduled job never leave. The user
+**The rule.** No prompt goes to the internet, and none leaves the machine without
+the user's yes. The fast and embedding models talk only to Ollama on loopback. An
+answer model in `[[endpoints]]` speaks the OpenAI chat completions API and sits at
+`local` (loopback) or `near-edge` (every address it connects to passes
+`loopback.NearEdge`). Config refuses any other reach, so a change that adds one for
+the internet breaks this rule. A near-edge turn goes there only after
+`agent.consent` asks "this time" or "this chat"; an incognito chat and a scheduled
+job never leave. The user
 types every URL. OTLP goes only to a
 loopback endpoint, and `merud` refuses to start with any other. An MCP server over
 Streamable HTTP or an A2A agent may reach another machine only when its config entry
@@ -58,11 +61,11 @@ remote before any chat or embedding request (#211): Ollama on loopback would
 otherwise pass the prompt to ollama.com. `checkEndpoints` in
 `internal/config/endpoints.go` checks each endpoint's URL against its reach and
 refuses an `@name` for the fast or embed model. `reachClient` in
-`internal/engine/endpoint.go` checks the URL again, refuses redirects, ignores
-proxy settings off the machine, and for near-edge checks each address it
-connects to with a dialer hook (`nearEdgeOnly`). `agent.consent` in
-`internal/agent/consent.go` asks before a turn goes to an endpoint at near-edge
-or remote, and keeps incognito chats and jobs here.
+`internal/engine/endpoint.go` checks the URL again, refuses redirects, and for
+near-edge ignores proxy settings and checks each address it connects to with a
+dialer hook (`nearEdgeOnly`). `agent.consent` in
+`internal/agent/consent.go` asks before a turn goes to an endpoint at near-edge,
+and keeps incognito chats and jobs here.
 
 **What to check (endpoints).** A new path that sends a turn's messages to an
 engine without passing `consent` first, or that reads `a.Main()` mid-turn in
@@ -382,7 +385,7 @@ Any "no" is a blocker until the PR justifies it.
 
 **Network**
 
-- [ ] Every new outbound connection goes to loopback (checked by `loopback.CheckURL`), to a `remote = true` server or agent, or through the web tools' guard (#1, #2)
+- [ ] Every new outbound connection goes to loopback (checked by `loopback.CheckURL`), to a `remote = true` server or agent, to an `[[endpoints]]` entry at near-edge (checked by `loopback.NearEdge`), or through the web tools' guard (#1, #2)
 - [ ] No cloud-model SDK, provider host, telemetry library or update check (#1)
 - [ ] The web tools check model-chosen URLs at connect time and on every redirect; unknown URLs and downloads ask first (#2)
 

@@ -187,7 +187,7 @@ func TestSiteChoices(t *testing.T) {
 func TestAskConsent(t *testing.T) {
 	turn := func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
 		c, err := approve(ctx, rpc.Approval{ID: "consent-1", Name: "@lab", Kind: rpc.KindConsent, Choices: allChoices,
-			Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "remote", Model: "big-model",
+			Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "near-edge", Model: "big-model",
 				Carries: []string{"your question", "2 earlier turns of this chat", "the results of any tools this turn runs"}}})
 		if err != nil {
 			return err
@@ -206,7 +206,7 @@ func TestAskConsent(t *testing.T) {
 		if want := "Answer (" + tt.want + ").\n"; out.String() != want {
 			t.Errorf("%q: stdout = %q, want %q", tt.input, out.String(), want)
 		}
-		for _, w := range []string{"Meru would send this question to @lab (remote, model big-model).",
+		for _, w := range []string{"Meru would send this question to @lab (near-edge, model big-model).",
 			"It carries your question, 2 earlier turns of this chat and the results of any tools this turn runs.",
 			"Send it? [t]his time  this [c]hat  [n]o, answer here: "} {
 			if !strings.Contains(errOut.String(), w) {

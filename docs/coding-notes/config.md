@@ -392,12 +392,13 @@ mean the same thing: thinking off, as the benchmark ran every model.
 ollama.com, prompt and all (#211). The engine checks again before each request.
 
 `checkEndpoints` (`endpoints.go`) checks the `[[endpoints]]` entries, the
-answer models on a model server other than the local Ollama. Each needs a
+answer models on a model server other than the local Ollama. Every entry
+speaks the OpenAI chat completions API, so the entry has no key that names an
+API. Each needs a
 name of letters, digits, `.`, `-` and `_`, used once; a `reach` with its URL
-rule; an `api` of `ollama`, `openai` or `anthropic`; a `model`; and a
-`context_length` of 2048 or more, because the OpenAI and Anthropic APIs don't
-report one. `api_key` must be `secret:<name>`, never the key itself, and an
-Ollama endpoint takes none. Then it reads each model name in `[models]` and
+rule; a `model`; and a
+`context_length` of 2048 or more, because the OpenAI-style API doesn't
+report one. `api_key` must be `secret:<name>`, never the key itself. Then it reads each model name in `[models]` and
 the sets: `EndpointRef` says whether a name is `@name`, and only a `main` may
 be one, of an entry that exists. `tools` is a `*bool`, so `CallsTools` can tell
 "left out", which means true, from `false`.
@@ -407,10 +408,12 @@ be one, of an entry that exists. `tools` is a `*bool`, so `CallsTools` can tell
 like `main` it may name an endpoint as `@name`, and a cloud model is refused
 there too.
 
-The reach rules: `local` needs a loopback URL (`loopback.CheckURL`).
-`checkReachURL` handles the other two: both need an http or https URL with a
-host, `remote` needs https, and a `near-edge` URL whose host is an IP address
-needs one `loopback.NearEdge` accepts. A near-edge host name passes here; the
+A `reach` is `local` or `near-edge`; config refuses any other, `remote`
+included, since Meru sends no question to the internet. `local` needs a
+loopback URL (`loopback.CheckURL`). `checkNearEdgeURL` checks a `near-edge`
+one: it needs an http or https URL with a host, and a host that is an IP
+address must be one `loopback.NearEdge` accepts. A public IP fails with "Meru
+sends a question only to this machine or your own network". A near-edge host name passes here; the
 engine checks every address the name resolves to when it connects, since a
 name can point anywhere. `netip.ParseAddr` tells an address from a name: it
 fails on a name.

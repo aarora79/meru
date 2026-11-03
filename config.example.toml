@@ -56,19 +56,20 @@ think = false
 # main  = "qwen3.8:27b-mlx"
 # think = false
 
-# An answer model on a model server other than the local Ollama. main, or
-# a set's main, names it as "@name"; the fast and embed models always run
-# on the local Ollama. For now an endpoint must be on this machine:
-# reach = "local" and a loopback url. api is "ollama", "openai" (chat
-# completions) or "anthropic" (Messages). For openai and anthropic, url is
-# the API's base up to its version, such as .../v1, and context_length
-# says how many tokens the model reads, which those APIs don't report.
+# An answer model on a model server other than the local Ollama, such as
+# vLLM, llama.cpp's server, LM Studio or another Ollama. main, large, or a
+# set's main names it as "@name"; the fast and embed models always run on
+# the local Ollama. The server must speak the OpenAI chat completions API,
+# and url is that API's base up to its version, such as .../v1. reach is
+# "local" for a loopback url, or "near-edge" for a server on your own
+# network or private cloud network, which Meru asks you about before it
+# sends a question there. No reach goes to the internet. context_length
+# says how many tokens the model reads, which the API doesn't report.
 # api_key, when the server needs one, names an entry in secrets.toml.
 #
 # [[endpoints]]
 # name           = "ollama-v1"
-# reach          = "local"
-# api            = "openai"
+# reach          = "local"   # or "near-edge", with a url such as http://10.0.0.5:8000/v1
 # url            = "http://127.0.0.1:11434/v1"
 # model          = "qwen3.6:35b-a3b-mxfp8"
 # context_length = 32768

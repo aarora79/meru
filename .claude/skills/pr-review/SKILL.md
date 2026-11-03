@@ -155,12 +155,14 @@ description argues for the exception and the Chief Architect accepts it.
 
 **Non-negotiables (AGENTS.md)**
 
-- [ ] **No prompt leaves the machine without the user's yes.** The fast and embedding
-      models stay on Ollama on loopback. Only an answer model in `[[endpoints]]` may run
-      elsewhere, at its reach, after the consent question ("this time" or "this
-      chat"); incognito chats and jobs never leave. No provider SDK or provider
-      address in code, and no path that sends a prompt off the machine without
-      `agent.consent`.
+- [ ] **No prompt goes to the internet, and none leaves the machine without the
+      user's yes.** The fast and embedding models stay on Ollama on loopback. Only an
+      answer model in `[[endpoints]]` may run on another server, which speaks the
+      OpenAI chat completions API at `local` or `near-edge` reach, and a near-edge
+      turn goes there only after the consent question ("this time" or "this chat");
+      incognito chats and jobs never leave. No reach for the internet, no provider
+      SDK or provider address in code, and no path that sends a prompt off the
+      machine without `agent.consent`.
 - [ ] **No telemetry leaves the machine.** No update check, crash report or phone-home.
       OTLP export stays off until config sets an endpoint, and `merud` refuses a
       non-loopback one. Prompt and response text stay out of spans unless

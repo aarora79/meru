@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 430" width="960" height="430" role="img" aria-labelledby="t d" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
   <title id="t">Where each of Meru's models runs</title>
-  <desc id="d">On this machine, Ollama is required and runs the fast model, which routes questions, picks skills, writes summaries and answers web pages and easy questions, and the embedding model, which indexes files and pictures and embeds each search. It may also run the main and large answer models. merud's agent loop calls them, and every tool runs locally through dispatch. Off the machine, a near-edge endpoint on the owner's network or a remote hosted endpoint may run an answer model, over the Ollama, OpenAI or Anthropic API, and a turn reaches one only after the user says this time or this chat. Incognito chats and jobs never leave.</desc>
+  <desc id="d">On this machine, Ollama is required and runs the fast model, which routes questions, picks skills, writes summaries and answers web pages and easy questions, and the embedding model, which indexes files and pictures and embeds each search. It may also run the main and large answer models. merud's agent loop calls them, and every tool runs locally through dispatch. Off the machine, a near-edge endpoint on the owner's own network or private cloud network may run an answer model over the OpenAI chat completions API, and a turn reaches one only after the user says this time or this chat. No endpoint sits on the internet. Incognito chats and jobs never leave.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3c4043"/></marker>
     <marker id="o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#b06000"/></marker>
@@ -58,16 +58,16 @@
   <text x="685" y="146" font-size="12" fill="#5f6368">your private cloud network;</text>
   <text x="685" y="162" font-size="12" fill="#5f6368">private addresses only</text>
 
-  <rect x="670" y="204" width="250" height="100" rx="10" fill="#ffffff" stroke="#e9a82c"/>
-  <text x="685" y="228" font-size="14" font-weight="600" fill="#202124">remote endpoint</text>
-  <text x="685" y="248" font-size="12" fill="#5f6368">a hosted model you have a</text>
-  <text x="685" y="264" font-size="12" fill="#5f6368">key for; https only</text>
-  <text x="685" y="280" font-size="12" fill="#5f6368">key in secrets.toml</text>
+  <rect x="670" y="204" width="250" height="100" rx="10" fill="#ffffff" stroke="#9aa0a6" stroke-dasharray="5 4"/>
+  <text x="685" y="228" font-size="14" font-weight="600" fill="#202124">never the internet</text>
+  <text x="685" y="248" font-size="12" fill="#5f6368">config refuses any other</text>
+  <text x="685" y="264" font-size="12" fill="#5f6368">reach; a public address</text>
+  <text x="685" y="280" font-size="12" fill="#5f6368">fails when merud connects</text>
 
-  <text x="670" y="334" font-size="12" font-weight="600" fill="#202124">Speaks one of:</text>
-  <text x="670" y="354" font-size="12" fill="#5f6368">Ollama's API, OpenAI chat</text>
-  <text x="670" y="370" font-size="12" fill="#5f6368">completions, or Anthropic</text>
-  <text x="670" y="386" font-size="12" fill="#5f6368">Messages</text>
+  <text x="670" y="334" font-size="12" font-weight="600" fill="#202124">Speaks:</text>
+  <text x="670" y="354" font-size="12" fill="#5f6368">OpenAI chat completions, as</text>
+  <text x="670" y="370" font-size="12" fill="#5f6368">vLLM, llama.cpp's server, LM</text>
+  <text x="670" y="386" font-size="12" fill="#5f6368">Studio and Ollama's /v1 do</text>
 
   <path d="M240 88 C 400 0, 560 0, 646 100" stroke="#b06000" stroke-width="1.6" fill="none" stroke-dasharray="6 4" marker-end="url(#o)"/>
   <rect x="400" y="8" width="170" height="22" rx="11" fill="#ffffff" stroke="#e9a82c"/>

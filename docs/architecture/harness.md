@@ -1056,8 +1056,10 @@ could run without it; Meru answers worse without it.
 
 ## 12. What the harness doesn't do
 
-- **No cloud model.** The engine talks to Ollama on loopback and nothing else. No
-  code path sends a prompt to a model provider.
+- **No cloud model.** The fast and embedding models run on Ollama on loopback. An
+  answer model may run on a server in `[[endpoints]]`, on this machine or on your
+  own network, and a turn goes to one off the machine only after you say yes. No
+  code path sends a prompt to the internet or to a model provider.
 - **No second path to a tool.** Every call, including the ones Meru makes itself for
   web first, goes through `dispatch`.
 - **No subagents.** One turn runs one model context. The nearest thing is

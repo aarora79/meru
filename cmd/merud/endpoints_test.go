@@ -31,9 +31,9 @@ func TestNewEndpointsKeepsOneWithNoKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{Dir: dir, Endpoints: []config.Endpoint{
-		{Name: "open", Reach: config.ReachLocal, API: config.APIOpenAI, URL: "http://127.0.0.1:1/v1",
+		{Name: "open", Reach: config.ReachLocal, URL: "http://127.0.0.1:1/v1",
 			APIKey: "secret:open_key", Model: "m", ContextLength: 8192},
-		{Name: "locked", Reach: config.ReachLocal, API: config.APIAnthropic, URL: "http://127.0.0.1:1/v1",
+		{Name: "locked", Reach: config.ReachLocal, URL: "http://127.0.0.1:1/v1",
 			APIKey: "secret:missing_key", Model: "m", ContextLength: 8192, Vision: true, Tools: new(false)},
 	}}
 	eps, err := newEndpoints(cfg, quietLog())

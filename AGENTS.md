@@ -165,19 +165,23 @@ Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/w
 
 ## Non-negotiables
 
-1. **No prompt leaves the machine without the user's yes.** The fast model and the
-   embedding model, and everything they do (routing, skill picks, summaries,
-   indexing, search), run on Ollama on loopback. Only an answer model may run
-   elsewhere: an `[[endpoints]]` entry the user names, at the reach it says
-   (`local`, `near-edge` for the user's own network, `remote` over https), and a
-   turn goes there only after the user answers "this time" or "this chat" to the
-   question it asks; never "always". An incognito chat and a scheduled job never
+1. **No prompt goes to the internet, and none leaves the machine without the
+   user's yes.** The fast model and the embedding model, and everything they do
+   (routing, skill picks, summaries, indexing, search), run on Ollama on
+   loopback. Only an answer model may run on another server: an `[[endpoints]]`
+   entry the user names, which speaks the OpenAI chat completions API, at the
+   reach it says: `local` for loopback, or `near-edge` for an address on the
+   user's own network or private cloud network. Meru has no reach for the
+   internet; don't add one, and raise it instead if a change seems to need one.
+   A turn goes near-edge only after the user answers "this time" or "this chat"
+   to the question it asks; never "always". An incognito chat and a scheduled job never
    leave, and a client that can't ask keeps the turn here. The code holds no
    provider's address and no provider's SDK: the user types every URL. Model
    traffic never goes to one of Ollama's cloud models, which Ollama runs on
    ollama.com: config refuses one by name, and the engine refuses one Ollama
    describes as remote. The owner chose this on 1 November 2026, in place of
-   "no cloud-model code path" (#78, [the design](docs/design/model-router.md)).
+   "no cloud-model code path", and narrowed it to near-edge on 2 November 2026
+   (#78, [the design](docs/design/model-router.md)).
 2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
    Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
    the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
@@ -185,7 +189,7 @@ Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/w
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, to
-   the answer endpoints in `[[endpoints]]` at the reach each names, and
+   the answer endpoints in `[[endpoints]]` on the user's own network, and
    to public web pages through `web_fetch`, which is on by default and fetches only
    when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
    loopback and private addresses at connect time, and asks the user before it
@@ -273,8 +277,8 @@ internal/
   config/            config.toml: defaults, profiles, validation; template.toml is the source of
                      config.example.toml and `meru config template`
   engine/            the Engine interface and OllamaEngine (chat, stream, embed, info); OpenAIEngine
-                     and AnthropicEngine for the answer models in [[endpoints]] (openai.go,
-                     anthropic.go, endpoint.go), and Engines, which sends each call to its engine
+                     for the answer models in [[endpoints]] (openai.go, endpoint.go), and
+                     Engines, which sends each call to its engine
   router/            the one-token route classifier (docs/fast-router.md); labelled questions in testdata/
   store/             meru.db: documents, chunks, vectors, the keyword index, memories, messages
                      and session turns, tool_calls

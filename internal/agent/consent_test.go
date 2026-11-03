@@ -21,7 +21,7 @@ import (
 func consentAgent(t *testing.T, reach string) (*Agent, *fakeEngine, config.Config) {
 	t.Helper()
 	cfg := testConfig(t)
-	cfg.Endpoints = []config.Endpoint{{Name: "lab", Reach: reach, API: config.APIOpenAI,
+	cfg.Endpoints = []config.Endpoint{{Name: "lab", Reach: reach,
 		URL: "http://10.0.0.5:8000/v1", Model: "big-model", ContextLength: 32768}}
 	cfg.Models.Main = "@lab"
 	eng := &fakeEngine{pieces: []string{"An answer."}}
@@ -95,7 +95,7 @@ func TestConsentAsks(t *testing.T) {
 }
 
 func TestConsentThisChat(t *testing.T) {
-	a, _, _ := consentAgent(t, config.ReachRemote)
+	a, _, _ := consentAgent(t, config.ReachNearEdge)
 	k := &asker{choice: rpc.ChoiceSession}
 	evs, err := runApprove(context.Background(), a, rpc.Request{Text: "first"}, k.approve)
 	if err != nil {

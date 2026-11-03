@@ -1,6 +1,6 @@
 // This file serves POST /v1/chat/completions, the OpenAI-style API that
 // the real Ollama also serves, so tests can point an [[endpoints]] entry
-// with api = "openai" at the fake. It answers from the same queue of
+// at the fake. It answers from the same queue of
 // scripted replies as /api/chat, and streams server-sent events, one
 // "data: {json}" line per piece and "data: [DONE]" at the end.
 

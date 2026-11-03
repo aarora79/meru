@@ -1111,11 +1111,11 @@ home's config before each mode (`set_answers`).
 ### meru: approve.go
 
 A consent question, an approval with `Consent` set, takes its own prompt,
-`consent`: "Meru would send this question to @lab (remote, model …).", what
+`consent`: "Meru would send this question to @lab (near-edge, model …).", what
 it carries, then "Send it? [t]his time  this [c]hat  [n]o, answer here:".
 `consentAnswers` maps t, c and n, or the words, to the choices; end of input
 says no. An answer from an endpoint off this computer ends with a dim
-"answered by @lab (remote)" line on stderr.
+"answered by @lab (near-edge)" line on stderr.
 
 `toolLine` writes each tool event as one dim line on standard error: `→` when a
 call starts, an indented `web_fetch · <line>` for a `progress` event such as
@@ -1900,9 +1900,9 @@ on a turn's prompt uses the same number.
 
 `newEngine` in `main.go` wraps the local `OllamaEngine` in `engine.Engines`
 with the endpoints `newEndpoints` builds, one per `[[endpoints]]` entry. It
-reads each `api_key` from `secrets.toml` with `Resolve` and builds the engine
-the entry's `api` names: `engine.NewOpenAI`, `engine.NewAnthropic`, or another
-`engine.NewOllama` with the entry's `context_length` as its window.
+reads each `api_key` from `secrets.toml` with `Resolve` and builds an
+`engine.NewOpenAI` for the entry, since every endpoint speaks the OpenAI chat
+completions API. The log line names the endpoint, its reach and its model.
 `endpointDetails` turns `vision` and `tools` into the capability list
 `/api/show` would give, so the checks above treat both alike.
 

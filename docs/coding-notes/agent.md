@@ -895,7 +895,8 @@ itself, and the model the transcript names. A model switch during a turn
 then can't split the turn between two models, and a no can swap the model
 for this turn alone.
 
-When `t.model` names an endpoint at `near-edge` or `remote`, `consent` asks
+When `t.model` names an endpoint at `near-edge`, on the user's own network,
+`consent` asks
 before the turn builds its prompt. It sends an `rpc.Approval` with
 `Kind: rpc.KindConsent`, the endpoint as `Name`, only the choices once,
 session and deny, and an `rpc.ConsentInfo` that names the endpoint, its

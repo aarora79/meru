@@ -1,8 +1,8 @@
 # engine
 
 **Code:** `internal/engine/` (`engine.go`, `ollama.go`, `ollama_wire.go`,
-`engines.go`, `endpoint.go`, `openai.go`, `openai_wire.go`, `anthropic.go`,
-`anthropic_wire.go`, `observe_test.go`, `images_test.go`), and the loopback
+`engines.go`, `endpoint.go`, `openai.go`, `openai_wire.go`, `observe_test.go`,
+`images_test.go`), and the loopback
 check in `internal/loopback/loopback.go`
 **Milestone:** v0.1; `Options.NoThink` in v0.4; `Message.Images` and
 `Capabilities` with the desktop app's image attachments; `Details` with the
@@ -17,9 +17,10 @@ The engine package is the only code in Meru that talks to a model. It defines th
 requests to Ollama on this machine. The agent loop and the router call the
 interface and never see Ollama's JSON (JavaScript Object Notation).
 
-Two more engines answer for the models in `[[endpoints]]`: `OpenAIEngine`
-speaks the OpenAI chat completions API, and `AnthropicEngine` the Anthropic
-Messages API. `Engines` holds all of them and is the engine `merud` uses: a
+One more engine, `OpenAIEngine`, answers for the models in `[[endpoints]]`.
+It speaks the OpenAI chat completions API, which Ollama's `/v1`, vLLM,
+llama.cpp's server and LM Studio all serve, on this machine or on the user's
+own network. `Engines` holds both and is the engine `merud` uses: a
 call whose model starts with `@`, such as `@ollama-v1`, goes to that endpoint,
 and everything else, every embedding included, goes to the local Ollama.
 
@@ -36,10 +37,8 @@ flowchart LR
     E -->|GET /api/version, /api/ps| O
     E -->|POST /api/show| O
     EN["Engines"] -->|any other model, Embed| E
-    EN -->|"@name, api = openai"| OA["OpenAIEngine"]
-    EN -->|"@name, api = anthropic"| AN["AnthropicEngine"]
-    OA -->|POST url/chat/completions| S["a model server on 127.0.0.1"]
-    AN -->|POST url/messages| S
+    EN -->|"@name"| OA["OpenAIEngine"]
+    OA -->|POST url/chat/completions| S["a model server on this machine or your network"]
 ```
 
 The agent, the router and the indexer all hold `Engines`. Only the answer
@@ -290,17 +289,17 @@ each call with that error, and the rest of Meru keeps working.
 
 ### endpoint.go
 
-What the two endpoint engines share:
+The plumbing under `OpenAIEngine`:
 
 - `reachClient` builds each endpoint's HTTP client from its reach. `local`
-  needs a loopback URL, as `NewOllama` does. `remote` needs https. `near-edge`
+  needs a loopback URL, as `NewOllama` does. `near-edge`
   gets a `net.Dialer` whose `Control` hook, `nearEdgeOnly`, runs after Go has
   resolved the host name and before it connects, and refuses any address
   `loopback.NearEdge` doesn't accept: a public IP, or a name that resolves to
   one. Off the machine the client sets `Proxy: nil`, since a proxy from the
   environment would make the connection, and so the check, somewhere else.
-  Every client refuses redirects. `NewOllamaEndpoint` uses the same client
-  for another Ollama. The agent asks the user before a turn reaches one of
+  Any other reach, `remote` included, fails as unknown: Meru has no reach
+  for the internet. Every client refuses redirects. The agent asks the user before a turn reaches one of
   these (see [agent](agent.md), consent.go).
 - `post` sends one request with its span (`POST /chat/completions`, with a
   `meru.endpoint` attribute) and turns a non-2xx reply into an
@@ -309,31 +308,28 @@ What the two endpoint engines share:
   request header, and nothing here logs headers.
 - `readSSE` reads a server-sent event stream; see
   [server-sent events](go-basics/server-sent-events.md).
-- `toolCallIDs` ties each tool result to its call. Both APIs match them by ID,
+- `toolCallIDs` ties each tool result to its call. The OpenAI API matches them by ID,
   while Meru's messages carry the tool's name in call order. A call with no ID
   gets `call_<message>_<n>`.
 
-### openai.go and anthropic.go
+### openai.go
 
-Each `Stream` ranges over `readSSE` and yields text as it arrives. A tool
+`Stream` ranges over `readSSE` and yields text as it arrives. A tool
 call arrives in pieces: the OpenAI API numbers them with `index`, sends the
 ID and name in the first piece, and splits the arguments anywhere, even
-inside a string. The Anthropic API sends a `content_block_start` with the ID
-and name, then `input_json_delta` fragments. Both engines join the pieces and
-hand the whole calls out on the last `Delta`, as `OllamaEngine` does, so the
+inside a string. The engine joins the pieces and
+hands the whole calls out on the last `Delta`, as `OllamaEngine` does, so the
 agent loop sees one shape.
 
-Neither engine reads the model's reasoning: the OpenAI-style servers send it in
-fields such as `reasoning_content`, which the wire types leave out, and the
-Anthropic API in `thinking` blocks, which the engine skips. Both map their stop
-reasons to Meru's: `length` and `max_tokens` become `length`, which the agent
-reads as an answer cut off. The Anthropic API requires `max_tokens`, so a call
-without a cap sends `defaultMaxTokens`, 8,192.
+The engine doesn't read the model's reasoning: the OpenAI-style servers send it in
+fields such as `reasoning_content`, which the wire types leave out. It maps the
+stop reason `length` to Meru's `length`, which the agent
+reads as an answer cut off. A call without a cap sends `defaultMaxTokens`,
+8,192, so a runaway answer stops.
 
-`toOAMessages` and `toAnMessages` in the `_wire.go` files turn Meru's messages
-into each API's. A tool result goes back as a `tool` message tied by ID (OpenAI)
-or a `tool_result` block in a user message (Anthropic). A picture goes as a
-`data:` URL part (OpenAI) or a base64 `image` block (Anthropic). An OpenAI `tool`
+`toOAMessages` in `openai_wire.go` turns Meru's messages
+into the API's. A tool result goes back as a `tool` message tied by ID, and a
+picture goes as a `data:` URL part. A `tool`
 message can't hold a picture, so the pictures `view_image` returned follow in
 one user message after the round's results.
 
@@ -389,7 +385,7 @@ the two shapes of `/api/show`; Meru reads only `capabilities` from the reply.
   [go-basics/json-marshaler.md](go-basics/json-marshaler.md).
 - **`sync.Mutex`** — `mu.Lock()` lets one goroutine at a time into the
   capabilities map. More in [go-basics/goroutines.md](go-basics/goroutines.md).
-- **Server-sent events**: the OpenAI and Anthropic APIs stream `data:` lines,
+- **Server-sent events**: the OpenAI API streams `data:` lines,
   read with `bufio.Scanner`. More in
   [go-basics/server-sent-events.md](go-basics/server-sent-events.md).
 - **`any`**: `oaMessage.Content` holds a string or a list of parts, and
@@ -423,12 +419,15 @@ go test -tags integration -v -run Integration ./internal/engine/
 
 You should see the one-token call pick `B` with a log probability near 0.
 
-The endpoint engines have their own tests. `openai_test.go` and
-`anthropic_test.go` run each engine against `fakeEndpoint`, an `httptest`
+The endpoint engine has its own tests. `openai_test.go` runs it against
+`fakeEndpoint`, an `httptest`
 server: text, tool calls split mid-string, pictures, a cut-off answer, an
 error event, a stream cut short and a cancelled turn. `endpoint_test.go`
 checks the event reader, the ID pairing, the loopback check, a refused
-redirect, and that an error never holds the key. `engines_test.go` checks
+redirect, and that an error never holds the key. `TestReach` checks that a
+near-edge endpoint reaches a server on loopback, that its dialer refuses a
+public address before it connects, and that `remote` counts as an unknown
+reach. `engines_test.go` checks
 that each call goes to its engine. `openai_integration_test.go` runs
 `OpenAIEngine` against the real Ollama's own `/v1`, with no key:
 

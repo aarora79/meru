@@ -4,10 +4,12 @@
 // local Ollama, because the router needs token probabilities and search
 // must not send files anywhere (docs/design/model-router.md).
 //
-// reach says how far its requests may travel: "local" (this machine),
-// "near-edge" (the user's own network) or "remote" (a hosted service). A
-// turn bound for near-edge or remote asks the user first, "this time" or
-// "this chat"; see the agent's consent.go.
+// An endpoint speaks the OpenAI chat completions API, as Ollama's /v1,
+// vLLM, llama.cpp's server and LM Studio do, and it sits on this machine
+// (reach "local") or on the user's own network or private cloud network
+// (reach "near-edge"); never on the internet. A turn bound for near-edge
+// asks the user first, "this time" or "this chat"; see the agent's
+// consent.go.
 
 package config
 
@@ -25,18 +27,7 @@ import (
 const (
 	ReachLocal    = "local"     // this machine only
 	ReachNearEdge = "near-edge" // private addresses: your network, your private cloud network
-	ReachRemote   = "remote"    // any address, over HTTPS
 )
-
-// The APIs an endpoint may speak.
-const (
-	APIOllama    = "ollama"    // Ollama's own API: /api/chat
-	APIOpenAI    = "openai"    // OpenAI chat completions: /chat/completions
-	APIAnthropic = "anthropic" // Anthropic Messages: /messages
-)
-
-// apis lists the APIs in the order an error names them.
-var apis = []string{APIOllama, APIOpenAI, APIAnthropic}
 
 // minEndpointContext is the smallest context_length an endpoint may give.
 // Below 2048 tokens not even the system prompt fits, as with
@@ -52,12 +43,9 @@ type Endpoint struct {
 	Name string `toml:"name"`
 	// Reach says how far requests may travel; see ReachLocal.
 	Reach string `toml:"reach"`
-	// API is how to talk to it: "ollama", "openai" or "anthropic".
-	API string `toml:"api"`
-	// URL is the server's address. For "ollama" it is the server itself,
-	// such as http://127.0.0.1:11435; for "openai" and "anthropic" it is
-	// the API's base up to and including its version, such as
-	// http://127.0.0.1:11434/v1.
+	// URL is the base of the server's OpenAI-style API, up to and
+	// including its version, such as http://10.0.0.5:11434/v1; Meru adds
+	// /chat/completions.
 	URL string `toml:"url"`
 	// APIKey, when set, must be "secret:<name>", an entry in
 	// ~/.meru/secrets.toml. A key written into config.toml would sit in a
@@ -66,7 +54,7 @@ type Endpoint struct {
 	// Model is the name the server knows the model by.
 	Model string `toml:"model"`
 	// ContextLength is the most tokens the model reads at once. The
-	// OpenAI and Anthropic APIs don't report it, so the entry gives it.
+	// OpenAI-style API doesn't report it, so the entry gives it.
 	ContextLength int `toml:"context_length"`
 	// Vision says the model can look at pictures.
 	Vision bool `toml:"vision"`
@@ -97,25 +85,19 @@ func FindEndpoint(eps []Endpoint, name string) (Endpoint, bool) {
 	return eps[i], true
 }
 
-// checkReachURL checks the url of a near-edge or remote endpoint. Both
-// need an http or https URL with a host. A remote one needs https, since
-// its requests cross the internet with the user's prompt and key. A
-// near-edge one given as an IP address must give one NearEdge accepts; a
-// host name passes here, and the engine checks each address it resolves
-// to when it connects, since a name can point anywhere.
-func checkReachURL(reach, raw string) error {
+// checkNearEdgeURL checks the url of a near-edge endpoint: an http or
+// https URL with a host. One given as an IP address must give one
+// NearEdge accepts; a host name passes here, and the engine checks each
+// address it resolves to when it connects, since a name can point
+// anywhere.
+func checkNearEdgeURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("url %q must be an http or https address with a host", raw)
 	}
-	if reach == ReachRemote && u.Scheme != "https" {
-		return fmt.Errorf("reach is \"remote\", so the url must use https, not %s: the prompt and the key cross the internet", u.Scheme)
-	}
-	if reach == ReachNearEdge {
-		if addr, err := netip.ParseAddr(u.Hostname()); err == nil && !loopback.NearEdge(addr) {
-			return fmt.Errorf("reach is \"near-edge\", but %s is a public address; use reach = \"remote\" "+
-				"for a server on the internet", addr)
-		}
+	if addr, err := netip.ParseAddr(u.Hostname()); err == nil && !loopback.NearEdge(addr) {
+		return fmt.Errorf("reach is \"near-edge\", but %s is a public address; "+
+			"Meru sends a question only to this machine or your own network", addr)
 	}
 	return nil
 }
@@ -148,29 +130,21 @@ func checkEndpoints(eps []Endpoint, models Models) []error {
 			if err := loopback.CheckURL(e.URL); err != nil {
 				add("%s: reach is \"local\", so the url must be on this machine: %w", key, err)
 			}
-		case ReachNearEdge, ReachRemote:
-			if err := checkReachURL(e.Reach, e.URL); err != nil {
+		case ReachNearEdge:
+			if err := checkNearEdgeURL(e.URL); err != nil {
 				add("%s: %w", key, err)
 			}
 		default:
-			add("%s: reach %q is unknown; use \"local\", \"near-edge\" or \"remote\"", key, e.Reach)
+			add("%s: reach %q is unknown; use \"local\" or \"near-edge\"", key, e.Reach)
 		}
-		if !slices.Contains(apis, e.API) {
-			add("%s: api %q is unknown; use one of %s", key, e.API, strings.Join(apis, ", "))
-		}
-		if e.APIKey != "" && e.API == APIOllama {
-			add("%s: api_key is set, but Ollama's API takes no key; leave it out", key)
-		} else if e.APIKey != "" {
+		if e.APIKey != "" {
 			if _, ok := strings.CutPrefix(e.APIKey, "secret:"); !ok {
 				add("%s: api_key must name an entry in secrets.toml, as \"secret:<name>\", "+
 					"never hold the key itself", key)
 			}
 		}
-		switch {
-		case e.Model == "":
+		if e.Model == "" {
 			add("%s has no model; give the name the server knows it by", key)
-		case e.API == APIOllama && CloudModel(e.Model):
-			errs = append(errs, errCloudModel(key+" model", e.Model))
 		}
 		if e.ContextLength < minEndpointContext {
 			add("%s: context_length is %d; give the most tokens the model reads at once, %d or more",

@@ -242,7 +242,7 @@ reader does, so Continue works there too.
 
 A `consent` line records the user's answer when a turn would go to an answer
 endpoint off this computer: `Tool` names the endpoint, as `@lab`, `Reach` says
-`near-edge` or `remote`, and `Choice` is `once`, `session` or `deny`. It never
+`near-edge`, and `Choice` is `once`, `session` or `deny`. It never
 holds the prompt. Replay and the tool log skip it; it is there for the user
 and for an audit.
 

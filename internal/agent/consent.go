@@ -1,6 +1,6 @@
 // This file asks the user before a turn goes off this machine. When the
-// answer model is an [[endpoints]] entry with reach "near-edge" or
-// "remote", the turn's whole prompt would travel there: the question, the
+// answer model is an [[endpoints]] entry with reach "near-edge", on the
+// user's own network, the turn's whole prompt would travel there: the question, the
 // chat so far, the profile and recalled memories, file excerpts, pictures,
 // and each tool result. So the turn asks first, "this time" or "this
 // chat", never "always". A no, an incognito chat, a scheduled job, or a

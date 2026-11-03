@@ -93,7 +93,7 @@ real Ollama serves too, from the same queue of replies (`openai.go`). It
 streams server-sent events, `data: {json}` lines ending in `data: [DONE]`, with
 text pieces, tool calls whose arguments are a JSON string, a finish reason
 and the token counts, and honours `max_tokens` the way `/api/chat` honours
-`num_predict`. An `[[endpoints]]` entry with `api = "openai"` and the fake's
+`num_predict`. An `[[endpoints]]` entry with the fake's
 URL plus `/v1` then answers from the fake, which is how the end-to-end tests
 run an endpoint. `TestOpenAIRoute` checks the route with Meru's own
 `OpenAIEngine`.
