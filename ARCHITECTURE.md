@@ -1261,11 +1261,18 @@ these holds, read after the routing rules below have had their say:
 
 1. the route is `direct`, and the router chose it itself (outcome `ok`);
 2. the router is at least `easy_above` sure;
-3. the question carries no picture, no picked skill, no web-first search and
+3. the question asks for no facts: it doesn't end with a question mark, and
+   its first word isn't a question word such as "what" or "is", or a command
+   that asks for knowledge, such as "tell", "explain" or "list". A greeting,
+   thanks, or text to reword passes. The fast model states a wrong fact as
+   surely as a right one, and no weak-answer check can see that, so a fact
+   question goes to main;
+4. the question carries no picture, no picked skill, no web-first search and
    no hand-off from a Continue.
 
 Anything else goes to `main`: a question that searches your files or uses a
-tool, a direct one the router isn't sure of, a picture, a skill. The pick
+tool, a direct one the router isn't sure of, a fact question, a picture, a
+skill. The pick
 reads the router's existing result and makes no model call. The turn picks
 once, before it builds its prompt, and every step reads that choice, so the
 window, the self line and the checks fit the model that answers. The consent

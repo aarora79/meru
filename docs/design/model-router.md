@@ -60,7 +60,7 @@ Only `main` and `large` may name an endpoint. Config refuses `fast = "@lab"` and
 
 1. **The router reads the question** on the fast model, as it does today, and returns a route (`direct`, `search`, `tools`, `search+tools`) and how sure it is.
 2. **Meru picks the answer model** from that result, with no extra model call. With `[router] answers = "routed"`:
-   - **fast** when the route is `direct`, the router is at least `easy_above` sure (0.8 by default), and the question has no picture and no skill;
+   - **fast** when the route is `direct`, the router is at least `easy_above` sure (0.8 by default), the question asks for no facts, and it has no picture and no skill. A question that ends with a question mark, or opens with a question word or a command such as "tell", "explain" or "list", asks for facts. The owner added this rule on 2 November 2026, after the fast model answered "Nara" for the capital of Japan;
    - **large** when you ask for it: "Ask the large model" in Meru.app, `/large` in `meru chat`, or `meru -large`;
    - **main** for everything else.
 

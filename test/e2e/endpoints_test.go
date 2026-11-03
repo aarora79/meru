@@ -215,7 +215,8 @@ func TestEndpointConsent(t *testing.T) {
 }
 
 // TestRoutedAnswers runs [router] answers = "routed" through real binaries:
-// an easy direct question gets the fast model, and a fast answer cut off at
+// an easy direct turn that asks for no facts gets the fast model, a fact
+// question goes to main, and a fast answer cut off at
 // its length goes to the main model, with an escalate event between.
 func TestRoutedAnswers(t *testing.T) {
 	t.Parallel()
@@ -226,15 +227,23 @@ func TestRoutedAnswers(t *testing.T) {
 	waitReady(t, h, m, readyTimeout)
 
 	// directRoute is 0.9 sure, above easy_above's 0.8.
-	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Four."})
-	events := ask(t, h.socket, "", "what is 2 + 2?")
-	if done := lastEvent(t, events); answerOf(events) != "Four." || done.Model != fastModel {
-		t.Errorf("answer %q from %q, want Four. from the fast model", answerOf(events), done.Model)
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Glad it helped."})
+	events := ask(t, h.socket, "", "thanks, that helps")
+	if done := lastEvent(t, events); answerOf(events) != "Glad it helped." || done.Model != fastModel {
+		t.Errorf("answer %q from %q, want Glad it helped. from the fast model", answerOf(events), done.Model)
 	}
 
-	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Paris is", DoneReason: "length"})
-	f.enqueue(t, mainModel, fakeollama.Reply{Text: "Paris is the capital of France."})
-	events = ask(t, h.socket, "", "What is the capital of France?")
+	// A question that asks for a fact goes to main, though the router is sure.
+	f.enqueue(t, fastModel, directRoute())
+	f.enqueue(t, mainModel, fakeollama.Reply{Text: "Tokyo."})
+	events = ask(t, h.socket, "", "what is the capital of Japan?")
+	if done := lastEvent(t, events); answerOf(events) != "Tokyo." || done.Model != mainModel {
+		t.Errorf("answer %q from %q, want Tokyo. from main", answerOf(events), done.Model)
+	}
+
+	f.enqueue(t, fastModel, directRoute(), fakeollama.Reply{Text: "Bon", DoneReason: "length"})
+	f.enqueue(t, mainModel, fakeollama.Reply{Text: "Bonjour."})
+	events = ask(t, h.socket, "", "Say hello in French")
 	esc := eventsOf(events, rpc.EventEscalate)
 	if len(esc) != 1 || esc[0].Model != mainModel {
 		t.Fatalf("escalate events = %+v\nlog:\n%s", esc, h.log())
@@ -252,7 +261,7 @@ func TestRoutedAnswers(t *testing.T) {
 			}
 		}
 	}
-	if !slices.Contains(answers, "Paris is the capital of France.") || slices.Contains(answers, "Paris is") {
+	if !slices.Contains(answers, "Bonjour.") || slices.Contains(answers, "Bon") {
 		t.Errorf("assistant lines = %q", answers)
 	}
 }

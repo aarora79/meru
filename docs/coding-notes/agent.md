@@ -869,9 +869,18 @@ A turn starts with `t.tier = "main"` and the main model. A request with
 `respond` calls `pickFast` once every routing rule has had its say, just
 before it sends the `route` event. With `[router] answers = "routed"`, it gives
 the turn to the fast model when the route is `direct`, the router chose it
-itself (`Outcome == "ok"`) at least `easy_above` sure, and the turn has no
-picture, no skill, no web-first search and no Continue hand-off. Any other
-turn keeps main. `consent` runs at the start of `finishPrompt`, after the pick,
+itself (`Outcome == "ok"`) at least `easy_above` sure, `asksForFacts` says
+the question asks for no facts, and the turn has no picture, no skill, no
+web-first search and no Continue hand-off. Any other turn keeps main.
+
+`asksForFacts` lowercases the question and returns true when it ends with
+`?` or its first word, with trailing punctuation trimmed, is in
+`factOpeners`: question words such as "what" and "who", the verbs a yes-or-no
+question opens with ("is", "does", "can"), and commands such as "tell",
+"explain" and "list". `slices.Contains` from the standard library does the
+lookup. The rule is a plain word test, with no model call, because the fast
+model can't judge its own facts: asked for the capital of Japan, it answered
+"Nara" and sounded as sure as when it answered "Tokyo". `consent` runs at the start of `finishPrompt`, after the pick,
 so a fast turn never asks.
 
 `Handle` runs `respond` in a loop. When the turn's tier is fast and
