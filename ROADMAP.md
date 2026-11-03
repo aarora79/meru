@@ -263,11 +263,11 @@ that fits the graphics card, and `merud` as a systemd user service.
   ([#150](https://github.com/aarora79/meru/issues/150))
 - [x] New built-in tools reach configs that list them by hand
   ([#123](https://github.com/aarora79/meru/issues/123))
-- [ ] A model router: easy questions on the fast model, and answer models on
-  endpoints you name, local, on your network or hosted, asking before a chat
-  leaves the machine ([#78](https://github.com/aarora79/meru/issues/78),
-  [design](docs/design/model-router.md)). The engines for endpoints on this
-  machine come first.
+- [x] A model router: easy questions on the fast model, a large model on
+  request, and answer models on endpoints you name, on this machine or your own
+  network, asking before a chat leaves the machine
+  ([#78](https://github.com/aarora79/meru/issues/78),
+  [design](docs/design/model-router.md))
 - [ ] Fixes: text from tool rounds runs together
   ([#154](https://github.com/aarora79/meru/issues/154)); metrics miss the fixed
   prompt and the fast and embed calls

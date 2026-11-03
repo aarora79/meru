@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.7.0](v0.7.0.md): the router picks which model answers, a large model on request, and answer models on your own network after your yes
 - [v0.6.4](v0.6.4.md): Meru refuses Ollama's cloud models, which would send a prompt off the machine
 - [v0.6.3](v0.6.3.md): Word, Excel and CSV files, exact answers about a sheet with `analyze_table`, and turns that say why they stopped
 - [v0.6.2](v0.6.2.md): the desktop app and the Mac installer build on Wails beta.34
