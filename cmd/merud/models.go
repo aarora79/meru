@@ -88,6 +88,7 @@ type answerModel interface {
 // while answer says which model answers now.
 type modelService struct {
 	models     config.Models
+	answers    string // [router] answers, for the models op
 	profile    string
 	configPath string
 	outputDir  string
@@ -123,7 +124,7 @@ type modelService struct {
 func newModelService(cfg config.Config, configPath, outputDir string, eng engine.Engine, answer answerModel,
 	edit func(func() error) error, log *slog.Logger) *modelService {
 	m := &modelService{
-		models: cfg.Models, profile: cfg.Profile, configPath: configPath, outputDir: outputDir,
+		models: cfg.Models, answers: cfg.Router.Answers, profile: cfg.Profile, configPath: configPath, outputDir: outputDir,
 		eng: eng, answer: answer, edit: edit, log: log, wait: evictWait, poll: evictPoll,
 	}
 	if s, ok := matchingSet(cfg.Models.Sets, cfg.Models); ok {
@@ -192,7 +193,8 @@ func (m *modelService) handleModels(ctx context.Context, emit func(rpc.Event) er
 // why.
 func (m *modelService) info(ctx context.Context, active string) rpc.ModelsInfo {
 	info := rpc.ModelsInfo{
-		Profile: m.profile, Fast: m.models.Fast, Main: m.answer.Main(), Embed: m.models.Embed,
+		Profile: m.profile, Fast: m.models.Fast, Main: m.answer.Main(), Embed: m.models.Embed, Large: m.models.Large,
+		Answers:    m.answers,
 		ConfigPath: m.configPath, OutputDir: m.outputDir, Active: active,
 	}
 	ictx, cancel := context.WithTimeout(ctx, modelsTimeout)

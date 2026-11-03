@@ -62,6 +62,14 @@ type checkResult struct {
 	TPOTMillis float64 `json:"tpot_ms,omitempty"`
 	TokensIn   int     `json:"tokens_in,omitempty"`
 	TokensOut  int     `json:"tokens_out,omitempty"`
+	// AnsweredBy is the model that wrote this answer, from the done event:
+	// with [router] answers = "routed" it is the fast model for an easy
+	// question and the main model for the rest. Escalated says the fast
+	// model's first try ended early and the main model answered again.
+	AnsweredBy string `json:"answered_by,omitempty"`
+	Escalated  bool   `json:"escalated,omitempty"`
+	// Answers is [router] answers for the run: "main", or "routed".
+	Answers string `json:"answers,omitempty"`
 }
 
 // checkCmd runs `meru check [file] [--only id,category] [--json] [--save]`.
@@ -172,7 +180,7 @@ func readChecks(path string, named bool) ([]checkQuestion, error) {
 func runChecks(ctx context.Context, socket string, questions []checkQuestion, started time.Time,
 	report func(checkResult) error) ([]checkResult, error) {
 	sessions := map[string]string{} // session group → merud's session ID
-	set, model := activeModels(ctx, socket)
+	set, model, answers := activeModels(ctx, socket)
 	var results []checkResult
 	for _, q := range questions {
 		// A picture merud won't take fails this question alone: the rest
@@ -202,6 +210,7 @@ func runChecks(ctx context.Context, socket string, questions []checkQuestion, st
 			Seconds: rec.Seconds, Answer: rec.Answer, ModelSet: set, Model: model,
 			TTFTMillis: rec.TTFTMillis, TTLTMillis: rec.TTLTMillis, TPOTMillis: rec.TPOTMillis,
 			TokensIn: rec.TokensIn, TokensOut: rec.TokensOut,
+			AnsweredBy: rec.AnsweredBy, Escalated: rec.Escalated, Answers: answers,
 		}
 		results = append(results, r)
 		if err := report(r); err != nil {
@@ -211,20 +220,20 @@ func runChecks(ctx context.Context, socket string, questions []checkQuestion, st
 	return results, nil
 }
 
-// activeModels asks merud which model set is in use and which model
-// answers, so each result says what produced it. A merud that can't say,
-// such as one older than the models op, gives two empty strings: the
-// results still count, with no model on them.
-func activeModels(ctx context.Context, socket string) (set, model string) {
+// activeModels asks merud which model set is in use, which model answers,
+// and [router] answers, so each result says what produced it. A merud that
+// can't say, such as one older than the models op, gives empty strings:
+// the results still count, with no model on them.
+func activeModels(ctx context.Context, socket string) (set, model, answers string) {
 	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpModels}, nil) {
 		if err != nil {
-			return "", ""
+			return "", "", ""
 		}
 		if ev.Type == rpc.EventModels && ev.Models != nil {
-			set, model = ev.Models.Active, ev.Models.Main
+			set, model, answers = ev.Models.Active, ev.Models.Main, ev.Models.Answers
 		}
 	}
-	return set, model
+	return set, model, answers
 }
 
 // checkImage asks merud to copy the picture a check names into its uploads
@@ -294,8 +303,14 @@ func askCheck(ctx context.Context, socket, question, session, image string) (tur
 			}
 		case rpc.EventToken:
 			answer.WriteString(ev.Text)
+		case rpc.EventEscalate:
+			// The fast model's first try doesn't count: the main model's
+			// answer replaces it.
+			answer.Reset()
+			rec.Escalated = true
 		case rpc.EventDone:
 			tookMillis = ev.DurationMillis
+			rec.AnsweredBy = ev.Model
 			rec.TTFTMillis, rec.TTLTMillis, rec.TPOTMillis = ev.TTFTMillis, ev.TTLTMillis, ev.TPOTMillis
 			rec.TokensIn, rec.TokensOut = ev.TokensIn, ev.TokensOut
 		case rpc.EventError:

@@ -183,6 +183,12 @@ type turn struct {
 	// model switch during the turn doesn't split it between two models.
 	model   string
 	noThink bool
+	// tier is where model fills in: "main", "fast" when the router gave
+	// the turn to the fast model, or "large" when the user asked for it.
+	// noFast keeps the fast model away from a turn that escalated. See
+	// pick.go.
+	tier   string
+	noFast bool
 	// keptHere, when set, is the notice that the turn answered on this
 	// computer instead of at its endpoint, and why; see consent.go.
 	keptHere string

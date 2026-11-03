@@ -17,6 +17,7 @@ export const bridge = {
   // The chat (bridge.go, history.go, status.go).
   send: (session, question, scope, incognito) => call("Send", session, question, scope, !!incognito),
   retry: (session, question, scope, images, incognito) => call("Retry", session, question, scope, images, !!incognito),
+  askLarge: (session, question, scope, incognito) => call("AskLarge", session, question, scope, !!incognito),
   continueAnswer: (session, scope, incognito) => call("Continue", session, scope, !!incognito),
   stop: () => call("Stop"),
   unqueue: (index) => call("Unqueue", index),

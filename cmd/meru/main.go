@@ -131,6 +131,7 @@ flags:`)
 	}
 	socket := flags.String("socket", "", "merud's socket (default ~/.meru/merud.sock)")
 	image := flags.String("image", "", "a PNG, JPEG, GIF or WebP `file` to send with the question, as in: meru -image shot.png \"find images like this\"")
+	large := flags.Bool("large", false, "ask the large model, [models] large, as in: meru -large \"why is the sky blue?\"")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
@@ -213,7 +214,7 @@ flags:`)
 		// A tool call that needs approval asks on this terminal (approve.go).
 		p := newPrompter(os.Stdin, stderr, isTerminal(os.Stdin))
 		err = withAttached(func(saved string) error {
-			return ask(ctx, *socket, strings.Join(flags.Args(), " "), saved, stdout, stderr, p.approve)
+			return ask(ctx, *socket, strings.Join(flags.Args(), " "), saved, *large, stdout, stderr, p.approve)
 		})
 	}
 
@@ -284,8 +285,9 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 // a claim of an action no tool took, a dim "note:" line on stderr follows
 // the answer. Keeping all of these off stdout means `meru "..." > file`
 // saves only the answer.
-func ask(ctx context.Context, socket, question, image string, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
-	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI}, image)
+func ask(ctx context.Context, socket, question, image string, large bool, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
+	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI, Large: large}, image)
+	var offerLarge bool        // the answer ended early, and a large model is set
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
 	var notice string     // merud's warning about the answer; "" for none
@@ -332,6 +334,16 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 			if ev.AnsweredBy != "" {
 				answeredBy = ev.AnsweredBy + " (" + ev.Reach + ")"
 			}
+			offerLarge = ev.OfferLarge
+		case rpc.EventEscalate:
+			// The fast model's answer, already printed, ended early, and the
+			// main model answers again: end the first try's line and say so.
+			if answer.Len() > 0 && !endsInNewline {
+				fmt.Fprintln(stdout)
+			}
+			fmt.Fprintln(stderr, dim.Render("note: "+ev.Text))
+			answer.Reset()
+			endsInNewline, midLine = false, false
 		case rpc.EventError:
 			if answer.Len() > 0 && !endsInNewline {
 				fmt.Fprintln(stdout)
@@ -349,6 +361,9 @@ func ask(ctx context.Context, socket, question, image string, stdout, stderr io.
 	// from, on stderr, so stdout stays the answer alone.
 	if answeredBy != "" {
 		fmt.Fprintln(stderr, dim.Render("answered by "+answeredBy))
+	}
+	if offerLarge {
+		fmt.Fprintln(stderr, dim.Render("note: meru -large asks the large model the same question"))
 	}
 	if cited := rpc.Cited(answer.String(), sources); len(cited) > 0 {
 		fmt.Fprintln(stdout, "\nSources:")

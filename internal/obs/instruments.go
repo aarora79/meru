@@ -73,7 +73,7 @@ const other = "other"
 // (an ID, a path, a question) would grow it without limit. See ARCHITECTURE.md,
 // "Metrics": "Keep attribute values to small, fixed sets."
 var (
-	tiers         = []string{"fast", "main", "embed"}
+	tiers         = []string{"fast", "main", "large", "embed"}
 	routes        = []string{"direct", "search", "tools", "search+tools"}
 	sources       = []string{"cli", "tui", "job", "desktop"}
 	turnOutcomes  = []string{"ok", "error", "cancelled", "timeout", "cut_off", "window_full", "gave_up", "bad_output"}

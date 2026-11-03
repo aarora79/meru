@@ -129,6 +129,8 @@ type outgoing struct {
 	// cont marks a Continue, which merud answers by picking up the chat's
 	// last answer; text is then the word the chat shows.
 	cont bool
+	// large asks the large model, for "Ask the large model".
+	large bool
 }
 
 // turn is one question on its way through merud.
@@ -178,7 +180,7 @@ func New(o Options) *Bridge {
 //
 // It fails when question is blank, scope is unknown, or the queue is full.
 func (b *Bridge) Send(session, question, scope string, incognito bool) error {
-	return b.send(session, question, scope, incognito, nil, false)
+	return b.send(session, question, scope, incognito, nil, sendAsk)
 }
 
 // Continue asks merud to pick up session's last answer where it stopped
@@ -192,7 +194,7 @@ func (b *Bridge) Continue(session, scope string, incognito bool) error {
 	if session == "" {
 		return errors.New("there is no chat to continue")
 	}
-	return b.send(session, continueText, scope, incognito, nil, true)
+	return b.send(session, continueText, scope, incognito, nil, sendContinue)
 }
 
 // Retry is Send for Try again: it asks question once more, with the
@@ -213,17 +215,32 @@ func (b *Bridge) Retry(session, question, scope string, images []string, incogni
 			Thumb: b.thumbnail(full), full: full,
 		})
 	}
-	return b.send(session, question, scope, incognito, extra, false)
+	return b.send(session, question, scope, incognito, extra, sendAsk)
 }
 
 // continueText is what the chat shows for a Continue, as `meru chat` and
 // merud's transcript record it.
 const continueText = "Continue"
 
-// send does the work of Send, Retry and Continue. extra holds images to
-// send beside the ones attached in the composer. cont marks a Continue,
-// which takes no attachments.
-func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment, cont bool) error {
+// AskLarge is Send for "Ask the large model": it asks question of the
+// large model, [models] large, in the same chat. merud says so when config
+// names none. It takes no attachments; the page offers it under an answer.
+func (b *Bridge) AskLarge(session, question, scope string, incognito bool) error {
+	return b.send(session, question, scope, incognito, nil, sendLarge)
+}
+
+// The kinds of question send sends.
+const (
+	sendAsk      = iota // a question, with the attachments
+	sendContinue        // a Continue, with none
+	sendLarge           // a question for the large model, with none
+)
+
+// send does the work of Send, Retry, Continue and AskLarge. extra holds
+// images to send beside the ones attached in the composer. kind is one of
+// the send constants; only sendAsk takes the attachments.
+func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment, kind int) error {
+	cont := kind == sendContinue
 	q := strings.TrimSpace(question)
 	if q == "" {
 		return errors.New("type a question first")
@@ -237,11 +254,11 @@ func (b *Bridge) send(session, question, scope string, incognito bool, extra []A
 	if b.turn != nil && len(b.queue) >= maxQueue {
 		return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
 	}
-	next := outgoing{text: q, cont: true}
-	if !cont {
+	next := outgoing{text: q, cont: cont, large: kind == sendLarge}
+	if kind == sendAsk {
 		next = outgoing{text: b.withAttachments(q), images: append(extra, imagesOf(b.attached)...)}
 	}
-	if len(b.attached) > 0 && !cont {
+	if len(b.attached) > 0 && kind == sendAsk {
 		b.attached = nil
 		b.emitAttachments("")
 	}
@@ -347,7 +364,7 @@ func (b *Bridge) start(q outgoing) {
 	t := &turn{n: b.last, cancel: cancel}
 	b.turn = t
 	req := rpc.Request{Op: rpc.OpAsk, Session: b.session, Text: q.text, Source: rpc.SourceDesktop, Scope: b.scope,
-		Incognito: b.session == "" && b.newIncognito, Continue: q.cont}
+		Incognito: b.session == "" && b.newIncognito, Continue: q.cont, Large: q.large}
 	if len(q.images) > 0 {
 		req.Images = &rpc.Images{}
 		for _, a := range q.images {

@@ -25,6 +25,7 @@ profile = "lite"
 # model. The comments show what "lite" gives; `ollama list` shows names.
 fast  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; routes, picks skills, summarizes
 main  = ""   # lite: hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M; writes the answer
+large = ""   # none by default; a bigger answer model you ask for by hand, or "@name"
 embed = ""   # lite: embeddinggemma-2:440m; turns text into vectors for search
 # true lets the main model think before it answers, when no set below is
 # in use. Off by default: the benchmark ran every model with thinking off,
@@ -128,6 +129,13 @@ fallback       = "search+tools"  # "direct", "search", "tools" or "search+tools"
 decision         = "top"         # "top" or "marginal"
 search_threshold = 0.30          # 0 to 1; "marginal" only
 tools_threshold  = 0.25          # 0 to 1; "marginal" only
+# Which model writes each answer. "main": the main model, every time.
+# "routed": a question the router is sure needs no files and no tools, with
+# no picture, gets the fast model, which starts faster; everything else gets
+# main, and a fast answer that ends early is asked again of main. The large
+# model, when set, answers only when you ask for it.
+answers          = "main"        # "main" or "routed"
+easy_above       = 0.8           # 0 to 1; how sure the router must be; "routed" only
 
 [index]
 # Folders merud reads into its search index. Empty indexes nothing; merud

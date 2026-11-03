@@ -367,6 +367,12 @@ stats line under an answer from such an endpoint ends "answered by @lab
 |---|---|
 | o, s, d | approve once, approve for this session, deny; only the choices `merud` offers work |
 | t, c, n | on the consent question, send this time, send for this chat, or no: answer here |
+
+`/large [question]` asks the large model (`largeCommand` in `scope.go`), the
+newest question again when none follows. An `escalate` event folds what
+streamed into one dim line, `firstTryLine`, "▸ first try, folded: …", above
+the main model's answer; and a main answer whose `done` says `offer_large`
+gets the hint "/large asks the large model the same question."
 | ← / → then Enter | move the selection, then pick it |
 | Ctrl-C | stop the turn; the call doesn't run |
 | Ctrl-D | quit |

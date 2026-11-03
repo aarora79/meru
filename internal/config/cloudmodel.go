@@ -44,6 +44,7 @@ func checkCloudModels(models Models) []error {
 	}
 	check("models.fast", models.Fast)
 	check("models.main", models.Main)
+	check("models.large", models.Large)
 	check("models.embed", models.Embed)
 	for _, s := range models.Sets {
 		check(fmt.Sprintf("models.sets %q main", s.Name), s.Main)

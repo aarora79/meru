@@ -156,6 +156,8 @@ type Agent struct {
 	models      config.Models     // the models as config named them at startup; Main says which model answers now
 	endpoints   []config.Endpoint // the [[endpoints]] entries, for the self line of an "@name" model
 	consented   consents          // the chats that said "this chat" to an endpoint; see consent.go
+	answers     string            // [router] answers: "main" or "routed"; see pick.go
+	easyAbove   float64           // [router] easy_above
 	folderNames []string          // last part of each [index] folder, lower case; see namesFolder
 	// folders, when set by UseFolders, returns the [index] folders as they
 	// are now, and a turn builds folderNames and filesNote from it.
@@ -253,6 +255,8 @@ func New(cfg config.Config, eng engine.Engine, router Router, search Searcher, t
 		agentic:     agentic,
 		models:      cfg.Models,
 		endpoints:   cfg.Endpoints,
+		answers:     cfg.Router.Answers,
+		easyAbove:   cfg.Router.EasyAbove,
 		main:        cfg.Models.Main,
 		folderNames: folderNames(cfg.Index.Folders),
 		historyN:    cfg.Agent.HistoryTurns,
@@ -434,6 +438,12 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	}
 	t.job, t.skill = req.Job, req.Skill
 	t.model, t.noThink = a.mainModel()
+	t.tier = tierMain
+	if req.Large {
+		if err := a.useLarge(t); err != nil {
+			return err
+		}
+	}
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
@@ -458,39 +468,53 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	if err := a.appendLine(ctx, sess, transcript.Line{TS: start, Type: transcript.TypeUser, Text: question, Images: imagePaths, Job: req.Job, TraceID: traceID}); err != nil {
 		return err
 	}
-	// A turn bound for an endpoint off this machine asks first, before it
-	// builds its prompt, so a no can switch it to a local model.
-	if err := a.consent(tctx, t, len(history)/2); err != nil {
-		return err
-	}
 
-	res, err := a.respond(tctx, t, asked, history)
-	route, rep = res.route, res.rep
-	// badOutput is true when the rounds ended on output Ollama couldn't
-	// read, even after the retry. The turn answers with badOutputAnswer
-	// instead of failing with Ollama's raw error.
-	badOutput := errors.Is(err, engine.ErrModelOutput) && ctx.Err() == nil
-	// noVision is true when the question carried images the main model
-	// can't look at. The turn answers with noVisionAnswer.
-	noVision := errors.Is(err, errNoVision)
-	if err != nil && !badOutput && !noVision && (tctx.Err() == nil || ctx.Err() != nil) {
-		// A failure that isn't the turn's own deadline, unreadable model
-		// output or a model without vision: Ollama down or refusing the
-		// request, or the user hung up.
-		return err
-	}
-	ended = endOf(err, rep)
-	// A whole answer from a turn that lost its tools to a full window
-	// still says so, so the user knows why it read so little and can
-	// Continue.
-	if ended == "" && t.windowFull {
-		ended = endWindowFull
-	}
-	// A turn that used every round max_rounds allows and wrote nothing, or
-	// only a plan for its next step, hit the cap; `/usage by model` counts
-	// these per model.
-	if a.reachedCap(t, ended, rep.text) {
-		ended = endCapped
+	var res response
+	// The loop runs once, or twice when the fast model's answer ends weak:
+	// then the main model answers the question again (see pick.go).
+	for {
+		res, err = a.respond(tctx, t, asked, history)
+		route, rep = res.route, res.rep
+		// badOutput is true when the rounds ended on output Ollama couldn't
+		// read, even after the retry. The turn answers with badOutputAnswer
+		// instead of failing with Ollama's raw error.
+		badOutput := errors.Is(err, engine.ErrModelOutput) && ctx.Err() == nil
+		// noVision is true when the question carried images the main model
+		// can't look at. The turn answers with noVisionAnswer.
+		noVision := errors.Is(err, errNoVision)
+		if err != nil && !badOutput && !noVision && (tctx.Err() == nil || ctx.Err() != nil) {
+			// A failure that isn't the turn's own deadline, unreadable model
+			// output or a model without vision: Ollama down or refusing the
+			// request, or the user hung up.
+			return err
+		}
+		ended = endOf(err, rep)
+		// A whole answer from a turn that lost its tools to a full window
+		// still says so, so the user knows why it read so little and can
+		// Continue.
+		if ended == "" && t.windowFull {
+			ended = endWindowFull
+		}
+		// A turn that used every round max_rounds allows and wrote nothing,
+		// or only a plan for its next step, hit the cap; `/usage by model`
+		// counts these per model.
+		if a.reachedCap(t, ended, rep.text) {
+			ended = endCapped
+		}
+		if t.tier != tierFast || !weakEnding(ended) || tctx.Err() != nil {
+			break
+		}
+		// The fast model's answer ended weak: tell the client to fold what
+		// it streamed, and ask the main model. The weak answer never
+		// reaches the transcript.
+		next := a.escalated(t)
+		a.log.InfoContext(ctx, "escalating to the main model", "from", t.model, "to", next.model, "ended", ended)
+		recordEscalation(ctx, ended)
+		if err := emit(rpc.Event{Type: rpc.EventEscalate, Text: escalateText(ended, next.model), Model: next.model}); err != nil {
+			return err
+		}
+		t = next
+		err = nil
 	}
 	capped := ended == endCapped
 	if ended != "" {
@@ -605,6 +629,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	done := doneEvent(start, rep)
 	done.Outcome = ended
 	done.AnsweredBy, done.Reach = a.offMachine(model)
+	done.Model = model
+	// A main answer that ended weak offers the large model, when there is
+	// one; the user decides. See pick.go.
+	done.OfferLarge = t.tier == tierMain && weakEnding(ended) && a.models.Large != ""
 	return emit(done)
 }
 
@@ -821,6 +849,11 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 		found.section = noResultsWebFirst
 	}
 	res.route = dec.Route
+	// With every rule above done, an easy question may go to the fast
+	// model; see pick.go.
+	if a.pickFast(t, dec, picked.names) {
+		a.log.DebugContext(ctx, "the fast model answers: an easy direct question", "confidence", dec.Confidence)
+	}
 	// Any outcome but "ok" means the router wasn't sure and used the
 	// fallback route; the chat screen marks such a route.
 	routeEv := rpc.Event{Type: rpc.EventRoute, Route: dec.Route, Confidence: dec.Confidence, Fallback: dec.Outcome != "ok", Skills: skillInfos(picked.names)}
@@ -875,6 +908,12 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 // the rounds. web is the "From the web" section, "" for none.
 func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, history []engine.Message,
 	picked pickedSkills, files, web string, specs []engine.ToolSpec, fileTurn bool) (reply, error) {
+	// A turn bound for an endpoint off this machine asks first, before it
+	// builds its prompt, so a no can switch it to a local model. It comes
+	// after the pick, so a turn the fast model answers never asks.
+	if err := a.consent(ctx, t, len(history)/2); err != nil {
+		return reply{}, err
+	}
 	// An answer model that can't call tools gets none; see notools.go.
 	specs = a.offerable(ctx, t, specs)
 	// One that can't look at pictures doesn't get view_image.
@@ -1637,7 +1676,7 @@ func (a *Agent) answer(ctx context.Context, t *turn, msgs []engine.Message, tool
 		return reply{}, fmt.Errorf("wait for the answer model to load: %w", err)
 	}
 	model, noThink := t.model, t.noThink
-	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: "main", Model: model, Stream: true})
+	ctx, span := obs.StartChat(ctx, obs.Chat{Tier: t.tier, Model: model, Stream: true})
 	defer span.End()
 
 	start := time.Now()
@@ -1702,7 +1741,7 @@ func (a *Agent) answer(ctx context.Context, t *turn, msgs []engine.Message, tool
 	}
 	obs.ChatResult(span, ou, doneReason)
 	obs.RecordModelCall(ctx, obs.ModelCall{
-		Tier: "main", Model: model, Operation: "chat",
+		Tier: t.tier, Model: model, Operation: "chat",
 		Duration: time.Since(start), TimeToFirstToken: ttft, Usage: ou,
 	})
 	args := []any{"model", model, "ms", time.Since(start).Milliseconds(),

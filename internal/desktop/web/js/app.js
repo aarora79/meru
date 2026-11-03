@@ -13,7 +13,7 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import { setMachine, here } from "./machine.js";
 import {
-  el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice,
+  el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice, drawFirstTry, drawBody,
   appendToken, approvalCard, thumb, isWebSource, sourceIcon, sourceName, openSource, drawFooter, tickWorking,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
@@ -128,6 +128,11 @@ const handlers = {
   },
   onRetry(t) {
     send(t.question, t.scope || state.scope, (t.images || []).map((i) => i.path));
+  },
+  // onAskLarge asks t's question again of the large model; the footer
+  // offers it when a main answer ended early and a large model is set.
+  onAskLarge(t) {
+    askLarge(t.question, t.scope || state.scope);
   },
   // canContinue says whether t's footer offers Continue: t stopped short,
   // and no turn came after it, since merud picks up the chat's last answer.
@@ -504,6 +509,15 @@ function onEvent(u) {
       t.notice = ev.text || "";
       drawNotice(t);
       break;
+    // "escalate": the fast model's answer ended early and the main model
+    // answers afresh. The streamed text folds into "First try" above the
+    // new answer.
+    case "escalate":
+      t.firstTry = { why: ev.text || "", text: t.answer || "" };
+      t.answer = "";
+      drawFirstTry(t);
+      drawBody(t, handlers);
+      break;
     case "done":
       t.stats = ev;
       t.outcome = ev.outcome || "";
@@ -624,6 +638,13 @@ function clearSaveCards() {
 }
 
 // ---- The composer and the queue ----
+
+// askLarge asks text of the large model, in the chat, through the Bridge.
+function askLarge(text, scope) {
+  notice("");
+  const where = scope === "auto" ? "" : scope;
+  bridge.askLarge(state.session, text, where, state.incognito).catch((err) => notice(errorText(err)));
+}
 
 // send asks question, or queues it while a turn runs. The text stays in
 // the box when the Bridge refuses it, so nothing typed is lost. images,
@@ -1426,6 +1447,15 @@ function wire() {
       $("search").focus();
     },
     continueAnswer: () => continueAnswer(newestTurn()),
+    // askLarge is /large: the question given, or the newest one again.
+    askLarge: (q) => {
+      const t = newestTurn();
+      if (!q && !t) {
+        notice("Nothing to ask: /large and a question, or /large alone after one.");
+        return;
+      }
+      askLarge(q || t.question, q ? state.scope : t.scope || state.scope);
+    },
     retry: () => {
       const t = newestTurn();
       if (!t) {

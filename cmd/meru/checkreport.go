@@ -37,6 +37,12 @@ type setStats struct {
 	TPOT       []float64 // milliseconds per output token
 	TokensIn   []float64
 	TokensOut  []float64
+	// Routed is true for a set run with [router] answers = "routed";
+	// FastAnswers counts the answers the fast model wrote, and Escalated
+	// the fast first tries that ended early and went to main.
+	Routed      bool
+	FastAnswers int
+	Escalated   int
 }
 
 // checkReportCmd runs `meru check report <file>...`. It reads every result
@@ -109,6 +115,10 @@ func summarize(results []checkResult) []setStats {
 		if name == "" {
 			name = "unknown"
 		}
+		// A routed run is a set of its own, so the report compares the two.
+		if r.Answers == "routed" {
+			name += " (routed)"
+		}
 		s, ok := byName[name]
 		if !ok {
 			s = &setStats{Name: name, Model: r.Model, ByCategory: map[string][2]int{}}
@@ -122,6 +132,15 @@ func summarize(results []checkResult) []setStats {
 		}
 		s.Total++
 		s.Passed += pass
+		if r.Answers == "routed" {
+			s.Routed = true
+			if r.AnsweredBy != "" && r.AnsweredBy != r.Model {
+				s.FastAnswers++
+			}
+			if r.Escalated {
+				s.Escalated++
+			}
+		}
 		c := s.ByCategory[r.Category]
 		s.ByCategory[r.Category] = [2]int{c[0] + pass, c[1] + 1}
 		run := runs[name][r.Run]
@@ -188,6 +207,13 @@ func reportMarkdown(sets []setStats, cats []string, now time.Time) string {
 			s.Name, s.Model, s.Runs, s.Total, percent(s.Passed, s.Total), s.Low, s.High)
 	}
 
+	if routed := routedLines(sets); routed != "" {
+		b.WriteString("\n## Routed answers\n\n")
+		b.WriteString("With `[router] answers = \"routed\"`, an easy direct question goes to the fast model, and a fast\n")
+		b.WriteString("answer that ends early goes to the main model.\n\n")
+		b.WriteString(routed)
+	}
+
 	b.WriteString("\n## Pass rate by category\n\n")
 	b.WriteString("| Category |")
 	for _, s := range sets {
@@ -227,6 +253,24 @@ func reportMarkdown(sets []setStats, cats []string, now time.Time) string {
 		func(s setStats) float64 { return median(s.TTFT) }, sets))
 	b.WriteString(tradeoffChart("Passed by last token", "time to last token",
 		func(s setStats) float64 { return median(s.TTLT) }, sets))
+	return b.String()
+}
+
+// routedLines writes a table row per routed set: how many answers the
+// fast model wrote and how many fast first tries went to main. It returns
+// "" when no set was routed.
+func routedLines(sets []setStats) string {
+	var b strings.Builder
+	for _, s := range sets {
+		if !s.Routed {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("| Model set | Results | Answered by the fast model | Escalated to main |\n")
+			b.WriteString("| --- | ---: | ---: | ---: |\n")
+		}
+		fmt.Fprintf(&b, "| %s | %d | %d (%.0f%%) | %d |\n", s.Name, s.Total, s.FastAnswers, percent(s.FastAnswers, s.Total), s.Escalated)
+	}
 	return b.String()
 }
 

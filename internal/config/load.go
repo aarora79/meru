@@ -130,6 +130,8 @@ func defaults() Config {
 			Decision:        "top",
 			SearchThreshold: 0.30,
 			ToolsThreshold:  0.25,
+			Answers:         AnswersMain,
+			EasyAbove:       0.8,
 		},
 		Observability: Observability{
 			MetricsInterval: "10s",
@@ -295,6 +297,12 @@ func validate(cfg Config) error {
 	}
 	if !(r.ToolsThreshold >= 0 && r.ToolsThreshold <= 1) {
 		add("router.tools_threshold is %v; it must be between 0 and 1", r.ToolsThreshold)
+	}
+	if r.Answers != AnswersMain && r.Answers != AnswersRouted {
+		add("router.answers %q is unknown; use \"main\" or \"routed\"", r.Answers)
+	}
+	if !(r.EasyAbove >= 0 && r.EasyAbove <= 1) {
+		add("router.easy_above is %v; it must be between 0 and 1", r.EasyAbove)
 	}
 
 	o := cfg.Observability

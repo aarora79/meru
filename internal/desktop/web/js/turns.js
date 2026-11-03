@@ -105,14 +105,16 @@ export function createTurn(t, h) {
   detail.hidden = true;
   detail.id = "steps-" + t.key;
   const approval = el("div", "approval-slot");
+  const firstTry = el("details", "first-try");
+  firstTry.hidden = true;
   const body = el("div", "body");
   const notice = el("p", "answer-notice");
   notice.setAttribute("role", "note");
   const sources = el("div", "sources-line");
   const footer = el("div", "answer-foot");
-  answer.append(strip, detail, approval, body, notice, sources, footer);
+  answer.append(strip, detail, approval, firstTry, body, notice, sources, footer);
   root.append(q, answer);
-  t.el = { root, answer, strip, detail, approval, body, notice, sources, footer };
+  t.el = { root, answer, strip, detail, approval, firstTry, body, notice, sources, footer };
   drawAll(t, h);
   return root;
 }
@@ -121,6 +123,7 @@ export function createTurn(t, h) {
 export function drawAll(t, h) {
   drawStrip(t, h);
   drawApproval(t, h);
+  drawFirstTry(t);
   drawBody(t, h);
   drawNotice(t);
   drawSources(t, h);
@@ -405,6 +408,17 @@ function outcomeText(outcome) {
 // with a warning icon: the answer claimed an action, such as moving a
 // folder, and no tool did it. It shows for a live turn and for a past one
 // reopened from history, and hides when there is none.
+// drawFirstTry draws the fast model's answer that ended early, folded:
+// a closed "First try" line that says why, which opens to the text.
+export function drawFirstTry(t) {
+  const d = t.el.firstTry;
+  d.replaceChildren();
+  d.hidden = !t.firstTry;
+  if (!t.firstTry) return;
+  d.append(el("summary", "", "First try, folded: " + t.firstTry.why));
+  if (t.firstTry.text) d.append(el("p", "first-try-text", t.firstTry.text));
+}
+
 export function drawNotice(t) {
   const p = t.el.notice;
   p.replaceChildren();
@@ -527,6 +541,11 @@ export function drawFooter(t, h) {
   actions.append(button("Try again", { iconName: "retry", onClick: () => h.onRetry(t) }));
   actions.append(button("Details", { iconName: "panel", onClick: () => h.onSelect(t, true) }));
   f.append(actions);
+  // A main answer that ended early offers the large model, when one is
+  // set; nothing asks it on its own.
+  if (t.stats && t.stats.offer_large) {
+    actions.prepend(button("Ask the large model", { iconName: "retry", className: "text-button continue", onClick: () => h.onAskLarge(t) }));
+  }
   const stats = statsText(t);
   if (stats) f.append(el("p", "stats", stats));
   // An answer from an endpoint off this computer says so under it.

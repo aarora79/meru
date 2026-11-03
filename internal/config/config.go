@@ -67,8 +67,12 @@ type Config struct {
 // Fast, Main and Embed stay the default: they are what merud starts with,
 // and what `/model save` writes.
 type Models struct {
-	Fast  string `toml:"fast"`
-	Main  string `toml:"main"`
+	Fast string `toml:"fast"`
+	Main string `toml:"main"`
+	// Large, when set, is a bigger answer model the user asks for by hand:
+	// "Ask the large model" in the app, /large in meru chat, meru -large.
+	// It may name an [[endpoints]] entry as "@name". Empty means none.
+	Large string `toml:"large"`
 	Embed string `toml:"embed"`
 	// Think set to true lets the main model reason before it answers when
 	// no set is in use. Left out or false, thinking stays off: the
@@ -158,7 +162,21 @@ type Router struct {
 	Decision        string  `toml:"decision"`
 	SearchThreshold float64 `toml:"search_threshold"` // 0 to 1; "marginal" only
 	ToolsThreshold  float64 `toml:"tools_threshold"`  // 0 to 1; "marginal" only
+	// Answers says which model writes each answer: "main" (every answer
+	// from the main model, the default) or "routed" (an easy question from
+	// the fast model, the rest from main, and a weak fast answer asked
+	// again of main). See docs/design/model-router.md.
+	Answers string `toml:"answers"`
+	// EasyAbove is how sure the router must be of the direct route before
+	// the fast model answers, 0 to 1; "routed" only.
+	EasyAbove float64 `toml:"easy_above"`
 }
+
+// The values of Router.Answers.
+const (
+	AnswersMain   = "main"
+	AnswersRouted = "routed"
+)
 
 // Observability controls where metrics and traces go.
 type Observability struct {

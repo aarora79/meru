@@ -75,7 +75,7 @@ pick-eval: ## Score the skill pick on labelled questions against the local Ollam
 	go test -tags integration -count=1 -v -run TestPickEval ./internal/agent/
 
 bench: ## Run the private benchmark in bench/ against each model set (docs/benchmarks/README.md)
-	SETS="$(SETS)" REPEATS="$(REPEATS)" ONLY="$(ONLY)" bash scripts/bench.sh
+	SETS="$(SETS)" REPEATS="$(REPEATS)" ONLY="$(ONLY)" ANSWERS="$(ANSWERS)" bash scripts/bench.sh
 
 bench-report: ## Write docs/benchmarks/results.md from the results in bench/results/
 	go run ./cmd/meru check report bench/results/*.jsonl > docs/benchmarks/results.md

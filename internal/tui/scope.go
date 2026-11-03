@@ -99,6 +99,25 @@ func (m Model) continueCommand() (tea.Model, tea.Cmd) {
 	return m, m.sendOrQueue(outgoing{text: continueWords, scope: t.scope, cont: true})
 }
 
+// largeCommand runs /large: it asks the large model, [models] large, a
+// question, or the newest question again when none follows. merud says so
+// when config names no large model.
+func (m Model) largeCommand(arg string) (tea.Model, tea.Cmd) {
+	q := strings.TrimSpace(arg)
+	scope := ""
+	if q == "" {
+		if len(m.turns) == 0 {
+			m.input.Reset()
+			m.notice = "nothing to ask: /large <question>, or /large alone after a question"
+			return m, nil
+		}
+		t := m.turns[len(m.turns)-1]
+		q, scope = t.question, t.scope
+	}
+	m.input.Reset()
+	return m, m.sendOrQueue(outgoing{text: q, scope: scope, large: true})
+}
+
 func (m Model) retryCommand() (tea.Model, tea.Cmd) {
 	if len(m.turns) == 0 {
 		m.input.Reset()

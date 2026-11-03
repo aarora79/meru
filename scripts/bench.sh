@@ -27,6 +27,8 @@
 #   SETS     model sets to run, space-separated (default: every set in config)
 #   REPEATS  passes per set (default 3)
 #   ONLY     ids or categories to run, as `meru check --only` takes them
+#   ANSWERS  [router] answers to run each set with, space-separated:
+#            "main" (default), "routed", or "main routed" to compare
 
 # set -e stops at the first command that fails, -u treats an unset variable
 # as an error, and -o pipefail makes a pipe fail when any command in it does.
@@ -41,6 +43,7 @@ results="$bench/results"
 bin="$bench/bin"
 repeats="${REPEATS:-3}"
 only="${ONLY:-}"
+answers_modes="${ANSWERS:-main}"
 merud_pid=""
 
 # fail prints a message to stderr and stops the script.
@@ -85,6 +88,22 @@ wait_for_scan() {
   while "$bin/meru" -socket "$sock" index -status 2>/dev/null | grep -q '^Scanning: *yes'; do
     sleep 10
   done
+}
+
+# set_answers writes [router] answers = "$1" into the bench home's
+# config.toml: it replaces an answers line under [router], or adds one
+# right after the [router] header when there is none.
+set_answers() {
+  awk -v mode="$1" '
+    /^\[router\]/ { print; print "answers = \"" mode "\""; inrouter = 1; next }
+    /^\[/ { inrouter = 0 }
+    inrouter && /^answers[ \t]*=/ { next }
+    { print }
+  ' "$home/config.toml" >"$home/config.toml.new"
+  if ! grep -q '^\[router\]' "$home/config.toml.new"; then
+    printf '\n[router]\nanswers = "%s"\n' "$1" >>"$home/config.toml.new"
+  fi
+  mv "$home/config.toml.new" "$home/config.toml"
 }
 
 # reset_home puts the bench home back to the state setup left it in.
@@ -145,10 +164,12 @@ fi
 [ -n "$SETS" ] || fail "config.toml names no model sets ([[models.sets]])"
 
 stamp=$(date +%Y%m%d-%H%M%S)
+for mode in $answers_modes; do
+set_answers "$mode"
 for set in $SETS; do
   for pass in $(seq 1 "$repeats"); do
-    out="$results/$stamp-$set-$pass.jsonl"
-    say "$set, pass $pass of $repeats -> ${out#"$root"/}"
+    out="$results/$stamp-$set-$mode-$pass.jsonl"
+    say "$set, answers $mode, pass $pass of $repeats -> ${out#"$root"/}"
     reset_home
     start_merud
     "$bin/meru" -socket "$sock" model use "$set" >/dev/null
@@ -160,8 +181,9 @@ for set in $SETS; do
     "$bin/meru" -socket "$sock" "${args[@]}" >"$out" || true
     passed=$(grep -c '"pass":true' "$out" || true)
     total=$(grep -c '"id":' "$out" || true)
-    say "$set, pass $pass: $passed of $total passed"
+    say "$set, answers $mode, pass $pass: $passed of $total passed"
     stop_merud
   done
+done
 done
 say "done; run make bench-report to write docs/benchmarks/results.md"

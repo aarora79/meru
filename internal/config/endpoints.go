@@ -187,7 +187,7 @@ func checkEndpoints(eps []Endpoint, models Models) []error {
 		}
 		if !answer {
 			add("%s: %q names an endpoint, but this model runs on the local Ollama; "+
-				"only main may name an endpoint", key, model)
+				"only main and large may name an endpoint", key, model)
 			return
 		}
 		if _, ok := FindEndpoint(eps, name); !ok {
@@ -195,6 +195,7 @@ func checkEndpoints(eps []Endpoint, models Models) []error {
 		}
 	}
 	ref("models.main", models.Main, true)
+	ref("models.large", models.Large, true)
 	ref("models.fast", models.Fast, false)
 	ref("models.embed", models.Embed, false)
 	for _, s := range models.Sets {
