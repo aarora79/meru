@@ -201,7 +201,9 @@ func (b *Bridge) Continue(session, scope string, incognito bool) error {
 // images the first asking carried. images are the paths the page got on
 // that turn's images, "~/meru-output/uploads/garden-bed.png"; each must
 // sit in the uploads folder, and merud checks them again. Without Retry,
-// Try again on a question about an image would ask it blind. It fails as
+// Try again on a question about an image would ask it blind. Retry
+// leaves the composer's attachments where they are: they belong to the
+// next question the user types, not to the one asked again. It fails as
 // Send does, and when a path isn't in the uploads folder.
 func (b *Bridge) Retry(session, question, scope string, images []string, incognito bool) error {
 	var extra []Attachment
@@ -215,7 +217,7 @@ func (b *Bridge) Retry(session, question, scope string, images []string, incogni
 			Thumb: b.thumbnail(full), full: full,
 		})
 	}
-	return b.send(session, question, scope, incognito, extra, sendAsk)
+	return b.send(session, question, scope, incognito, extra, sendRetry)
 }
 
 // continueText is what the chat shows for a Continue, as `meru chat` and
@@ -232,13 +234,14 @@ func (b *Bridge) AskLarge(session, question, scope string, incognito bool) error
 // The kinds of question send sends.
 const (
 	sendAsk      = iota // a question, with the attachments
+	sendRetry           // a question asked again, with its first images only
 	sendContinue        // a Continue, with none
 	sendLarge           // a question for the large model, with none
 )
 
 // send does the work of Send, Retry, Continue and AskLarge. extra holds
-// images to send beside the ones attached in the composer. kind is one of
-// the send constants; only sendAsk takes the attachments.
+// the images a retry carries. kind is one of the send constants; only
+// sendAsk takes the composer's attachments.
 func (b *Bridge) send(session, question, scope string, incognito bool, extra []Attachment, kind int) error {
 	cont := kind == sendContinue
 	q := strings.TrimSpace(question)
@@ -255,8 +258,11 @@ func (b *Bridge) send(session, question, scope string, incognito bool, extra []A
 		return fmt.Errorf("%d questions already wait; send this one when the next starts", maxQueue)
 	}
 	next := outgoing{text: q, cont: cont, large: kind == sendLarge}
-	if kind == sendAsk {
+	switch kind {
+	case sendAsk:
 		next = outgoing{text: b.withAttachments(q), images: append(extra, imagesOf(b.attached)...)}
+	case sendRetry:
+		next = outgoing{text: q, images: extra}
 	}
 	if len(b.attached) > 0 && kind == sendAsk {
 		b.attached = nil
