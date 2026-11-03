@@ -579,7 +579,7 @@
 
 </ul>
 
-<p><b>Where Meru looks.</b> The composer's switch sets the request's <code>scope</code>: Auto, My files, Mail and calendar, Web or Just talk. Auto runs the router as every other client does, except for a question with images, which takes the <code>direct</code> route because the router's model reads text alone. Any other scope skips the router, the route rules that widen a route and a picked skill's tools, because a scope is a promise about what the turn may touch. <code>dispatch</code> keeps the promise: on a scoped turn, a call to a tool the round didn't offer is denied and logged, even when config allows that tool, so a model that names <code>web_search</code> from memory on a My files turn searches nothing:</p>
+<p><b>Where Meru looks.</b> The composer's switch sets the request's <code>scope</code>: Auto, My files, Mail and calendar, Web or Just talk. A new chat starts on Auto, in the app and after <code>/new</code> in <code>meru chat</code>. Auto runs the router as every other client does, except for a question with images, which takes the <code>direct</code> route because the router's model reads text alone. Any other scope skips the router, the route rules that widen a route and a picked skill's tools, because a scope is a promise about what the turn may touch. <code>dispatch</code> keeps the promise: on a scoped turn, a call to a tool the round didn't offer is denied and logged, even when config allows that tool, so a model that names <code>web_search</code> from memory on a My files turn searches nothing:</p>
 
 <div class="tbl"><table>
 

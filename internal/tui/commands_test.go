@@ -57,6 +57,29 @@ func TestNewSession(t *testing.T) {
 	}
 }
 
+// TestNewSessionResetsScope checks that /new puts the scope back to auto:
+// the first question of the new chat asks with no scope.
+func TestNewSessionResetsScope(t *testing.T) {
+	merud := &fakeMerud{}
+	m := testModel(merud.ask, newFakeSender())
+	m, _ = update(t, m, typeText("/scope mail"), press(tea.KeyEnter))
+	if m.scope != rpc.ScopeMail {
+		t.Fatalf("after /scope mail: scope %q, want %q", m.scope, rpc.ScopeMail)
+	}
+	m, _ = update(t, m, typeText("/new"), press(tea.KeyEnter))
+	if m.scope != "" {
+		t.Errorf("after /new: scope %q, want auto", m.scope)
+	}
+	m, cmd := update(t, m, typeText("what's on tomorrow?"), press(tea.KeyEnter))
+	if cmd == nil {
+		t.Fatal("the question after /new sent nothing")
+	}
+	finishTurn(cmd)
+	if last := merud.reqs[len(merud.reqs)-1]; last.Scope != "" {
+		t.Errorf("request after /new has scope %q, want none", last.Scope)
+	}
+}
+
 // TestExit checks /exit: it quits the chat, stopping an answer that is
 // still streaming, and the line for an unknown command points at /help.
 func TestExit(t *testing.T) {

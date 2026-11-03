@@ -453,7 +453,8 @@ the line as its tooltip.
   conversation on demand.
 
 **Where Meru looks.** The composer's switch sets the request's `scope`: Auto, My
-files, Mail and calendar, Web or Just talk. Auto runs the router as every other
+files, Mail and calendar, Web or Just talk. A new chat starts on Auto, in the
+app and after `/new` in `meru chat`. Auto runs the router as every other
 client does, except for a question with images, which takes the `direct` route
 because the router's model reads text alone. Any other scope skips the router, the route rules that widen a route
 and a picked skill's tools, because a scope is a promise about what the turn may
