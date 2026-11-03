@@ -1,10 +1,11 @@
 # How do I answer with a model from another model server?
 
-`[models] main` can name a model that runs on a model server other than
-Meru's own Ollama: Ollama's OpenAI-style API, vLLM, llama.cpp's server or
-LM Studio on this computer, a GPU box on your network, or a hosted service
-you have a key for. The router, search and summaries always stay on the
-local Ollama.
+`[models] main` or `[models] large` can name a model that runs on a model
+server other than Meru's own Ollama: Ollama's OpenAI-style API, vLLM,
+llama.cpp's server or LM Studio, on this computer or on a GPU box on your own
+network or private cloud network. The server must speak the OpenAI chat
+completions API. The router, search and summaries always stay on the local
+Ollama, and no endpoint may sit on the internet.
 
 1. **Note the server's address and the model's name.** Ollama serves an
    OpenAI-style API at `http://127.0.0.1:11434/v1` with no setup.
@@ -18,7 +19,6 @@ local Ollama.
    [[endpoints]]
    name           = "lab"
    reach          = "near-edge"                 # see below
-   api            = "openai"                    # or "anthropic", or "ollama"
    url            = "http://10.0.0.5:8000/v1"
    model          = "qwen3.6:35b-a3b-mxfp8"
    context_length = 32768                       # the most tokens it reads
@@ -30,11 +30,10 @@ local Ollama.
    | reach | where | rule |
    | --- | --- | --- |
    | `local` | this computer | the URL must be on loopback |
-   | `near-edge` | your own network | every address Meru connects to must be private |
-   | `remote` | the internet | the URL must use https |
+   | `near-edge` | your own network or private cloud network | every address Meru connects to must be private |
 
-   For `openai` and `anthropic`, `url` ends at the API's version, such as
-   `/v1`. Those APIs don't say how much a model reads or whether it sees
+   Config refuses any other reach. `url` ends at the API's version, such as
+   `/v1`. The API doesn't say how much a model reads or whether it sees
    pictures, so the entry does. Add `tools = false` for a model that can't
    call tools.
 
@@ -49,8 +48,8 @@ local Ollama.
    `merud.log` has an `answer endpoint` line for each entry, or a warning
    naming what to fix.
 
-**What Meru asks.** Before a question goes to a `near-edge` or `remote`
-endpoint, Meru asks, in the app, in `meru chat` and in `meru`:
+**What Meru asks.** Before a question goes to a `near-edge` endpoint, Meru
+asks, in the app, in `meru chat` and in `meru`:
 
 > Send this question to @lab? It carries your question, 2 earlier turns of
 > this chat, your profile and the memories Meru recalls for it, excerpts from

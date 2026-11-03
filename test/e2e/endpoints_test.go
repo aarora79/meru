@@ -26,7 +26,7 @@ const servedModel = "served-model"
 // entry for the fake's /v1.
 func endpointConfig(url string) string {
 	cfg := fakeConfig(url, "[builtin]\ntools = [\"datetime\"]\nconfirm = []\n\n"+
-		"[[endpoints]]\nname = \"v1\"\nreach = \"local\"\napi = \"openai\"\n"+
+		"[[endpoints]]\nname = \"v1\"\nreach = \"local\"\n"+
 		"url = \""+url+"/v1\"\nmodel = \""+servedModel+"\"\ncontext_length = 32768\n")
 	return strings.Replace(cfg, "main = \""+mainModel+"\"", "main = \"@v1\"", 1)
 }

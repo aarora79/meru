@@ -25,5 +25,5 @@ serves them at `aarora79.github.io/meru/slides/`.
 ```
 
 Each slide is 1280 by 720 pixels, and the page's print styles give each one a page
-of that size. All four decks date from v0.6.2, October 2026; update
+of that size. All four decks date from v0.7.0, November 2026; update
 them with a release that changes what a slide says.

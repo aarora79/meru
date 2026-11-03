@@ -642,8 +642,8 @@ type Event struct {
 	// "timeout" and "capped".
 	Outcome string `json:"outcome,omitempty"`
 	// AnsweredBy and Reach, on the "done" event, name the answer endpoint
-	// that wrote the answer, as "@lab", and how far it is, "near-edge" or
-	// "remote", when it isn't on this computer. Both stay empty for an
+	// that wrote the answer, as "@lab", and how far it is, "near-edge",
+	// when it isn't on this computer. Both stay empty for an
 	// answer written here, so a client says where the answer came from
 	// only when it came from elsewhere.
 	AnsweredBy string `json:"answered_by,omitempty"`
@@ -815,7 +815,7 @@ const KindConsent = "consent"
 // question the client asks. See docs/design/model-router.md.
 type ConsentInfo struct {
 	Endpoint string `json:"endpoint"` // the [[endpoints]] name, such as "lab"
-	Reach    string `json:"reach"`    // "near-edge" or "remote"
+	Reach    string `json:"reach"`    // "near-edge"
 	Model    string `json:"model"`    // the model name the endpoint knows
 	// Carries lists, in plain words, what the turn's prompt would hold,
 	// such as "your question", "3 earlier turns of this chat" and "1

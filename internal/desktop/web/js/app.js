@@ -1290,8 +1290,7 @@ function drawAsking(body, v) {
 // card and the side panel both show it.
 function whyText(v) {
   if (v.consent) {
-    const far = v.consent.reach === "remote" ? "a hosted service on the internet" : "a computer on your own network";
-    return "The answer model, " + v.name + ", runs on " + far + ", so this question, and what Meru adds to it, " +
+    return "The answer model, " + v.name + ", runs on a computer on your own network, so this question, and what Meru adds to it, " +
       "would leave this computer. Meru asks first every time; a yes lasts this turn or this chat, never longer.";
   }
   const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
@@ -1310,7 +1309,7 @@ function whyText(v) {
 function privacyLine(t) {
   const s = t.stats;
   const start = s && s.answered_by
-    ? "The answer came from " + s.answered_by + ", " + (s.reach === "remote" ? "a hosted service" : "a computer on your network") + ", after you allowed it."
+    ? "The answer came from " + s.answered_by + ", a computer on your network, after you allowed it."
     : "The model ran on " + here() + ".";
   if (t.state === "active") return start;
   const names = t.contacted || [];

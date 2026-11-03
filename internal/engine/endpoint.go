@@ -1,7 +1,7 @@
-// This file holds what the OpenAI and Anthropic engines share: the HTTP
-// client for an endpoint, one request with its span and its error, the
-// reader for a server-sent event stream, and the pairing of tool calls
-// with their results. See docs/design/model-router.md.
+// This file holds the plumbing under the OpenAI engine: the HTTP client
+// for an endpoint, one request with its span and its error, the reader
+// for a server-sent event stream, and the pairing of tool calls with
+// their results. See docs/design/model-router.md.
 
 package engine
 
@@ -40,9 +40,8 @@ var ErrNoEmbed = errors.New("an endpoint doesn't embed; the embedding model runs
 // fast model, which config keeps on the local Ollama.
 var ErrNoLogProbs = errors.New("an endpoint doesn't report token probabilities; the router runs on the local Ollama")
 
-// defaultMaxTokens caps an answer when the caller sets no cap. The
-// Anthropic API refuses a request without one, and a cap stops a runaway
-// answer on any server.
+// defaultMaxTokens caps an answer when the caller sets no cap, so a
+// runaway answer stops.
 const defaultMaxTokens = 8192
 
 // EndpointConfig is what an endpoint engine needs: where the server is,
@@ -50,19 +49,19 @@ const defaultMaxTokens = 8192
 // key already read from secrets.toml.
 type EndpointConfig struct {
 	Name string // the [[endpoints]] name, for errors and logs
-	// Reach is how far requests may travel: "local", "near-edge" or
-	// "remote", as config names them; "" counts as "local".
+	// Reach is how far requests may travel: "local" or "near-edge", as
+	// config names them; "" counts as "local".
 	Reach string
 	URL   string // the API's base, such as http://127.0.0.1:11434/v1
 	Key   string // the API key itself, or "" for none; never logged
 	Model string // the model name the server knows
 }
 
-// endpointAPI sends requests to one endpoint. Both endpoint engines hold
+// endpointAPI sends requests to one endpoint. The OpenAI engine holds
 // one; it does what OllamaEngine's do and fail do for Ollama.
 type endpointAPI struct {
 	name    string // the endpoint's name, such as "lab"
-	kind    string // "openai" or "anthropic", for spans and errors
+	kind    string // "openai", for spans and errors
 	base    string // the URL with no trailing slash
 	headers http.Header
 	client  *http.Client
@@ -100,9 +99,10 @@ func newEndpointAPI(kind string, cfg EndpointConfig, headers http.Header, client
 //   - "near-edge": every address the client connects to must pass
 //     loopback.NearEdge. The check runs on the resolved address, inside
 //     the dialer, so a host name that points at the internet fails.
-//   - "remote": the URL must use https; any address is allowed.
 //
-// For near-edge and remote, the client ignores the proxy settings in the
+// Any other reach fails: Meru sends no prompt to the internet.
+//
+// For near-edge, the client ignores the proxy settings in the
 // environment, since a proxy would make the connection, and the check,
 // elsewhere. base, when not nil, supplies the client for a local endpoint,
 // as tests do; it is copied, never changed.
@@ -120,18 +120,12 @@ func reachClient(reach, raw string, base *http.Client) (*http.Client, error) {
 			copied := *base
 			c = &copied
 		}
-	case "near-edge", "remote":
+	case "near-edge":
 		u, err := url.Parse(raw)
 		if err != nil || u.Host == "" {
 			return nil, fmt.Errorf("url %q has no host", raw)
 		}
-		if reach == "remote" && u.Scheme != "https" {
-			return nil, fmt.Errorf("url %q: a remote endpoint must use https", raw)
-		}
-		d := &net.Dialer{Timeout: 30 * time.Second}
-		if reach == "near-edge" {
-			d.Control = nearEdgeOnly
-		}
+		d := &net.Dialer{Timeout: 30 * time.Second, Control: nearEdgeOnly}
 		c.Transport = &http.Transport{
 			Proxy:               nil,
 			DialContext:         d.DialContext,
@@ -267,8 +261,8 @@ func (a *endpointAPI) apiError(path string, resp *http.Response) error {
 }
 
 // sseEvent is one event from a server-sent event stream: its type from an
-// "event:" line, which the Anthropic API sends and the OpenAI API doesn't,
-// and its data from the "data:" lines.
+// "event:" line, which some servers send, and its data from the "data:"
+// lines.
 type sseEvent struct {
 	Type string
 	Data []byte

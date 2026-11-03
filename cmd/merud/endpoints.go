@@ -36,7 +36,7 @@ func newEndpoints(cfg config.Config, log *slog.Logger) (map[string]engine.Endpoi
 		if ep.Err != nil {
 			log.Warn("an answer model in [[endpoints]] can't answer", "endpoint", c.Name, "err", ep.Err)
 		} else {
-			log.Info("answer endpoint", "endpoint", c.Name, "api", c.API, "reach", c.Reach, "model", c.Model)
+			log.Info("answer endpoint", "endpoint", c.Name, "reach", c.Reach, "model", c.Model)
 		}
 		out[c.Name] = ep
 	}
@@ -61,23 +61,7 @@ func newEndpointEngine(c config.Endpoint, sec *secrets.Secrets, log *slog.Logger
 		}
 	}
 	ec := engine.EndpointConfig{Name: c.Name, Reach: c.Reach, URL: c.URL, Key: key, Model: c.Model}
-	switch c.API {
-	case config.APIOpenAI:
-		return engine.NewOpenAI(ec, nil, log)
-	case config.APIAnthropic:
-		return engine.NewAnthropic(ec, nil, log)
-	case config.APIOllama:
-		// Another Ollama: the same engine as the local one, with no
-		// embedding model and the entry's window on every call.
-		o, err := engine.NewOllamaEndpoint(ec, log)
-		if err != nil {
-			return nil, err
-		}
-		o.ContextLength = c.ContextLength
-		return o, nil
-	}
-	// Config refuses any other api, so this is a programmer's mistake.
-	return nil, errors.New("unknown api " + c.API)
+	return engine.NewOpenAI(ec, nil, log)
 }
 
 // endpointDetails returns what an entry says its model can do, in the form

@@ -13,7 +13,6 @@ const labEndpoint = `
 [[endpoints]]
 name = "lab"
 reach = "local"
-api = "openai"
 url = "http://127.0.0.1:11434/v1"
 api_key = "secret:lab_key"
 model = "qwen3.6:35b"
@@ -28,7 +27,7 @@ func TestLoadEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	e, ok := FindEndpoint(cfg.Endpoints, "lab")
-	if !ok || e.API != APIOpenAI || e.ContextLength != 32768 || !e.Vision || !e.CallsTools() {
+	if !ok || e.ContextLength != 32768 || !e.Vision || !e.CallsTools() {
 		t.Errorf("endpoint = %+v", e)
 	}
 	if name, ok := EndpointRef(cfg.Models.Main); !ok || name != "lab" {
@@ -69,11 +68,9 @@ func TestLoadRefusesBadEndpoints(t *testing.T) {
 		"near-edge on a public address": {strings.NewReplacer(`reach = "local"`, `reach = "near-edge"`,
 			`url = "http://127.0.0.1:11434/v1"`, `url = "http://8.8.8.8/v1"`).Replace(labEndpoint), `8.8.8.8 is a public address`},
 		"no host":                  {strings.Replace(edit(`reach = "local"`, `reach = "near-edge"`), `url = "http://127.0.0.1:11434/v1"`, `url = "lab:8000"`, 1), `must be an http or https address with a host`},
-		"remote over http":         {edit(`reach = "local"`, `reach = "remote"`), `must use https`},
+		"remote":                   {edit(`reach = "local"`, `reach = "remote"`), `reach "remote" is unknown`},
 		"unknown reach":            {edit(`reach = "local"`, `reach = "far"`), `reach "far" is unknown`},
-		"unknown api":              {edit(`api = "openai"`, `api = "grpc"`), `api "grpc" is unknown`},
 		"key written in":           {edit(`api_key = "secret:lab_key"`, `api_key = "sk-abc"`), `api_key must name an entry in secrets.toml`},
-		"key on an Ollama":         {edit(`api = "openai"`, `api = "ollama"`), `Ollama's API takes no key`},
 		"no model":                 {edit(`model = "qwen3.6:35b"`, `model = ""`), `has no model`},
 		"no context length":        {edit("context_length = 32768", "context_length = 0"), `context_length is 0`},
 		"no name":                  {edit(`name = "lab"`, `name = ""`), `endpoints: entry 1 has no name`},
@@ -88,23 +85,16 @@ func TestLoadRefusesBadEndpoints(t *testing.T) {
 			}
 		})
 	}
-	// A cloud model through an Ollama endpoint is still a cloud model.
-	body := strings.NewReplacer(`api = "openai"`, `api = "ollama"`, "api_key = \"secret:lab_key\"\n", "",
-		`model = "qwen3.6:35b"`, `model = "gpt-oss:120b-cloud"`).Replace(labEndpoint)
-	if _, err := Load(writeConfig(t, body)); err == nil || !strings.Contains(err.Error(), "is an Ollama cloud model") {
-		t.Errorf("a cloud model on an Ollama endpoint: err = %v", err)
-	}
 }
 
 // TestLoadEndpointReaches checks the URLs each reach takes: a near-edge
 // endpoint by private address or by name, which the engine checks when it
-// connects, and a remote one over https.
+// connects.
 func TestLoadEndpointReaches(t *testing.T) {
 	for _, tc := range []struct{ reach, url string }{
 		{"near-edge", "http://10.0.0.5:8000/v1"},
 		{"near-edge", "http://gpu-box.lan:8000/v1"},
 		{"near-edge", "http://[fd00::5]:11434"},
-		{"remote", "https://models.example.com/v1"},
 	} {
 		body := strings.NewReplacer(`reach = "local"`, `reach = "`+tc.reach+`"`,
 			`url = "http://127.0.0.1:11434/v1"`, `url = "`+tc.url+`"`).Replace(labEndpoint)

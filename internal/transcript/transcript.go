@@ -45,7 +45,7 @@ const (
 	TypeMeta = "meta"
 	// TypeConsent records the user's answer when a turn would send its
 	// prompt to an answer endpoint off this machine: Tool names the
-	// endpoint, as "@lab", Reach is "near-edge" or "remote", and Choice is
+	// endpoint, as "@lab", Reach is "near-edge", and Choice is
 	// "once", "session" or "deny". It never holds the prompt.
 	TypeConsent = "consent"
 )
@@ -88,8 +88,7 @@ type Line struct {
 	// Choice is the user's answer on an approval or consent line: "once",
 	// "session" or "deny".
 	Choice string `json:"choice,omitempty"`
-	// Reach is how far a consent line's endpoint is: "near-edge" or
-	// "remote".
+	// Reach is how far a consent line's endpoint is: "near-edge".
 	Reach string `json:"reach,omitempty"`
 	// Outcome is how a call ended, on a tool_result line: "ok", "error",
 	// "denied", "declined", "cancelled" or "timeout". OK repeats

@@ -7,21 +7,22 @@ sends one small block of text per event, and Go reads it one line at a time with
 ## Why it matters here
 
 Ollama streams an answer as NDJSON (newline-delimited JSON): one JSON object per
-line. The OpenAI and Anthropic APIs stream in another format, server-sent events
+line. The OpenAI chat completions API streams in another format, server-sent events
 (SSE), with the content type `text/event-stream`. Each event is a few lines of
 `field: value`, and a blank line ends it:
 
 ```text
-event: content_block_delta
-data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hel"}}
+event: message
+data: {"choices":[{"delta":{"content":"Hel"}}]}
 
 data: {"choices":[{"delta":{"content":"lo"}}]}
 
 data: [DONE]
 ```
 
-The OpenAI API sends only `data:` lines and ends with `data: [DONE]`. The
-Anthropic API puts the event's type on an `event:` line too. A line that starts
+The OpenAI API sends only `data:` lines and ends with `data: [DONE]`. Some
+servers also name the event's type on an `event:` line, and `readSSE` keeps it
+as the event's `Type`. A line that starts
 with `:` is a comment, which servers send to keep a quiet connection open.
 
 ## Smallest example
@@ -52,7 +53,7 @@ if err := sc.Err(); err != nil { /* the connection broke */ }
 - `internal/engine/endpoint.go`: `readSSE` turns a body into an
   `iter.Seq2[sseEvent, error]` (see [iterators](iterators.md)), one event per
   step, with its type and data.
-- `internal/engine/openai.go` and `anthropic.go`: `Stream` ranges over
+- `internal/engine/openai.go`: `Stream` ranges over
   `readSSE`, decodes each event's JSON, and yields text as it comes.
 - `internal/testutil/fakeollama/openai.go`: the fake writes the same format,
   flushing after each event so the client sees it at once.

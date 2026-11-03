@@ -17,8 +17,8 @@ import (
 // Endpoint is one answer model on a server other than the local Ollama, as
 // Engines holds it.
 type Endpoint struct {
-	// Engine speaks the endpoint's API: an *OpenAIEngine, an
-	// *AnthropicEngine, or an *OllamaEngine for another Ollama.
+	// Engine speaks the endpoint's API: an *OpenAIEngine, or a fake in
+	// tests.
 	Engine Engine
 	// Model is the name the server knows the model by; a call's
 	// Options.Model becomes this.

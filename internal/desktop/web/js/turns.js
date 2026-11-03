@@ -308,8 +308,7 @@ function consentCard(v, titleId, onChoice) {
   title.id = titleId;
   title.append(icon("ask", 16), document.createTextNode(" Send this question to "));
   title.append(el("strong", "", v.name), document.createTextNode("?"));
-  const where = c.reach === "remote" ? "a hosted service" : "a computer on your own network";
-  card.append(title, el("p", "approval-tool", where + " · model " + c.model));
+  card.append(title, el("p", "approval-tool", "a computer on your own network · model " + c.model));
   card.append(el("p", "", "It carries " + joinAnd(c.carries || []) + "."));
   const choices = el("div", "choices");
   for (const ch of v.choices) {

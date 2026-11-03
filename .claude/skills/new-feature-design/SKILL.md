@@ -411,7 +411,7 @@ Meru serves one user on one machine, so the questions are local ones:
 ## 16. Non-negotiables check
 | Rule | Holds? | How |
 |------|--------|-----|
-| No prompt leaves the machine without the user's yes | | |
+| No prompt goes to the internet, and none leaves the machine without the user's yes | | |
 | No telemetry off the machine; OTLP loopback only | | |
 | Deny-by-default for tools and agents | | |
 | Every tool call through `dispatch` and `tool_calls` | | |

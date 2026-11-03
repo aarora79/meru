@@ -19,10 +19,10 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
    `web_fetch`, which you turn off by taking it out of `[builtin] tools`.
    A page URL that no search result or question of yours gave asks you first, so
    the model can't send your data out in a URL. Meru measures itself, but no telemetry
-   leaves the machine. No prompt leaves it without your yes: the fast and
-   embedding models always run here, and a turn goes to an answer endpoint on
-   your network or the internet only after you answer "this time" or "this chat"
-   (see [Answer endpoints](#answer-endpoints)).
+   leaves the machine. No prompt goes to the internet: the fast and embedding
+   models always run here, an answer model runs here or on a computer on your
+   own network, and a turn goes to one on your network only after you answer
+   "this time" or "this chat" (see [Answer endpoints](#answer-endpoints)).
    Other programs Meru talks to on loopback can reach the network on their own: an
    MCP server you add, such as Gmail, and SearXNG, which web search sends its
    search words through (see [MCP](#mcp) and [Web search](#web-search)).
@@ -159,7 +159,8 @@ starts programs, all read-only and with no shell, only from `run.go`, and
 Apple Notes, Meru.app and the Mac installer, stays in its own package; the
 code checks the row's field instead of the system's name.
 
-**On a cloud server**, Meru still sends no prompt to a model provider,
+**On a cloud server**, Meru still sends no prompt to a model provider or
+anywhere outside that server's private network,
 but your notes, email and transcripts live on that server. Meru's promise is "a
 machine you control"; where that machine sits is your call. You'd run `meru` over SSH,
 because it reaches `merud` through a local socket.
@@ -1575,10 +1576,12 @@ type Engine interface {
 ```
 
 **`OllamaEngine` is the main implementation.** It talks to Ollama over HTTP on
-loopback and refuses to start if the configured URL points anywhere else. Two more
-answer the models in `[[endpoints]]`, and `Engines`, the engine `merud` holds,
-sends each call to the right one (see [Answer endpoints](#answer-endpoints)).
-None of them can reach one of Ollama's cloud models, and an endpoint engine reaches only the server its entry names, at its reach.
+loopback and refuses to start if the configured URL points anywhere else.
+`OpenAIEngine` answers the models in `[[endpoints]]`, and `Engines`, the engine
+`merud` holds, sends each call to the right one (see
+[Answer endpoints](#answer-endpoints)). Neither can reach one of Ollama's cloud
+models, and the endpoint engine reaches only the server its entry names, on this
+machine or your own network.
 
 Ollama itself can: once signed in to ollama.com, a model whose tag ends in `cloud`,
 such as `gpt-oss:120b-cloud`, answers through the local API while Ollama passes
@@ -1654,10 +1657,11 @@ whisper.cpp's server, not in Ollama, and `internal/speech` talks to it (see
 ### Answer endpoints
 
 An answer model can run on a model server other than the local Ollama: Ollama's
-own OpenAI-style API, vLLM, llama.cpp's server or LM Studio on this machine, a
-GPU box on your network, or a hosted service you have a key for. A
-`[[endpoints]]` entry names it, and `[models] main`, or a model set's `main`,
-refers to it as `@name`:
+own OpenAI-style API, vLLM, llama.cpp's server or LM Studio, on this machine or
+on a GPU box on your own network or private cloud network. Meru calls such a
+server near-edge. No endpoint sits on the internet. A `[[endpoints]]` entry
+names it, and `[models] main`, `[models] large` or a model set's `main` refers
+to it as `@name`:
 
 ```toml
 [models]
@@ -1665,8 +1669,7 @@ main = "@lab"
 
 [[endpoints]]
 name           = "lab"
-reach          = "near-edge"                 # "local", "near-edge" or "remote"
-api            = "openai"                    # "ollama", "openai" or "anthropic"
+reach          = "near-edge"                 # "local" or "near-edge"
 url            = "http://10.0.0.5:8000/v1"
 model          = "qwen3.6:35b-a3b-mxfp8"     # the name the server knows
 context_length = 32768
@@ -1684,9 +1687,11 @@ api_key        = "secret:lab_key"            # optional; never the key itself
     in 100.64.0.0/10, the range mesh networks hand out; `loopback.NearEdge`
     holds the rule and a dialer hook applies it after the name resolves. An IP
     address in the URL is checked at load too.
-  - `remote`: any address, over https only. The client ignores proxy settings
-    for near-edge and remote, since a proxy would make the connection elsewhere.
-- **Consent.** A turn whose answer model is at `near-edge` or `remote` asks
+    The client ignores proxy settings, since a proxy would make the
+    connection elsewhere.
+  - Config refuses any other reach, so no setting sends a prompt to the
+    internet.
+- **Consent.** A turn whose answer model is at `near-edge` asks
   before it builds its prompt: "Send this question to @lab?", with what the
   turn carries (the question, the earlier turns, any pictures, the profile and
   memories, file excerpts, and the results of any tools it runs), and three
@@ -1703,15 +1708,14 @@ api_key        = "secret:lab_key"            # optional; never the key itself
 - **Where the answer came from.** The `done` event of an answer from an
   endpoint off the machine carries `answered_by` and `reach`; Meru.app's footer
   and side panel, `meru chat`'s stats line and `meru`'s stderr name it.
-- **Three APIs.** `api = "ollama"` uses `OllamaEngine` against the other server.
-  `OpenAIEngine` speaks OpenAI chat completions (`POST <url>/chat/completions`)
-  and `AnthropicEngine` the Anthropic Messages API (`POST <url>/messages`). Both
-  read a stream of server-sent events, join a tool call's arguments as they
-  arrive in pieces, hand the calls out on the last `Delta` as Ollama does, and
-  leave the model's reasoning out of the answer. Neither embeds
-  (`ErrNoEmbed`) or reports token probabilities (`ErrNoLogProbs`). Both map
-  their stop reasons to Meru's, so an answer cut at its token cap ends `length`.
-- **Details from config.** Those two APIs report neither a model's context
+- **One API.** Every endpoint speaks OpenAI chat completions, the API most
+  model servers offer, and `OpenAIEngine` sends `POST <url>/chat/completions`.
+  It reads a stream of server-sent events, joins a tool call's arguments as
+  they arrive in pieces, hands the calls out on the last `Delta` as Ollama
+  does, and leaves the model's reasoning out of the answer. It doesn't embed
+  (`ErrNoEmbed`) or report token probabilities (`ErrNoLogProbs`). It maps the
+  stop reasons to Meru's, so an answer cut at its token cap ends `length`.
+- **Details from config.** The API reports neither a model's context
   length nor what it can do, so the entry gives `context_length`, `vision` and
   `tools`, and `Engines.Details` returns them where `OllamaEngine` would ask
   `/api/show`. The window, the vision check and the tools check then treat an
@@ -5697,10 +5701,10 @@ transcript lines hold. No level writes question or answer text. With
 
 ## Privacy boundary
 
-- No prompt leaves the machine without your yes. The fast and embedding models,
-  and everything they do, run on Ollama on loopback. An answer endpoint at
-  `near-edge` or `remote` gets a turn only after you answer "this time" or "this
-  chat" to the question the turn asks, which lists what the turn carries; an
+- No prompt goes to the internet, and none leaves the machine without your yes.
+  The fast and embedding models, and everything they do, run on Ollama on
+  loopback. An answer endpoint at `near-edge`, on your own network, gets a turn
+  only after you answer "this time" or "this chat" to the question the turn asks, which lists what the turn carries; an
   incognito chat and a scheduled job never leave. The code names no provider
   and ships no provider's SDK, and the engine refuses Ollama's cloud models,
   which Ollama would run on ollama.com.
@@ -5811,9 +5815,9 @@ transcript lines hold. No level writes question or answer text. With
 - **Not a chat app clone.** No accounts, sync or mobile client.
 - **Not a training framework.** Meru runs weights; it doesn't produce them.
 - **Not multi-user.** One machine and one person, which keeps the design simple.
-- **No silent cloud fallback.** Meru never sends a question off the machine on its
-  own: an answer endpoint elsewhere gets a turn only after you say yes, and a
-  local model's struggle never sends one there.
+- **No cloud model, and no silent fallback.** Meru sends no question to the
+  internet. An answer endpoint on your own network gets a turn only after you
+  say yes, and a local model's struggle never sends one there.
 - **Not an agent framework.** The loop exists to serve Meru, and we won't package it
   as a library.
 - **Not a shell.** Meru runs programs you declared, with parameters the model fills

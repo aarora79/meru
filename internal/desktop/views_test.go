@@ -149,7 +149,7 @@ func TestApprovalView(t *testing.T) {
 func TestConsentView(t *testing.T) {
 	v := approvalView(rpc.Approval{ID: "consent-1", Name: "@lab", Kind: rpc.KindConsent,
 		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceSession, rpc.ChoiceDeny},
-		Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "remote", Model: "big-model", Carries: []string{"your question"}}})
+		Consent: &rpc.ConsentInfo{Endpoint: "lab", Reach: "near-edge", Model: "big-model", Carries: []string{"your question"}}})
 	var labels []string
 	for _, c := range v.Choices {
 		labels = append(labels, string(c.Choice)+":"+c.Label)
@@ -157,7 +157,7 @@ func TestConsentView(t *testing.T) {
 	if got, want := strings.Join(labels, " "), "once:This time session:This chat deny:No"; got != want {
 		t.Errorf("choices = %q, want %q", got, want)
 	}
-	if v.Consent == nil || v.Consent.Reach != "remote" || v.Draft != "" || v.Label != "send this question to @lab" {
+	if v.Consent == nil || v.Consent.Reach != "near-edge" || v.Draft != "" || v.Label != "send this question to @lab" {
 		t.Errorf("view = %+v", v)
 	}
 }
