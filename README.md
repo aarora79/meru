@@ -29,7 +29,7 @@ graphics card.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.6.4.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.7.0.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
@@ -45,6 +45,8 @@ graphics card.
 > It reads Word, Excel and CSV files, and adds up a sheet's rows exactly, with
 > medians and percentiles worked out by its own code, never by the model.
 > It refuses the cloud models Ollama offers, which would send your prompt off the machine.
+> With routing on, the fast model answers easy questions, and an answer model can run
+> on a computer on your own network, after you say yes.
 > [ROADMAP.md](ROADMAP.md) · [release notes](docs/release-notes/README.md)
 
 <p align="center"><img src="docs/img/desktop-app.png" width="760" alt="Meru.app: a rail with New chat, Incognito chat, New folder, chat search, folders and the chats of today and yesterday, and a status box saying Meru runs on this Mac with the qwen3.6:35b answer model; the main pane asks what to ask Meru, with three example questions and a switch between Auto, My files, Mail and calendar, Web and Just talk."></p>
