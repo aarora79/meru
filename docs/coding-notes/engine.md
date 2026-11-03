@@ -222,6 +222,13 @@ goes out. `Details` caches its reply, so the check costs one `/api/show` per
 model per run; a model Ollama can't describe passes, and its request then fails
 on its own if the model isn't there (#211).
 
+**Ollama stopped.** When nothing listens at Ollama's address, the operating
+system refuses the connection. `do` tests the error from `client.Do` with
+`errors.Is(err, syscall.ECONNREFUSED)` and then wraps it in `ErrOllamaDown`
+too. `fmt.Errorf` takes two `%w` verbs, so `errors.Is` finds either error in
+the chain. `merud` tests for `ErrOllamaDown` and tells the user to start
+Ollama.
+
 `Capabilities(ctx, model)` returns `Details(ctx, model).Capabilities`.
 `Pulled(ctx)` sends `GET /api/tags` and returns the names of the models Ollama
 has on disk, such as `gemma3:12b` and `nomic-embed-text:latest`. None of the

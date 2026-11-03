@@ -4521,8 +4521,9 @@ and only then opens the store and builds the rest. Until then:
 `merud` answers `ping` from the start. The desktop app's status block says
 "Waiting for Ollama" with the sentence, and no advice to start `merud`. After
 `merud` is ready it keeps checking every 30 seconds, so the connectors op stays
-true; a question asked while Ollama is down fails with Ollama's own error, as
-before.
+true. A question that finds Ollama stopped, its connection refused, gets the
+same "Ollama isn't running, so Meru can't answer yet." and makes `merud` check
+Ollama at once.
 
 ### Moving to connectors
 

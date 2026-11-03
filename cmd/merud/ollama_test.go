@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -199,4 +200,47 @@ func TestOllamaWatchAfterReady(t *testing.T) {
 	wait(connectors.StateFailed, "Ollama isn't running at http://127.0.0.1:11434.")
 	eng.setOllama("0.40.6", nil)
 	wait(connectors.StateOK, "Ollama 0.40.6 is running at http://127.0.0.1:11434.")
+}
+
+// TestGateOllamaStopped checks the gate once merud is ready: a request
+// that fails because Ollama stopped gets errOllamaDown and pokes the
+// watch, and any other error passes through.
+func TestGateOllamaStopped(t *testing.T) {
+	cfg := config.Config{Ollama: config.Ollama{BaseURL: "http://127.0.0.1:11434"}, Models: config.Models{Fast: "small", Embed: "embed"}}
+	o, err := newOllamaWatch(cfg, &fakeEngine{version: "0.40.5"}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := errors.New("main model small: model not found")
+	tests := []struct {
+		name     string
+		fullErr  error
+		want     error
+		wantPoke bool
+	}{
+		{"ollama stopped", fmt.Errorf("main model small: ollama /api/chat: %w", engine.ErrOllamaDown), errOllamaDown, true},
+		{"other error", other, other, false},
+		{"no error", nil, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := newGate(o)
+			g.open(func(context.Context, rpc.Request, func(rpc.Event) error, rpc.ApproveFunc) error { return tt.fullErr })
+			err := g.handle(context.Background(), rpc.Request{Op: rpc.OpAsk}, func(rpc.Event) error { return nil }, nil)
+			if !errors.Is(err, tt.want) {
+				t.Errorf("handle error = %v, want %v", err, tt.want)
+			}
+			// A select with a default takes the nudge if one waits and
+			// moves on if none does.
+			poked := false
+			select {
+			case <-o.nudge:
+				poked = true
+			default:
+			}
+			if poked != tt.wantPoke {
+				t.Errorf("poked = %v, want %v", poked, tt.wantPoke)
+			}
+		})
+	}
 }

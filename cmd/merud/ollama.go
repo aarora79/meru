@@ -6,7 +6,8 @@
 // running, so Meru can't answer yet." merud checks again every 30
 // seconds, and at once when a request comes, and warms the models once
 // Ollama answers. After that it keeps checking, so the status stays
-// true. See ARCHITECTURE.md, "SearXNG and Ollama".
+// true, and a request that finds Ollama stopped gets the same sentence.
+// See ARCHITECTURE.md, "SearXNG and Ollama".
 
 package main
 
@@ -173,9 +174,9 @@ func (o *ollamaWatch) tryReady(ctx context.Context) bool {
 
 // watch keeps checking Ollama every o.every after merud is ready, so the
 // status says so when Ollama stops or comes back. It changes nothing
-// else: a question asked while Ollama is down fails with Ollama's own
-// error, and the models load again on the next call. It returns when
-// ctx ends.
+// else: a question asked while Ollama is down fails with errOllamaDown
+// (see gate.ollamaDown), and the models load again on the next call. It
+// returns when ctx ends.
 func (o *ollamaWatch) watch(ctx context.Context) {
 	for o.wait(ctx) {
 		version, problem := checkOllama(ctx, o.eng, o.url)
@@ -311,7 +312,7 @@ func (g *gate) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event)
 	for {
 		select {
 		case <-g.ready:
-			return g.full(ctx, req, emit, approve)
+			return g.ollamaDown(g.full(ctx, req, emit, approve))
 		default:
 		}
 		failed, changed := g.ollama.failing()
@@ -326,4 +327,17 @@ func (g *gate) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event)
 			return ctx.Err()
 		}
 	}
+}
+
+// ollamaDown turns err into errOllamaDown when a request after merud is
+// ready failed because Ollama stopped answering, so the user reads what
+// to do and not "dial tcp ... connection refused". It also asks the watch
+// to check Ollama at once, so the connectors op shows it down. Any other
+// error, and nil, comes back unchanged.
+func (g *gate) ollamaDown(err error) error {
+	if !errors.Is(err, engine.ErrOllamaDown) {
+		return err
+	}
+	g.ollama.poke()
+	return errOllamaDown
 }

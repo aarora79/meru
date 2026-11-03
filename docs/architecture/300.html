@@ -2550,7 +2550,7 @@ installing, starting ──port taken──▶ needs_config ──30 s, or a rel
   <li>while Ollama answers and the models load, a request waits, as it waited in the socket's queue before.</li>
 </ul>
 
-<p><code>merud</code> answers <code>ping</code> from the start. The desktop app's status block says "Waiting for Ollama" with the sentence, and no advice to start <code>merud</code>. After <code>merud</code> is ready it keeps checking every 30 seconds, so the connectors op stays true; a question asked while Ollama is down fails with Ollama's own error, as before.</p>
+<p><code>merud</code> answers <code>ping</code> from the start. The desktop app's status block says "Waiting for Ollama" with the sentence, and no advice to start <code>merud</code>. After <code>merud</code> is ready it keeps checking every 30 seconds, so the connectors op stays true. A question that finds Ollama stopped, its connection refused, gets the same "Ollama isn't running, so Meru can't answer yet." and makes <code>merud</code> check Ollama at once.</p>
 
 <h3 id="connector-adopt">Moving to connectors</h3>
 

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -217,6 +218,12 @@ var ErrModelOutput = errors.New("ollama couldn't read the model's output")
 // prompt on, so the engine refuses before it sends anything (AGENTS.md,
 // non-negotiable 1).
 var ErrCloudModel = errors.New("an Ollama cloud model, which runs off this machine; Meru runs models on this machine only")
+
+// ErrOllamaDown means nothing listens at Ollama's address: the connection
+// was refused, as it is when Ollama isn't running. merud tests for it with
+// errors.Is and tells the user to start Ollama, in place of the transport
+// error.
+var ErrOllamaDown = errors.New("nothing listens at Ollama's address")
 
 // localOnly checks that model runs on this machine before a request names
 // it. It refuses a name config.CloudModel marks, and a model whose
@@ -715,6 +722,11 @@ func (e *OllamaEngine) do(ctx context.Context, span trace.Span, method, path str
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {
+		// A refused connection gets ErrOllamaDown as well. Two %w verbs
+		// wrap both errors, so errors.Is finds either one.
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: %w: %w", path, ErrOllamaDown, err))
+		}
 		return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: %w", path, err))
 	}
 	span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
