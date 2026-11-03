@@ -1478,12 +1478,13 @@ const USAGE_TABS = [
   { id: "prometheus", label: "Prometheus queries" },
 ];
 
-// usage draws the Usage section as two sub-tabs. Charts holds, in the
-// order you look at them most, the usage windows, four charts, the
-// slowest tasks, tool calls by outcome and use by model. Prometheus
-// queries says how to read the same numbers in a Prometheus you run. The
-// windows come first and alone, so an older merud, which can't send the
-// rest, still fills the table.
+// usage draws the Usage section as two sub-tabs. Charts holds four
+// charts, then the usage windows as totals, the slowest tasks, tool calls
+// by outcome and use by model: a chart reads at a glance, where the
+// windows table takes a scan along its rows. Prometheus queries says how
+// to read the same numbers in a Prometheus you run. The windows arrive
+// first and alone, so an older merud, which can't send the rest, still
+// fills the table; once the charts draw, the table moves under them.
 function usage(body) {
   bridge.usage().then(
     (windows) => {
@@ -1491,7 +1492,8 @@ function usage(body) {
       const panels = usageTabs(body);
       const charts = panels.charts;
       intro(charts, "Counted from the session transcripts on " + here() + ". A task is one question or request that Meru answered.");
-      charts.append(usageTable(windows || []));
+      const totals = usageTable(windows || []);
+      charts.append(totals);
       const more = el("div", "usage-detail");
       more.append(el("p", "panel-note", "Loading the charts…"));
       charts.append(more);
@@ -1499,6 +1501,9 @@ function usage(body) {
       bridge.usageDetail().then(
         (d) => {
           drawDetail(more, d);
+          // after() moves the table, a node already on the page, to just
+          // under the charts.
+          more.querySelector(".chart-grid").after(el("h2", "section-head", "Totals"), totals);
           panels.prometheus.replaceChildren();
           prometheusSection(panels.prometheus, d.metrics || "");
         },
@@ -1584,7 +1589,8 @@ function wrapTable(table) {
 }
 
 // drawDetail fills box with the dashboard d that merud sent: four charts,
-// two to a row where the window is wide enough, then the tables. The
+// two to a row where the window is wide enough, then the tables. usage
+// puts the windows table between the two. The
 // Prometheus queries tab draws d.metrics.
 function drawDetail(box, d) {
   box.replaceChildren();

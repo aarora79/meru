@@ -566,8 +566,11 @@ bundler.
   color, after a built-in `merud` marks `new`: one a later release added, off
   until you turn it on or off; the card's note names them (#123). It also draws the Usage screen, which the Usage button at the foot
   of the rail opens: two tabs, Charts and Prometheus queries, built with
-  `role="tab"` and arrow-key moves like Settings' own tabs. Charts holds four
-  bar charts, drawn as SVG elements one attribute at a time, so the page's
+  `role="tab"` and arrow-key moves like Settings' own tabs. The windows
+  table draws first, so an older `merud` still fills it; once the charts
+  draw, `usage` moves the table under them with `after()`, under the heading
+  Totals, since a chart reads at a glance and the table takes a scan. Charts
+  holds four bar charts, drawn as SVG elements one attribute at a time, so the page's
   security policy, which allows no inline styles, still holds; colors come from
   CSS classes that read the theme's variables. Every chart cell goes into the
   grid before any chart measures its cell's `clientWidth`, so each chart draws at

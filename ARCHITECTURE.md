@@ -629,12 +629,14 @@ differs from `meru chat`'s.
   paths, "Run setup again" opens Setup.
 
 **Usage** has a button of its own beside Settings at the foot of the rail, and
-opens a screen with two tabs. **Charts**, open first, shows the usage windows
-the chat's `/usage` box shows, then four bar charts over 30 days, two to a row:
-tasks per day, time to first token per day (p50 and p95), tokens in and tokens
-out per day, each with a labelled y axis. A task is one question or request
-that Meru answered. Under the charts come the ten slowest tasks of the week,
-each a link to its chat, tool calls by outcome, and use by answer model.
+opens a screen with two tabs. **Charts**, open first, shows four bar charts
+over 30 days, two to a row: tasks per day, time to first token per day (p50
+and p95), tokens in and tokens out per day, each with a labelled y axis. A
+task is one question or request that Meru answered. Under the charts come
+Totals, the usage windows the chat's `/usage` box shows, then the ten slowest
+tasks of the week, each a link to its chat, tool calls by outcome, and use by
+answer model. Until the charts arrive, and with an older `merud` that can't
+send them, the windows table shows alone.
 **Prometheus queries** says how to read the same metrics in a Prometheus you
 run, with the `/metrics` address or the line that turns it on, and queries to
 copy (see [Reading the metrics](#reading-the-metrics)). Everything on the
