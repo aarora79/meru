@@ -114,7 +114,7 @@ type Connection struct {
 	Link string `json:"link,omitempty"`
 	// Web and WebSentence are set on the built-in tools' connection only:
 	// the SearXNG connector's state, one of the Connector states, and its
-	// sentence, such as "Web search can't start: Docker isn't running."
+	// sentence, such as "Web search can't start: Docker or Podman isn't running."
 	// The desktop app's Web search card and /mcp show them.
 	Web         string `json:"web,omitempty"`
 	WebSentence string `json:"web_sentence,omitempty"`

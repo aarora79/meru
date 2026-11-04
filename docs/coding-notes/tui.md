@@ -1134,7 +1134,7 @@ asks for a missing field (see connectors.go below). A server set up by hand in a
 Meru could run it instead: "optional: meru mcp adopt obsidian lets Meru run and
 restart it." Nothing needs doing; the heading only says the choice exists. The built-in tools' heading ends with web search's state
 and sentence, from the connection's `Web` and `WebSentence`, such as "web search
-needs config: Web search can't start: Docker isn't running.":
+needs config: Web search can't start: Docker or Podman isn't running.":
 
 ```text
 obsidian · connector, stdio · needs config · 1 of 3 tools on · Obsidian needs your vault folder.

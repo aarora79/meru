@@ -3,8 +3,11 @@
 Meru searches the web through SearXNG, a search engine that runs in Docker. It
 needs no account and no API key.
 
-1. **Have Docker running.** Docker Desktop, OrbStack or colima all work;
-   `docker info` should answer.
+1. **Have Docker or Podman running.** Docker Desktop, OrbStack, colima or
+   Podman all work; `docker info` or `podman info` should answer. With Podman
+   on a Mac, run `podman machine start` first. Meru looks for the `podman`
+   program itself, so you need no `docker` alias: `merud` runs no shell and
+   never sees one.
 
 2. **Turn on the SearXNG connector.** In the desktop app, open Settings, then
    Connections, and flip the switch on the Web search card. In a terminal, run:
@@ -29,7 +32,7 @@ needs no account and no API key.
 4. **Check it.** `meru mcp status` should say "Web search is running in the
    container meru-searxng.", and `meru tools` lists `web_search` under `meru`.
    If it says something else, the sentence tells you what to fix, such as
-   "Web search can't start: Docker isn't running." Once you've fixed it, press
+   "Web search can't start: Docker or Podman isn't running." Once you've fixed it, press
    Fix on the card, or run `meru mcp fix searxng`, and `merud` looks again at
    once.
 

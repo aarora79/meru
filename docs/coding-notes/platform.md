@@ -45,7 +45,7 @@ type Platform struct {
     GOOS, Name, Here string
     Open             []string   // the opener, such as {"xdg-open"}
     Clipboard        [][]string // copy programs, in the order to try
-    ProgramDirs      []string   // where docker may be, "~/" for home
+    ProgramDirs      []string   // where docker or podman may be, "~/" for home
     OllamaHint       string
     AppleNotes       bool
     Service          string     // "launchd", "systemd" or ""

@@ -50,11 +50,13 @@ func rows() []Platform {
 			Open:      []string{"open"},
 			Clipboard: [][]string{{"pbcopy"}},
 			// Homebrew on Intel and on Apple silicon, the system's own
-			// folder, then OrbStack, Docker Desktop's two places.
+			// folder, then OrbStack, Docker Desktop's two places and the
+			// Podman installer's folder.
 			ProgramDirs: []string{
 				"/usr/local/bin", "/opt/homebrew/bin", "/usr/bin",
 				"~/.orbstack/bin", "~/.docker/bin",
 				"/Applications/Docker.app/Contents/Resources/bin",
+				"/opt/podman/bin",
 			},
 			OllamaHint:      "Install it with `brew install ollama`, or from https://ollama.com/download, then open the Ollama app.",
 			Service:         "launchd",

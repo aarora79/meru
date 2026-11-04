@@ -83,12 +83,16 @@ func TestVerifySearXNG(t *testing.T) {
 }
 
 // TestHasDocker checks that a docker command in one of OrbStack's or
-// Docker's folders under the home folder counts.
+// Docker's folders under the home folder counts, and that the list
+// holds the Podman installer's folder.
 func TestHasDocker(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".orbstack", "bin", "docker"), "")
 	if !HasDocker(home) {
 		t.Error("HasDocker = false with ~/.orbstack/bin/docker in place")
+	}
+	if !slices.Contains(dockerPaths(home), "/opt/podman/bin/podman") {
+		t.Error("dockerPaths has no Podman installer folder")
 	}
 }
 

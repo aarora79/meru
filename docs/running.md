@@ -227,7 +227,7 @@ step that fails says why and offers Retry and Skip.
 | Install Meru | copies `meru` and `merud` to `~/.local/bin` and Meru.app to `/Applications`; clears macOS's quarantine mark from them if you tick the box; adds `~/.local/bin` to `PATH` in `~/.zshrc` if you tick that box |
 | Ollama and the models | installs Ollama with Homebrew, or from Ollama's site when there is no Homebrew, starts it, and downloads the models with a progress bar |
 | Folders to search | shows Documents, Desktop and Notes with their file counts; tick the ones Meru may read, or add any folder |
-| Web search | turns web search on; in the last step `merud` downloads SearXNG at its pinned version and runs it in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only. A SearXNG that already answers there stays as it is. Needs Docker Desktop, OrbStack or colima; without one, the screen links Docker's download page and you can skip |
+| Web search | turns web search on; in the last step `merud` downloads SearXNG at its pinned version and runs it in Docker as the container `meru-searxng`, on `127.0.0.1:8888` only. A SearXNG that already answers there stays as it is. Needs Docker Desktop, OrbStack, colima or Podman; without one, the screen links Docker's download page and you can skip |
 | Obsidian notes | asks for your vault folder with the folder dialog; in the last step `merud` installs the Obsidian server with its own Node. An `obsidian` entry you set up yourself stays as it is, or moves over to Meru if you pick Adopt |
 | Apple Notes | turns on `search_notes`, `list_notes` and `read_note`, and has two buttons: one opens the Full Disk Access list in System Settings, the other shows `merud` in Finder, to drag into that list. macOS never asks for this access; see [Apple Notes](faq/apple-notes.md) |
 | Skills and commands | turns the built-in skills on and adds the sample commands you tick, all read-only |
@@ -1456,8 +1456,8 @@ only while the check passes, and Settings, `/mcp` in `meru chat`,
 | --- | --- |
 | Web search is running in the container meru-searxng. | Nothing. |
 | Web search uses the SearXNG already running at … | Nothing; Meru leaves it alone. |
-| Web search needs Docker, which isn't installed. | Install Docker Desktop, OrbStack or colima. |
-| Web search can't start: Docker isn't running. | Open Docker; `merud` tries again within a minute. |
+| Web search needs Docker or Podman, and neither is installed. | Install Docker Desktop, OrbStack, colima or Podman. |
+| Web search can't start: Docker or Podman isn't running. | Open Docker; `merud` tries again within a minute. |
 | Web search can't use SearXNG at …: nothing answers there. | Turn on the connector as above, or start your own SearXNG. |
 | Web search can't use SearXNG at …: it answers web pages, not JSON … | Add `json` under `search: formats:` in that SearXNG's `settings.yml` and restart it. |
 | Web search keeps stopping: … | Read `docker logs meru-searxng`, then restart `merud`. |

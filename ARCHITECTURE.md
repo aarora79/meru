@@ -4173,8 +4173,13 @@ in place, older versions of the same runtime go.
   `UV_NO_CONFIG=1` skips your `uv.toml`. Each uv release fixes the list of
   Python builds it knows, so the uv pin also fixes the Python patch release.
 - **docker** comes from a fixed list of absolute paths (Docker Desktop,
-  OrbStack, Homebrew, `/usr/local/bin`, `/usr/bin` and `~/.docker/bin`). None there is "Docker isn't installed"; a
-  failing `docker info` is "Docker isn't running". Only docker gets your real
+  OrbStack, Homebrew, `/usr/local/bin`, `/usr/bin` and `~/.docker/bin`). When
+  no docker is there, `podman` in the same folders or `/opt/podman/bin` takes
+  its place: Podman takes the same commands and flags. A shell alias such as
+  `alias docker=podman` doesn't count, since `merud` runs no shell. None there
+  is "Docker isn't installed"; a failing `docker info` is "Docker isn't
+  running". Podman's `info` names the version field differently, so `merud`
+  picks the template by the program's real name. Only docker gets your real
   `HOME`, where Docker keeps its socket and settings.
 
 Install works in the final folder, because a Python environment can't move
@@ -4510,7 +4515,7 @@ is ok; `web_fetch` doesn't depend on it. The sentences:
 | --- | --- |
 | `ok` | Web search is running in the container meru-searxng. / Web search uses the SearXNG already running at … |
 | `off` | Web search is off. |
-| `needs_config` | Web search needs Docker, which isn't installed. / Web search can't start: Docker isn't running. / Web search can't use SearXNG at …: nothing answers there. (and, at Meru's own address, how to turn the connector on) |
+| `needs_config` | Web search needs Docker or Podman, and neither is installed. / Web search can't start: Docker or Podman isn't running. / Web search can't use SearXNG at …: nothing answers there. (and, at Meru's own address, how to turn the connector on) |
 | `starting` | Meru is checking Web search at … / Meru is downloading Web search (image sha256-…) and starting it. / Web search stopped (…) and starts again in 2 s. |
 | `failed` | Web search couldn't install: … / Web search keeps stopping: … |
 

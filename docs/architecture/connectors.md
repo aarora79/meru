@@ -541,8 +541,8 @@ enough: it answered `OK` with JSON off, while the empty search answered `403`
 and a web page.
 
 The model gets `web_search` only while the check passes. Without Docker the
-status reads "Web search needs Docker, which isn't installed." or "Web search
-can't start: Docker isn't running.", and the next minute's check tries again.
+status reads "Web search needs Docker or Podman, and neither is installed." or "Web search
+can't start: Docker or Podman isn't running.", and the next minute's check tries again.
 
 Some people already run SearXNG, with Docker Compose for example, or have the
 container an older Mac installer started. If a healthy SearXNG that isn't Meru's
@@ -638,7 +638,7 @@ some, and otherwise runs the check again and follows it the same way.
 | `needs_config` | Google needs you to sign in. | starts the server again for a new link; the Sign in button opens the link |
 | `needs_config` | Google can't start: another program listens on 127.0.0.1:8000. … | looks at the port again; stop that program first |
 | `starting` | Obsidian stopped (…) and starts again in 2 s. | none needed |
-| `needs_config` | Web search can't start: Docker isn't running. | runs the check again |
+| `needs_config` | Web search can't start: Docker or Podman isn't running. | runs the check again |
 | `failed(reason)` | Obsidian keeps stopping: `<last line of its error output>` | installs and checks it again |
 | `failed` (Ollama) | Ollama isn't running at `http://127.0.0.1:11434`. | runs the check again |
 
@@ -764,7 +764,7 @@ each question.
   release can add one.
 - **Web search still needs Docker.** Meru pulls and runs the SearXNG image, but
   you install Docker and keep it running. Without it the status reads "Web
-  search can't start: Docker isn't running."
+  search can't start: Docker or Podman isn't running."
 - **A foreign `meru-searxng` stays put.** A container of that name without
   Meru's label, such as the one older Mac installers started, is never
   removed. While it answers, Meru uses it; when it doesn't, the status says to

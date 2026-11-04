@@ -83,6 +83,45 @@ func runtimeFixtures(t *testing.T) (*fileServer, map[string]Runtime) {
 
 // testInstaller returns an Installer over a fresh Meru home, the fixture
 // runtimes and run.
+// TestDockerPaths checks that docker comes before podman in every
+// folder, so a computer with both keeps docker.
+func TestDockerPaths(t *testing.T) {
+	got := dockerPaths([]string{"/a", "~/b"})
+	want := []string{"/a/docker", "~/b/docker", "/a/podman", "~/b/podman"}
+	if !slices.Equal(got, want) {
+		t.Errorf("dockerPaths = %v, want %v", got, want)
+	}
+}
+
+// TestInfoFormat checks that podman, by name or behind a link named
+// docker, gets Podman's template, and docker keeps its own.
+func TestInfoFormat(t *testing.T) {
+	dir := t.TempDir()
+	podman := filepath.Join(dir, "podman")
+	if err := os.WriteFile(podman, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "docker")
+	if err := os.Symlink(podman, link); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		path string
+		want string
+	}{
+		{podman, "{{.Version.Version}}"},
+		{link, "{{.Version.Version}}"},
+		{"/usr/local/bin/docker", "{{.ServerVersion}}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			if got := infoFormat(tt.path); got != tt.want {
+				t.Errorf("infoFormat(%s) = %s, want %s", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func testInstaller(t *testing.T, run Runner) (*Installer, *fileServer) {
 	t.Helper()
 	srv, pins := runtimeFixtures(t)

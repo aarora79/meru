@@ -465,7 +465,7 @@ func TestWebToolsOffered(t *testing.T) {
 // connector says, and that web_fetch doesn't depend on it.
 func TestWebSearchFollowsCheck(t *testing.T) {
 	tools := webTools(t, config.Web{SearXNGURL: "http://127.0.0.1:8888"})
-	ok, why := false, "Web search can't start: Docker isn't running."
+	ok, why := false, "Web search can't start: Docker or Podman isn't running."
 	tools.UseWebCheck(func() (bool, string) { return ok, why })
 	offered := func() (spec, listed bool) {
 		for _, s := range tools.Tools() {

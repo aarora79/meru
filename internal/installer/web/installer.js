@@ -371,7 +371,7 @@ const FORMS = {
     body.append(el("p", "", "SearXNG is a search engine that runs on your own computer. It holds no index of its own: it passes your search words to engines such as DuckDuckGo and Wikipedia, drops what identifies you, and merges the results. It needs no account and no key."));
     body.append(el("p", "dim", "What leaves this Mac: the search words, to those engines. Your question, your files and the answer stay here."));
     if (!screen.docker) {
-      body.append(el("p", "warn", "SearXNG runs in Docker, and this Mac has no Docker. Install Docker Desktop, OrbStack or colima, open it, then press Continue. Or skip web search for now and run this installer again later."));
+      body.append(el("p", "warn", "SearXNG runs in Docker or Podman, and this Mac has neither. Install Docker Desktop, OrbStack, colima or Podman, start it, then press Continue. Or skip web search for now and run this installer again later."));
       body.append(el("div", "", null, linkButton("Get Docker Desktop", "docker")));
       return;
     }
