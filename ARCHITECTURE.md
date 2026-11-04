@@ -2335,6 +2335,21 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
+Ahead of the rules below, one takes a search away. When the question opens
+with a writing verb (rewrite, rephrase, reword, paraphrase, proofread, shorten,
+simplify, translate, polish, edit, improve or fix) and a line break, a colon or a
+double quote follows it, the question gives the text to change, and a `search`
+route becomes `direct`. The first two rules below then leave the turn `direct`.
+The router sent `rewrite "Meru streamlines my workflow by handling my tasks
+efficiently."` to `search` at 0.518 against 0.425, most likely because the text says
+"my workflow" and "my tasks", and the search added ten excerpts and 7,000 tokens to
+the prompt. Two changes to the prompt that fixed that question lowered the
+labelled set's score, the wording of option A from 0.890 to 0.805 on the fit set
+and a new example to 0.839, so the fix is a rule that leaves the router alone.
+"rewrite my resume from my documents" gives no text and keeps the router's route.
+A question that quotes a file name, such as `edit "plan.md" in my notes`, goes
+`direct` by mistake (`writingOnText`).
+
 Five rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
@@ -2412,7 +2427,7 @@ saying thanks", and the second rule still catches "search my obsidian vault for
 notes about sourdough", which the router sends to `search`. All five rules stay.
 
 `make router-eval` scores the router against the local Ollama on a labelled set of
-162 questions, 48 of them held out, and fits the temperature. It also compares
+167 questions, 49 of them held out, and fits the temperature. It also compares
 the two `decision` rules on the same answers. The figures here come from the set
 when it held 153 questions, before nine questions about pictures joined it. With
 the connected list, `top` got 131 of the 153 right against 126 without it, and missed a needed search or
@@ -5839,7 +5854,7 @@ transcript lines hold. No level writes question or answer text. With
 We'll settle these with working code and measurements.
 
 1. **Router quality.** The router reads probabilities instead of parsing text (see
-   [Routing](#routing)). A labelled set of questions, 162 today, and
+   [Routing](#routing)). A labelled set of questions, 167 today, and
    `make router-eval` measure it. The figures below come from the first 135
    rows. On the development machine with MiniCPM5-2B, a prompt that puts
    contrastive option text, the indexed folders and two examples per route ahead
