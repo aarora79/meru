@@ -46,8 +46,8 @@ type Installer struct {
 	Client *http.Client
 	// Run starts npm, uv and docker.
 	Run Runner
-	// DockerPaths are the places docker may live, in order. A path that
-	// starts with "~/" sits under Home. Meru never asks PATH.
+	// DockerPaths are the places docker or podman may live, in order. A
+	// path that starts with "~/" sits under Home. Meru never asks PATH.
 	DockerPaths []string
 }
 
@@ -64,21 +64,30 @@ func NewInstaller(meruDir, home string) *Installer {
 		// slow line; the caller's ctx can end them sooner.
 		Client: &http.Client{Timeout: 10 * time.Minute},
 		Run:    ExecRunner(),
-		// Docker Desktop, OrbStack, colima and Linux packages each put
-		// the docker command in one of the system's program folders.
+		// Docker Desktop, OrbStack, colima, Podman and Linux packages each
+		// put their command in one of the system's program folders.
 		DockerPaths: dockerPaths(platform.Current().ProgramDirs),
 	}
 }
 
 // dockerPaths returns where docker may live: the docker file in each of
-// dirs, in order. dirs is internal/platform's ProgramDirs for this
-// system, whose "~/" folders findDocker puts under Home.
+// dirs, in order, then the podman file in each. dirs is
+// internal/platform's ProgramDirs for this system, whose "~/" folders
+// findDocker puts under Home.
+//
+// Podman takes the same commands and flags as docker, so Meru runs it in
+// docker's place. Docker comes first, so a computer with both keeps the
+// one Meru used before. A shell alias such as "alias docker=podman" does
+// nothing here: merud runs programs with no shell, so it only finds a
+// file.
 func dockerPaths(dirs []string) []string {
-	paths := make([]string, 0, len(dirs))
-	for _, d := range dirs {
-		// path.Join, not filepath.Join: the folders are written with "/",
-		// and filepath would turn "~/" into "~\" on Windows.
-		paths = append(paths, path.Join(d, "docker"))
+	paths := make([]string, 0, 2*len(dirs))
+	for _, name := range []string{"docker", "podman"} {
+		for _, d := range dirs {
+			// path.Join, not filepath.Join: the folders are written with
+			// "/", and filepath would turn "~/" into "~\" on Windows.
+			paths = append(paths, path.Join(d, name))
+		}
 	}
 	return paths
 }
@@ -397,7 +406,8 @@ func (in *Installer) EnsureFiles(ctx context.Context, inst Installed, files []Fi
 	return nil
 }
 
-// ErrDockerMissing means no docker command is at any of DockerPaths.
+// ErrDockerMissing means no docker or podman command is at any of
+// DockerPaths.
 var ErrDockerMissing = errors.New("docker isn't installed")
 
 // ErrDockerNotRunning means docker is there but its engine doesn't
@@ -417,6 +427,22 @@ func (in *Installer) findDocker() (string, error) {
 		}
 	}
 	return "", ErrDockerMissing
+}
+
+// infoFormat returns the template that makes "docker info" print the
+// engine's version, and fail when no engine answers. Docker calls the
+// field ServerVersion and Podman calls it Version.Version; a template
+// with a field the program lacks fails, which would read as "not
+// running". The program's real name decides, after following links, so
+// a link named docker that points at podman gets Podman's template.
+func infoFormat(docker string) string {
+	if real, err := filepath.EvalSymlinks(docker); err == nil {
+		docker = real
+	}
+	if strings.HasPrefix(filepath.Base(docker), "podman") {
+		return "{{.Version.Version}}"
+	}
+	return "{{.ServerVersion}}"
 }
 
 // dockerEnv is docker's environment. It keeps the user's real HOME,
@@ -454,7 +480,7 @@ func (in *Installer) installContainer(ctx context.Context, m Manifest, progress 
 		return err
 	}
 	env := in.dockerEnv(docker)
-	info := Cmd{Path: docker, Args: []string{"info", "--format", "{{.ServerVersion}}"}, Env: env}
+	info := Cmd{Path: docker, Args: []string{"info", "--format", infoFormat(docker)}, Env: env}
 	if tail, err := in.Run(ctx, info, nil); err != nil {
 		return fmt.Errorf("%w: %s", ErrDockerNotRunning, lastLine(tail))
 	}

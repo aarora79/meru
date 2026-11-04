@@ -436,11 +436,17 @@ there, and `UV_NO_CONFIG=1` so your `uv.toml` plays no part.
 idea as the Mac installer's allowlist. `dockerPaths` builds the list from the
 system's `ProgramDirs` in [platform](platform.md): Homebrew, OrbStack and
 Docker.app on a Mac, `/usr/bin`, `/usr/local/bin` and `/snap/bin` on Linux.
+It lists `docker` in every folder first, then `podman` in every folder, so a
+computer with both keeps docker; Podman takes the same commands and flags.
 `dockerEnv` gives docker a `PATH` of the same folders. None found is `ErrDockerMissing`. A
-failing `docker info` is `ErrDockerNotRunning`. Then `docker pull
+failing `docker info` is `ErrDockerNotRunning`. `infoFormat` picks the template
+for `info`: `{{.ServerVersion}}` for docker, `{{.Version.Version}}` for podman,
+since a template that names a missing field fails. It follows links with
+`filepath.EvalSymlinks` first, so a link named `docker` that points at
+`podman` still gets Podman's template. Then `docker pull
 <image>@sha256:<digest>` runs. The `Container` supervisor checks for docker
-first and turns these errors into "Web search needs Docker, which isn't
-installed." and "Web search can't start: Docker isn't running."
+first and turns these errors into "Web search needs Docker or Podman, and neither is
+installed." and "Web search can't start: Docker or Podman isn't running."
 
 ### launch.go: how to start what's installed
 

@@ -323,8 +323,8 @@ func TestContainerDocker(t *testing.T) {
 		down     bool
 		want     string
 	}{
-		{"missing", true, false, "Web search needs Docker, which isn't installed."},
-		{"not running", false, true, "Web search can't start: Docker isn't running."},
+		{"missing", true, false, "Web search needs Docker or Podman, and neither is installed."},
+		{"not running", false, true, "Web search can't start: Docker or Podman isn't running."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

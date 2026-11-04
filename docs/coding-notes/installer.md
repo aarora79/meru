@@ -156,7 +156,7 @@ writes `[index] folders` with `catalog.SetTableLists`.
 at `127.0.0.1:8888`, a SearXNG already runs there, such as the container an
 older installer started, and the step hands nothing over: `merud` watches it as
 an external SearXNG. Otherwise it needs Docker, which `HasDocker` looks for at
-its usual paths with `os.Stat`, and returns a `HandOff` that turns the SearXNG
+its usual paths, Podman's among them, with `os.Stat`, and returns a `HandOff` that turns the SearXNG
 connector on. Either way it sets `[web] searxng_url` and makes sure `[builtin]
 tools` has both web tools, through `turnOnTools`, which adds the names a list
 lacks and leaves a full list alone. The Bridge passes `HasDocker`'s answer in, so the

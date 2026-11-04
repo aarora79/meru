@@ -668,7 +668,7 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 
 <p>The health check runs at start and every minute: an empty search with <code>format=json</code>. SearXNG refuses it without asking any search engine, in JSON when JSON is on and as a web page when it's off, so the check sends nothing off the machine and also catches a SearXNG that <code>web_search</code> can't read. A test against the pinned image on 30 September 2026 showed why <code>/healthz</code> isn't enough: it answered <code>OK</code> with JSON off, while the empty search answered <code>403</code> and a web page.</p>
 
-<p>The model gets <code>web_search</code> only while the check passes. Without Docker the status reads "Web search needs Docker, which isn't installed." or "Web search can't start: Docker isn't running.", and the next minute's check tries again.</p>
+<p>The model gets <code>web_search</code> only while the check passes. Without Docker the status reads "Web search needs Docker or Podman, and neither is installed." or "Web search can't start: Docker or Podman isn't running.", and the next minute's check tries again.</p>
 
 <p>Some people already run SearXNG, with Docker Compose for example, or have the container an older Mac installer started. If a healthy SearXNG that isn't Meru's container already answers at <code>[web] searxng_url</code>, Meru calls it <b>external</b>: the status reads "Web search uses the SearXNG already running at http://127.0.0.1:8888.", and Meru never starts, stops or pulls anything for it. A config from before connectors, with no <code>[connectors.searxng]</code> table, gets the check alone, so an upgrade starts no container.</p>
 
@@ -710,7 +710,7 @@ image = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:3284e8900e9b3e5df2
 <tr><td><code>needs_config</code></td><td>Google needs you to sign in.</td><td>starts the server again for a new link; the Sign in button opens the link</td></tr>
 <tr><td><code>needs_config</code></td><td>Google can't start: another program listens on 127.0.0.1:8000. …</td><td>looks at the port again; stop that program first</td></tr>
 <tr><td><code>starting</code></td><td>Obsidian stopped (…) and starts again in 2 s.</td><td>none needed</td></tr>
-<tr><td><code>needs_config</code></td><td>Web search can't start: Docker isn't running.</td><td>runs the check again</td></tr>
+<tr><td><code>needs_config</code></td><td>Web search can't start: Docker or Podman isn't running.</td><td>runs the check again</td></tr>
 <tr><td><code>failed(reason)</code></td><td>Obsidian keeps stopping: <code>&lt;last line of its error output&gt;</code></td><td>installs and checks it again</td></tr>
 <tr><td><code>failed</code> (Ollama)</td><td>Ollama isn't running at http://127.0.0.1:11434.</td><td>runs the check again</td></tr>
 </tbody></table></div>
@@ -770,7 +770,7 @@ func TestManifestsPinned(t *testing.T) {
 
 <ul>
   <li><b>Servers you add by hand stay unsupervised.</b> An <code>[[mcp.servers]]</code> entry keeps today's rules: one connect try per tools turn, no restart, no health check. To have Meru run a server for you, it needs a manifest, and only a Meru release can add one.</li>
-  <li><b>Web search still needs Docker.</b> Meru pulls and runs the SearXNG image, but you install Docker and keep it running. Without it the status reads "Web search can't start: Docker isn't running."</li>
+  <li><b>Web search still needs Docker.</b> Meru pulls and runs the SearXNG image, but you install Docker and keep it running. Without it the status reads "Web search can't start: Docker or Podman isn't running."</li>
   <li><b>A foreign <code>meru-searxng</code> stays put.</b> A container of that name without Meru's label, such as the one older Mac installers started, is never removed. While it answers, Meru uses it; when it doesn't, the status says to start it or remove it.</li>
   <li><b>The first run needs the internet and takes time.</b> Node.js, uv, each package and the SearXNG image download once. Node.js for Apple silicon is 52,909,993 bytes (nodejs.org), uv 17,001,427 bytes (its GitHub release), and the SearXNG image 96 MB compressed (Docker Hub), all read on 30 September 2026. Offline, the install fails and the connector reads <code>failed</code>.</li>
   <li><b>Only the package itself is pinned.</b> npm picks the package's own dependencies within the ranges the package names, so they can move between two installs of the same <code>obsidian-mcp</code> 2.0.1. The same holds for pip.</li>

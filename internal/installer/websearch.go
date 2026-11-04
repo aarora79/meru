@@ -34,19 +34,22 @@ const DockerDownloadURL = "https://www.docker.com/products/docker-desktop/"
 
 // ErrNoDocker means docker isn't installed. The screen offers the download
 // link and Skip.
-var ErrNoDocker = errors.New("this Mac has no Docker. Install Docker Desktop, OrbStack or colima, then press Retry, or skip web search for now")
+var ErrNoDocker = errors.New("this Mac has no Docker. Install Docker Desktop, OrbStack, colima or Podman, then press Retry, or skip web search for now")
 
-// dockerPaths are where Docker Desktop, OrbStack and colima put the docker
-// command. The installer only looks for one, to say early that web search
-// needs Docker; merud runs it.
+// dockerPaths are where Docker Desktop, OrbStack, colima and Podman put
+// their command. The installer only looks for one, to say early that web
+// search needs Docker or Podman; merud runs it. merud takes podman in
+// docker's place (internal/connectors, dockerPaths).
 func dockerPaths(home string) []string {
 	return []string{
 		"/usr/local/bin/docker", "/opt/homebrew/bin/docker", expandHome("~/.orbstack/bin/docker", home),
 		expandHome("~/.docker/bin/docker", home), "/Applications/Docker.app/Contents/Resources/bin/docker",
+		"/usr/local/bin/podman", "/opt/homebrew/bin/podman", "/opt/podman/bin/podman",
 	}
 }
 
-// HasDocker reports whether the docker command is at one of dockerPaths.
+// HasDocker reports whether the docker or podman command is at one of
+// dockerPaths.
 func HasDocker(home string) bool {
 	for _, p := range dockerPaths(home) {
 		// os.Stat follows links: Docker's command is a link into its app.

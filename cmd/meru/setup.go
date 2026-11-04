@@ -530,7 +530,7 @@ func (c *console) checkWebSearch(ctx context.Context, socket, baseURL string) er
 			fmt.Fprintln(c.out, catalog.SearXNGFormatsHint)
 		case errors.Is(err, catalog.ErrSearXNGDown) && baseURL == catalog.SearXNGURL:
 			fmt.Fprintf(c.out, "SearXNG isn't answering on %s. Meru searches the web through SearXNG, "+
-				"a search engine that runs in Docker. merud can run it for you, at the version pinned in this release.\n", baseURL)
+				"a search engine that runs in Docker or Podman. merud can run it for you, at the version pinned in this release.\n", baseURL)
 			if ping(ctx, socket, io.Discard) != nil {
 				fmt.Fprintln(c.out, "Start merud, then run: meru mcp set searxng enabled=true")
 				break

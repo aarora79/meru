@@ -353,10 +353,10 @@ func (c *Container) pass(ctx context.Context, mode Mode, url string) time.Durati
 	case ctx.Err() != nil:
 		return 0
 	case errors.Is(err, ErrDockerMissing):
-		c.set(StateNeedsConfig, c.m.Name+" needs Docker, which isn't installed.")
+		c.set(StateNeedsConfig, c.m.Name+" needs Docker or Podman, and neither is installed.")
 		return containerCheckEvery
 	case err != nil:
-		c.set(StateNeedsConfig, c.m.Name+" can't start: Docker isn't running.")
+		c.set(StateNeedsConfig, c.m.Name+" can't start: Docker or Podman isn't running.")
 		return containerCheckEvery
 	}
 
@@ -476,7 +476,7 @@ func (c *Container) dockerReady(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := c.docker(ctx, docker, "info", "--format", "{{.ServerVersion}}"); err != nil {
+	if _, err := c.docker(ctx, docker, "info", "--format", infoFormat(docker)); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrDockerNotRunning, err)
 	}
 	return docker, nil

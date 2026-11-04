@@ -141,7 +141,7 @@ store stay as they are.
 `ready` saying yes. `Tools` and `Status` leave `web_search` out while it says
 no, so the model never sees a search engine that isn't there, and `Call` answers
 a call that slips through with "web_search is off now:" and the connector's
-sentence, such as "Web search can't start: Docker isn't running." `web_fetch`
+sentence, such as "Web search can't start: Docker or Podman isn't running." `web_fetch`
 doesn't depend on it. `TestWebSearchFollowsCheck` flips the check and watches
 `web_search` leave and come back.
 
