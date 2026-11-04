@@ -3008,7 +3008,7 @@ render      = "auto"                    # "off" reads every page as plain HTML</
 <!-- ============================================================ -->
 <h2 id="a2a">Other agents over A2A</h2>
 
-<p>Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work. As with MCP, Meru is only a client; it doesn't serve A2A. The client comes from the A2A project's Go SDK, <code>github.com/a2aproject/a2a-go/v2</code> (v2.6.0), and speaks version 1.0 of the protocol over JSON-RPC or REST. An agent whose card speaks only an older version fails with an error that says so.</p>
+<p>Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work. As with MCP, Meru is only a client; it doesn't serve A2A. The client comes from the A2A project's Go SDK, <code>github.com/a2aproject/a2a-go/v2</code> (v2.7.0), and speaks version 1.0 of the protocol over JSON-RPC or REST. An agent whose card speaks only an older version fails with an error that says so.</p>
 
 <p>The model sees each allowed agent skill as one more tool, named <code>a2a.&lt;agent&gt;.&lt;skill&gt;</code>, that takes one argument, <code>{"message": "..."}</code>, and returns the agent's answer as text. A2A has no field that picks a skill: the agent reads the message and decides. The skill in the tool name picks the description the model sees and the <code>allow</code> entry the call needs. The call goes through the same <code>dispatch</code> function as MCP tools, so it gets the same allowlist check, confirmation, <code>tool_calls</code> row (with <code>kind = "a2a"</code>) and trace span.</p>
 

@@ -5274,7 +5274,7 @@ server log from the tests on 2026-10-18 was searched for them.
 
 Meru hands tasks to other agents over A2A, an open protocol for agent-to-agent work.
 As with MCP, Meru is only a client; it doesn't serve A2A. The client comes from the
-A2A project's Go SDK, `github.com/a2aproject/a2a-go/v2` (v2.6.0), and speaks version
+A2A project's Go SDK, `github.com/a2aproject/a2a-go/v2` (v2.7.0), and speaks version
 1.0 of the protocol over JSON-RPC or REST. An agent whose card speaks only an older
 version fails with an error that says so.
 

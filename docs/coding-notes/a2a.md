@@ -260,7 +260,11 @@ The tests run a real A2A server, built with the SDK's `a2asrv` package, on
 127.0.0.1 through `httptest`. Each test scripts what the agent sends back:
 a finished task, a stream of chunks, a failure, or a task that hangs until the
 timeout. The server counts card fetches and calls and keeps the last request's
-headers, so the tests can check the retry wait and the header injection.
+headers, so the tests can check the retry wait and the header injection. It
+counts a call as a stream when its `Accept` header holds `text/event-stream`,
+with `strings.Contains`: since SDK 2.7.0 the client sends
+`text/event-stream, application/json`, so a server that can't stream may
+answer with plain JSON, and a test for the exact header stopped counting.
 `TestCardCannotPointOffMachine` serves a loopback card that names an agent at
 `192.0.2.1`, an address reserved for documentation, and checks that the dialer
 refuses it.
