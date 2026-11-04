@@ -179,7 +179,8 @@ func TestBadOutput(t *testing.T) {
 }
 
 // TestOllamaDown stops the fake Ollama under a running merud. meru must exit
-// 1 with a message that names the Ollama call, and merud must stay up.
+// 1 with the sentence that tells the user to start Ollama, and merud must
+// stay up.
 func TestOllamaDown(t *testing.T) {
 	t.Parallel()
 	s := startStack(t)
@@ -189,10 +190,8 @@ func TestOllamaDown(t *testing.T) {
 	if res.code != 1 {
 		t.Errorf("meru exited %d, want 1; stderr %q", res.code, res.stderr)
 	}
-	for _, want := range []string{"meru: ", "/api/chat", "connection refused"} {
-		if !strings.Contains(res.stderr, want) {
-			t.Errorf("stderr = %q, want it to contain %q", res.stderr, want)
-		}
+	if want := "meru: Ollama isn't running, so Meru can't answer yet.\n"; res.stderr != want {
+		t.Errorf("stderr = %q, want %q", res.stderr, want)
 	}
 	if r := runMeru(t, s.home, "ping"); r.code != 0 {
 		t.Errorf("meru ping after Ollama went away: exit %d, stderr %q", r.code, r.stderr)

@@ -259,6 +259,13 @@ closes `ready`, and `handle` reads `full` only after `ready` is closed, so
 `full` needs no lock: Go's memory model orders a channel's close before any
 receive that sees it.
 
+Ollama can stop after the gate opens. Then a question fails deep in the
+engine with `dial tcp 127.0.0.1:11434: connect: connection refused`.
+`gate.ollamaDown` looks at the full handler's error with `errors.Is`. When the
+error wraps `engine.ErrOllamaDown`, it pokes the watch and returns
+`errOllamaDown`, so the user reads "Ollama isn't running, so Meru can't answer
+yet." in place of the transport error. Every other error passes through.
+
 `ollama_test.go` runs `merud` over a fake engine whose `Info` fails, then
 reports 0.11.0, then 0.13.0 (`TestServeWaitsForOllama`), and checks the
 connectors op, the error a question gets, `mcp_status` with no servers, and

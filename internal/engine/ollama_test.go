@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -611,5 +612,39 @@ func TestKeepAliveJSON(t *testing.T) {
 				t.Errorf("keepAliveJSON(%q) = %s, %v; want %s", tt.in, got, err, tt.want)
 			}
 		})
+	}
+}
+
+// TestRefusedConnectionIsOllamaDown checks that a call to an address where
+// nothing listens wraps ErrOllamaDown, and that another failure doesn't.
+func TestRefusedConnectionIsOllamaDown(t *testing.T) {
+	// Listen on a free port, then close it, so the port refuses connections.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	down, err := NewOllama("http://"+addr, "", "", nil, nil)
+	if err != nil {
+		t.Fatalf("NewOllama: %v", err)
+	}
+	_, err = down.Generate(context.Background(), nil, nil, Options{Model: "m"})
+	if !errors.Is(err, ErrOllamaDown) {
+		t.Errorf("Generate on a closed port: error = %v, want ErrOllamaDown", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"model not found"}`, http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	up, err := NewOllama(srv.URL, "", "", srv.Client(), nil)
+	if err != nil {
+		t.Fatalf("NewOllama: %v", err)
+	}
+	_, err = up.Generate(context.Background(), nil, nil, Options{Model: "m"})
+	if err == nil || errors.Is(err, ErrOllamaDown) {
+		t.Errorf("Generate on a 404: error = %v, want an error that isn't ErrOllamaDown", err)
 	}
 }

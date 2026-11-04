@@ -159,7 +159,7 @@ makes a test slower, not flaky.
 | `TestRouting` | `ask_test.go` | Clear winners give their route and probability; a low or letterless distribution gives the fallback, `search+tools` |
 | `TestCancelMidAnswer` | `failure_test.go` | SIGINT to meru mid-answer: exit 130, the fake sees the call cancelled, no answer line, the next question works |
 | `TestOllamaErrors` | `failure_test.go` | HTTP 500 on the router call, 503 on the answer, a stream that breaks part way: meru exits 1 with the reason, merud stays up |
-| `TestOllamaDown` | `failure_test.go` | The fake stops: meru exits 1 naming `/api/chat` and "connection refused"; merud still answers a ping |
+| `TestOllamaDown` | `failure_test.go` | The fake stops: meru exits 1 with "Ollama isn't running, so Meru can't answer yet."; merud still answers a ping |
 | `TestStartupRefusals` | `daemon_test.go` | A non-loopback `base_url`, a non-loopback `otlp_endpoint`: merud exits 1, names the problem, leaves no socket |
 | `TestOllamaStartsLate` | `ollama_test.go` | merud starts before the fake Ollama, on a port nothing listens on: it keeps its socket, `meru mcp status` says "Ollama isn't running at …" and `failed`, and a question exits 1 with "Ollama isn't running, so Meru can't answer yet."; once the fake starts on that port, merud warms the models and answers |
 | `TestOllamaTooOld` | `ollama_test.go` | Ollama 0.12.0: merud stays up, `meru mcp status` says it is too old for Meru's search model and where to update, and a question gets "Meru can't answer yet: …" |
