@@ -318,7 +318,7 @@ spend tokens rather than guess.
 `make router-eval` scores the router against the local Ollama. It needs the fast
 model pulled, and skips otherwise.
 
-**The labelled set.** `internal/router/testdata/routes.jsonl` holds 162 questions
+**The labelled set.** `internal/router/testdata/routes.jsonl` holds 167 questions
 written the way a user types them, 34 to 48 per route, each with its route and a
 reason. 18 carry `"tag": "connected"`: they ask for mail, the calendar,
 Drive, the Obsidian vault, a local git command or the clock. Some are follow-ups that carry a `history` of earlier turns. The harness
@@ -353,6 +353,26 @@ and break ties by the lowest missed rate.
 
 **Refit** after any change to the prompt, the examples or the fast model, and write
 the results into `config.toml` defaults and `config.example.toml`.
+
+**Writing help that says "my".** On 4 November 2026 the router sent
+`rewrite "Meru streamlines my workflow by handling my tasks efficiently."` to
+search at 0.518 against 0.425 for direct. Three rows joined the labelled set for
+it: two rewrites from that chat, the second with the first as its history, and a
+proofread of quoted text that says "my". With them the set scored 0.890 on the
+fit set and 0.776 held out. Two prompt changes routed both rewrites direct, and
+both cost more than they gained:
+
+| Change | Fit set | Held out |
+| --- | --- | --- |
+| none | 0.890 | 0.776 |
+| option A names "writing help on text the question gives, such as rewrite or translate, even when that text says I or my" | 0.805 | 0.735 |
+| the direct example "fix the grammar: me and him was late" becomes "…me and my boss was late to my review" | 0.839 | 0.714 |
+
+The first change lowered search recall on the fit set from 0.941 to 0.765. The
+prompt stays as it was, and the agent loop sends such a question direct with a
+rule of its own (ARCHITECTURE.md, "Routing", and `writingOnText` in
+`internal/agent/rewrite.go`). The rows stay in the set, so the score shows what
+the router alone gets right.
 
 ## Decision rules
 

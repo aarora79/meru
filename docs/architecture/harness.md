@@ -322,12 +322,15 @@ a failed route can fail the turn.
 
 The router reads one token. It can't know that "meru" in "what database does meru
 use?" is the user's own project, or that "email" means the Gmail tools. Code in
-`respond` corrects that, in this order. Each rule only adds: none of them takes a
-search or a tool away.
+`respond` corrects that, in this order. Each rule but the first only adds: none of
+the others takes a search or a tool away.
 
 ```mermaid
 flowchart TD
-    start([router's route]) --> f{direct, and the question names<br/>an indexed folder?}
+    start([router's route]) --> g{search, and the question gives<br/>the text to rewrite or translate?}
+    g -- yes --> d0[route = direct]
+    g -- no --> f
+    d0 --> f{direct, and the question names<br/>an indexed folder,<br/>and gives no text to change?}
     f -- yes --> s1[route = search]
     f -- no --> p
     s1 --> p{direct, and the question asks<br/>about past chats?}
@@ -352,24 +355,31 @@ flowchart TD
 ```
 
 *Figure 3. The route rules, in the order `respond` applies them. The router's choice
-enters at the top. A question that names an indexed folder, or asks about past
+enters at the top. A question that gives the text to rewrite or translate moves
+from search to direct. A question that names an indexed folder, or asks about past
 chats, moves from direct to search. A question that points at a connected tool, or
 whose picked skill needs tools, gains them. A question that asks for the web, or
 gives a URL, goes to the web before the model's first round. After the search of
 the user's files, a question that names something the files don't cover goes to the
 web too. Only then does the client learn the route.*
 
-1. **A folder by name.** When the route is `direct` and the question holds the last
+1. **Text to change.** When the route is `search` and the question opens with a
+   writing verb, such as rewrite, proofread or translate, followed by a line break,
+   a colon or a double quote, the route becomes `direct` (`writingOnText`), and the
+   next two rules leave it there. The router sent `rewrite "Meru streamlines my
+   workflow by handling my tasks efficiently."` to `search` at 0.518, most likely
+   because the text says "my".
+2. **A folder by name.** When the route is `direct` and the question holds the last
    part of an indexed folder's path as a whole word, such as `meru` for
    `~/repos/meru`, the route becomes `search` (`namesFolder`). Names under three
    letters don't count. The router sent "what database does Meru use to store its
    index?" to `direct` at 0.621, and the model made up an answer; a wrong guess
    costs one search of about 50 ms.
-2. **Past chats.** When the route is `direct` and the question asks about earlier
+3. **Past chats.** When the route is `direct` and the question asks about earlier
    conversations ("what were my previous conversations about?"), it becomes
    `search`, which offers the recalled sessions and the file tools that read the
    transcripts (`aboutPastChats`).
-3. **A connected tool.** `toolTarget` (`internal/agent/toolnouns.go`) looks for six
+4. **A connected tool.** `toolTarget` (`internal/agent/toolnouns.go`) looks for six
    signs that the question points at a tool: it names an MCP server or A2A agent
    ("obsidian"), holds the word "remember", names Apple Notes ("apple notes" or
    "notes app"), asks for the web in a phrase such as
@@ -377,15 +387,15 @@ web too. Only then does the client learn the route.*
    that matches a noun from a connected tool's name ("email" matches `gmail`
    because both end in "mail"). Any sign adds tools: `direct` becomes `tools`, and
    `search` becomes `search+tools` (`withTools`).
-4. **A skill that needs tools.** `skillTools` reads each picked skill's
+5. **A skill that needs tools.** `skillTools` reads each picked skill's
    `allowed-tools` key. A skill brings only tools config already allows; a skill
    whose tools are all off leaves the turn, because its steps would tell the model
    to call a tool it doesn't have. When a picked skill needs a tool the route lacks,
    the route gains tools. A small model told "search first with web_search" and
    offered only `datetime` once called `datetime` eight times in a row.
-5. **Web first, asked.** A question that asks for the web, or gives a URL, goes to
+6. **Web first, asked.** A question that asks for the web, or gives a URL, goes to
    the web before the model's first round (see section 4).
-6. **Web first, named.** After the search of the files, a question that names a
+7. **Web first, named.** After the search of the files, a question that names a
    thing, such as a product, and whose excerpts don't mention it, goes to the web
    too, and the route gains tools.
 
@@ -1034,6 +1044,7 @@ guard below names the failure it answers.
 | --- | --- | --- |
 | The router sent a question about the user's own project `direct`, and the model made up the answer | a folder named in the question forces a search | `namesFolder` |
 | "Search my Obsidian vault" routed to `search`, which offers no server's tools | a question that points at a connected tool gets tools | `toolTarget`, `withTools` |
+| The router sent a rewrite of pasted text to `search` because the text said "my" | a question that gives the text to change goes direct | `writingOnText` |
 | A small model read "I" as Meru | `whoIsWho` in every prompt | `agent.go` |
 | A model said it moved a folder that nothing moved | the honesty rule, `canDoNote`, and the check after the answer | `honest.go` |
 | A model called itself Jina on a Mistral model | `selfLine` names Meru and the answer model in every prompt | `honest.go` |

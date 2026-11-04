@@ -727,11 +727,22 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if err != nil {
 		return res, err
 	}
+	// Writing help on text the question gives, such as "rewrite: …", needs
+	// nothing from the files, though the text may say "my". The router can
+	// read that "my" as the user's own notes, so such a question goes
+	// direct, and the two rules below that move a direct turn to search
+	// leave it there. See writingOnText.
+	givenText := writingOnText(question)
+	if givenText && dec.Route == "search" {
+		a.log.DebugContext(ctx, "route changed to direct: the question gives the text to change",
+			"confidence", dec.Confidence)
+		dec.Route = "direct"
+	}
 	// The router can't always tell that a question names one of the user's
 	// own projects: "what database does meru use" can look like general
 	// knowledge. When a direct question names an indexed folder, search
 	// anyway. A wrong guess costs one search of about 50 ms.
-	if dec.Route == "direct" && a.search != nil && namesFolder(question, a.currentFolderNames()) {
+	if dec.Route == "direct" && !givenText && a.search != nil && namesFolder(question, a.currentFolderNames()) {
 		a.log.DebugContext(ctx, "route changed to search: the question names an indexed folder",
 			"confidence", dec.Confidence)
 		dec.Route = "search"
@@ -740,7 +751,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// about?" looks like general knowledge, and the direct route offers
 	// neither the recalled sessions nor the file tools that read every
 	// chat. See aboutPastChats.
-	if dec.Route == "direct" && (a.search != nil || a.chatsFolder() != "") && aboutPastChats(question) {
+	if dec.Route == "direct" && !givenText && (a.search != nil || a.chatsFolder() != "") && aboutPastChats(question) {
 		a.log.DebugContext(ctx, "route changed to search: the question asks about past chats",
 			"confidence", dec.Confidence)
 		dec.Route = "search"

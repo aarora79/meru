@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `rewrite_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1218,11 +1218,41 @@ On a file turn, `Handle` calls `searchFiles` between routing and the prompt.
 router sends some questions about your files there, and an answer from the
 files beats one from the model alone.
 
-One rule runs first. When the router says `direct` and the question names an
+One rule runs before all the others, in `rewrite.go`. A question that gives
+the text to change, such as "rewrite\nMeru is great" or `proofread this: "…"`,
+needs nothing from the files, so a `search` route becomes `direct`:
+
+```go
+givenText := writingOnText(question)
+if givenText && dec.Route == "search" {
+    dec.Route = "direct"
+}
+```
+
+`writingOnText` asks the regular expression `writingVerb` whether the question
+opens with rewrite, proofread, translate or one of nine other writing verbs,
+after an optional "please" or "can you". `FindStringIndex` returns where the
+match starts and ends, as a two-number slice, or `nil` for none. Then
+`strings.ContainsAny` checks the rest of the question for a line break, a
+colon or a double quote, the marks that show the text follows. A single quote
+doesn't count, because "rewrite what's in my notes" holds one and asks about
+the notes. The two rules that move a `direct` turn to search skip a turn
+where `givenText` is true, so a rewrite of text that says "meru" stays direct.
+
+The router sent `rewrite "Meru streamlines my workflow by handling my tasks
+efficiently."` to `search` at 0.518 against 0.425 for direct, most likely
+because the text says "my workflow" and "my tasks". Changing the router's
+prompt fixed that question but lowered its score on the labelled set, so the
+fix sits here instead. `TestWritingOnText` in `rewrite_test.go` is a table of
+questions that do and don't give their text, and `TestGivenTextGoesDirect`
+runs a turn the fake router sends to search and checks that the `route` event
+says direct.
+
+The next rule: when the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
 
 ```go
-if dec.Route == "direct" && a.search != nil && namesFolder(question, a.folderNames) {
+if dec.Route == "direct" && !givenText && a.search != nil && namesFolder(question, a.folderNames) {
     dec.Route = "search"
 }
 ```
