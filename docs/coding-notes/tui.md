@@ -1245,7 +1245,9 @@ is in use, a last line names the model that answers.
 it builds, so a question that waits in the queue keeps the scope it had when it was
 typed. `startTurn` puts it in the request's `Scope`. `m.scope` holds "" for auto, which
 the request leaves out, as the app's does. `scopeLabel` names a scope in the app's
-words for the header, where a scope other than auto shows in amber.
+words for the header, where a scope other than auto shows in amber. `newSession`
+sets `m.scope` back to "", so `/new` and `/incognito` start on auto, as the app's
+New chat does.
 
 `/retry` sends the newest turn's question again with the scope and the image paths
 the turn kept, the app's Try again. It goes through `sendOrQueue`, the path Enter

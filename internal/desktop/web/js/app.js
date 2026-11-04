@@ -971,7 +971,9 @@ function deleteOpen() {
 
 // newChat clears the conversation, from the New chat button or /new. A
 // running turn stops first, and its queue goes with it: those questions
-// belonged to the old chat. The notice matches `meru chat`'s.
+// belonged to the old chat. The scope goes back to Auto, so a switch set
+// for the old chat doesn't narrow the new one. The notice matches `meru
+// chat`'s.
 function newChat() {
   const dropped = state.queue.length;
   if (state.running) {
@@ -984,6 +986,7 @@ function newChat() {
   state.turns = [];
   state.selected = null;
   state.asking = null;
+  setScope("auto");
   bridge.detachAll().catch((err) => notice(errorText(err)));
   showView("chat");
   drawConversation();

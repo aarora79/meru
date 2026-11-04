@@ -175,6 +175,9 @@ func (m *Model) newSession() {
 	m.incognito = false // /incognito sets it again after this
 	m.deleteArmed = ""
 	m.attached = nil // as the app's New chat takes the chips off
+	// A new chat looks everywhere again: a /scope set for the last chat's
+	// questions would quietly narrow the first question of this one.
+	m.scope = ""
 	m.notice = "new session: the next question starts fresh"
 	if dropped := m.dropQueue(); dropped != "" {
 		m.notice += " · " + dropped

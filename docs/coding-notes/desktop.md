@@ -543,7 +543,8 @@ bundler.
   in Settings. The approval card
   says why Meru asks on its own, with a link to the panel, because the panel may be
   closed. The composer holds the "Where Meru looks" switch, a radio group the
-  arrow keys move through, and the attach button. `onAttachments` draws the
+  arrow keys move through, and the attach button. `newChat` sets the switch
+  back to Auto, so a scope picked for one chat doesn't narrow the next. `onAttachments` draws the
   chips from each `attachments` update, each with its remove button, shows the
   update's notice, and switches a scope other than Auto or My files to My files
   when a file arrives; an image switches nothing, since it goes with the
