@@ -25,10 +25,58 @@ mean two places that pack a release. One script on one machine keeps one path,
 and the owner sees each file before it goes out. CI still runs every check on
 the commit first, and the script runs `make check` again before it builds.
 
+## The release in two steps
+
+1. **On the Mac:** `make release VERSION=v0.4.1`. It publishes Meru.app, the
+   disk image, `meru` and `merud` for every platform, and both install
+   scripts.
+2. **On GitHub:** run the `desktop-linux` workflow for the same tag. It builds
+   the Linux desktop app on Ubuntu 24.04 and adds its archive to the release:
+
+   ```sh
+   gh workflow run desktop-linux.yml --repo aarora79/meru -f version=v0.4.1
+   gh run watch --repo aarora79/meru   # pick the run to follow it
+   ```
+
+   Until it runs, `install-linux.sh` installs `meru` and `merud` and says the
+   release has no desktop app.
+
+## What you need
+
+**The Mac for `make release`.** Any Mac with Apple silicon (M1 or later);
+the script refuses an Intel Mac, because Meru.app builds only for the chip it
+builds on. On a fresh Mac:
+
+```sh
+xcode-select --install          # git, and the C compiler cgo needs for Meru.app
+brew install go gh              # any recent Go; go.mod pins the toolchain, which Go downloads
+gh auth login                   # so gh can push the tag and create the release
+git clone https://github.com/aarora79/meru && cd meru
+make release VERSION=v0.4.1 DRY_RUN=1
+```
+
+`ditto`, `shasum`, `zip`, `plutil` and `hdiutil` come with macOS. The release
+needs no Apple Developer account, no Docker, no Ollama and no Node: the app is
+signed ad hoc, the tests use the fake Ollama, and the check tools run through
+`go run` at pinned versions. The first run takes longer, while Go downloads
+the toolchain, the modules and those tools.
+
+**The Linux desktop app.** The `desktop-linux` workflow needs nothing from
+you but the tag. To build the same archive on your own machine, use Ubuntu
+24.04, which has the GTK 4 and WebKitGTK 6.0 the pinned Wails needs:
+
+```sh
+sudo apt install gcc pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+# install Go as above, then from the repository:
+make desktop-linux VERSION=v0.4.1   # writes dist/meru-desktop-v0.4.1-linux-amd64.tar.gz
+```
+
+A hand-built archive is for trying out. The release gets the workflow's
+build, which also signs a build attestation.
+
 ## Before you start
 
 - Merge everything the release needs into `main`, and wait for CI to pass.
-- Run `gh auth login` once, so `gh` can push the tag and create the release.
 - Pick the version. The first release is `v0.4.1`: `v0.4.0` is a tag with no
   release, and `v0.5.0` belongs to the scheduler milestone in
   [ROADMAP.md](../ROADMAP.md).
@@ -143,10 +191,8 @@ curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-lin
 
 `make release` attaches `scripts/install.sh` and `scripts/install-linux.sh` to
 every release, so those URLs always serve the latest copy. The Linux desktop
-app isn't in `make release`: after the release, run the `desktop-linux`
-workflow for its tag ([ci.md](ci.md#desktop-linux)), which adds the archive.
-Until it runs, `install-linux.sh` installs `meru` and `merud` and says the
-release has no desktop app. A plain `curl -LO` of any file's URL works too. People
+app comes from the `desktop-linux` workflow, step 2 of
+[the release in two steps](#the-release-in-two-steps) ([ci.md](ci.md#desktop-linux)). A plain `curl -LO` of any file's URL works too. People
 who'd rather not use Terminal download `Meru-v0.4.1-macos-arm64.dmg`, open it and
 run "Install Meru.app", which walks through eleven steps in a window
 ([running.md](running.md#the-mac-installer)).
