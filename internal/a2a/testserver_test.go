@@ -9,6 +9,7 @@ import (
 	"iter"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -102,7 +103,10 @@ func startAgent(t *testing.T, opts agentOptions) *testAgent {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ta.mu.Lock()
 		ta.calls++
-		if r.Header.Get("Accept") == "text/event-stream" {
+		// A streaming call asks for an event stream first. Since a2a-go
+		// 2.7.0 the client adds application/json after it, so the test
+		// looks for the stream type anywhere in the header.
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 			ta.streams++
 		}
 		ta.headers = r.Header.Clone()
