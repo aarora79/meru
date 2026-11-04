@@ -648,7 +648,9 @@ function askLarge(text, scope) {
 
 // send asks question, or queues it while a turn runs. The text stays in
 // the box when the Bridge refuses it, so nothing typed is lost. images,
-// for Try again, are the paths of the images the first asking carried.
+// for Try again, are the paths of the images the first asking carried;
+// an array, even an empty one, makes it a retry, which leaves the
+// composer's attachments for the next question.
 function send(question, scope, images) {
   let text = question.trim();
   if (!text) return Promise.resolve(false);
@@ -657,10 +659,10 @@ function send(question, scope, images) {
     return Promise.resolve(false);
   }
   notice("");
-  // The Bridge adds a "Read this file" line for each attached file,
-  // sends the images with the question, and clears the chips.
+  // For a send, the Bridge adds a "Read this file" line for each attached
+  // file, sends the images with the question, and clears the chips.
   const where = scope === "auto" ? "" : scope;
-  const call = images && images.length > 0
+  const call = images
     ? bridge.retry(state.session, text, where, images, state.incognito)
     : bridge.send(state.session, text, where, state.incognito);
   return call.then(

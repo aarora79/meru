@@ -423,7 +423,8 @@ the line as its tooltip.
   streams as plain text and renders as Markdown when it ends, as in `meru chat`;
   each code block gets its number in the chat and a Copy button, and each answer
   **Copy**, **Save to a note**, **Try again** (the same question, in the same
-  session and scope, with the same images) and a dim stats line. Under the
+  session and scope, with the same images and none of the files waiting in
+  the composer) and a dim stats line. Under the
   answer, one closed line, "3 sources", opens to a chip for each source the
   answer cites, and a chip opens its file. The Bridge picks those sources with
   `rpc.Cited`, as `meru` and `meru chat` do; an answer that cites none shows no

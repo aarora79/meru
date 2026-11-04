@@ -288,3 +288,44 @@ func TestSourceThumb(t *testing.T) {
 		t.Error("no preview of an image from a past chat")
 	}
 }
+
+// TestRetryLeavesAttachments checks that Try again asks the question with
+// its own images only: a file and an image waiting in the composer stay
+// there for the next question.
+func TestRetryLeavesAttachments(t *testing.T) {
+	home := t.TempDir()
+	away := filepath.Join(home, "Downloads")
+	out := filepath.Join(home, "meru-output")
+	uploads := filepath.Join(out, "uploads")
+	for _, d := range []string{away, uploads} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeBytes(t, filepath.Join(away, "garden-bed.png"), pngOf(t, 4, 3, false))
+	writeBytes(t, filepath.Join(away, "seeds.md"), []byte("Beans in June.\n"))
+
+	m := &imageMerud{uploads: uploads}
+	r := newRecorder()
+	picked := []string{filepath.Join(away, "garden-bed.png"), filepath.Join(away, "seeds.md")}
+	b := New(Options{Socket: startServer(t, m.handler), Home: home, OutputDir: out, Emit: r.emit,
+		PickFiles: func() ([]string, error) { return picked, nil }})
+	if err := b.AttachFile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r.waitFor(t, "attachments", isAttachments(r, 1))
+
+	if err := b.Retry("", "What's the weather?", "", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	r.waitFor(t, "end", isEnd(1))
+	m.mu.Lock()
+	asked := m.asked
+	m.mu.Unlock()
+	if len(asked) != 1 || asked[0].Text != "What's the weather?" || asked[0].Images != nil {
+		t.Fatalf("asked = %+v, want the question alone, with no file line or images", asked)
+	}
+	if chips := lastAttachments(r).Attachments; len(chips) != 2 {
+		t.Errorf("chips after Try again = %+v, want the image and the file still waiting", chips)
+	}
+}

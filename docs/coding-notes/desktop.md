@@ -369,9 +369,12 @@ picks out the images.
 Try again calls `Retry`, which is `Send` with the images the first asking
 carried. The page passes the `~/meru-output/uploads/...` paths it got on the
 turn; `Retry` turns each back into a full path with `expandTilde`, refuses one
-outside the uploads folder, and hands them to `send` with the composer's own
-attachments. Without it, Try again on a question about a photo would ask the
-model blind.
+outside the uploads folder, and hands them to `send` as `sendRetry`. Without
+it, Try again on a question about a photo would ask the model blind. A retry
+sends those images alone: the files and images waiting in the composer stay
+there for the next question the user types. The page's `send` calls
+`bridge.retry` whenever it gets an images array, even an empty one, so Try
+again on a question with no images also leaves the composer alone.
 
 Continue calls `Continue(session, scope, incognito)`, which sends "Continue"
 through the same `send` with `cont` set: the request carries `Continue: true`,
