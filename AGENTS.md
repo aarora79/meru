@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.7.2**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.7.3**. ROADMAP.md ticks every item from v0.1
 to v0.6:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -90,7 +90,8 @@ Since v0.7.0 the router can give an easy question to the fast model, a large
 model answers on request, and an answer model may run on an `[[endpoints]]`
 server on this machine or the user's own network, after the user's yes (#78). Since v0.7.1 a question of fact
 never goes to the fast model (#220). Since v0.7.2 web search runs with Podman
-when there is no Docker (#228).
+when there is no Docker (#228). Since v0.7.3 `merud` hides every stored
+secret in `merud.log`, in spans and in server errors (#238).
 Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships
