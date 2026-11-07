@@ -117,7 +117,7 @@ argv        = ["df", "-h"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, err := newToolService(ctx, cfg, cfgPath, st, mem, ix, searchAdapter{st: st, eng: eng}, eng, nil, log)
+	tools, err := newToolService(ctx, cfg, cfgPath, st, mem, ix, searchAdapter{st: st, eng: eng}, eng, nil, log, obs.NewRedactor())
 	if err != nil {
 		t.Fatal(err)
 	}

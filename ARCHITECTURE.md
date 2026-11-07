@@ -3579,10 +3579,21 @@ key to an HTTP server.
 
 `merud` swaps in the value when it starts a server or calls an agent, and refuses
 to start when group or other users can read `secrets.toml` (it says to run
-`chmod 600`). `meru mcp add` writes the file with mode `0600`. Before `dispatch`
-writes a transcript line, a `tool_calls` row, a log line or a span, it replaces each
-stored value of 8 or more characters with `[secret:<name>]`; shorter values would
-match ordinary words. A config file you share or commit holds names only.
+`chmod 600`). `meru mcp add` writes the file with mode `0600`. Every stored value
+of 8 or more characters becomes `[secret:<name>]` before it lands anywhere;
+shorter values would match ordinary words:
+
+- `dispatch` redacts each call's arguments and result before the transcript line
+  and the `tool_calls` row;
+- the handler behind `merud.log` redacts every line's message and attributes, an
+  error's text included;
+- the trace exporter redacts each span's attributes, events and status before the
+  span leaves `merud`;
+- `merud` redacts a server's last error before `mcp_status` and Settings show it.
+
+All four read one redactor, which `merud` hands the secret set each time it loads
+`secrets.toml`, so a key added in Settings is hidden from the next line on. A
+config file you share or commit holds names only.
 
 ---
 

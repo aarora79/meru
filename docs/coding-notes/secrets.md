@@ -83,7 +83,9 @@ for _, name := range names {
 ```
 
 It skips values shorter than 8 characters, because a short value such as `abc`
-would also match ordinary words. It replaces the longest values first, so a key
+would also match ordinary words. `merud` runs it in four places: `dispatch` before
+a transcript line or `tool_calls` row, `merud.log`'s handler, the span exporter,
+and a server's last error before a client shows it (see `obs.md`, "redact.go"). It replaces the longest values first, so a key
 that contains another key is hidden whole.
 
 `Set` reads the current entries, adds or replaces one, and writes the whole file

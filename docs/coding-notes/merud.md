@@ -180,12 +180,21 @@ batch.
 **The log.** `openLog` opens `merud.log` for appending and builds the logger
 every package shares. `-v` sets the level to `debug`, whatever `[log] level`
 says. The text handler goes inside `obs.LogHandler`, which adds the turn's
-`trace_id` to each line logged with a span in its context:
+`trace_id` to each line logged with a span in its context, and hides every
+secret through `red`, the `obs.Redactor` that `run` builds first:
 
 ```go
 text := slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv})
-return slog.New(obs.LogHandler(text)), func() { _ = f.Close() }, nil
+return slog.New(obs.LogHandler(text, red)), func() { _ = f.Close() }, nil
 ```
+
+`red` hides nothing until `newToolService` loads `secrets.toml` and calls
+`red.Set(sec.Redact)`, which it does before the MCP pool starts, so a key a server
+echoes back in its first error never reaches the log. `reloadMCP` calls `Set`
+again right after it reads `secrets.toml`, before the new pool starts. `serve`
+hands the same `red` to `obs.Setup` for spans, and the tool service runs it over
+each server's last error in `mcpStatus` and `mcpBackend.Status` before a client
+sees it.
 
 The first line `run` writes is `merud starting`, with the settings that decide
 how a turn runs: the profile, each tier's model, Ollama's address and

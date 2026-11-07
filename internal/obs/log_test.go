@@ -26,7 +26,7 @@ import (
 // without a context, passes through unchanged.
 func TestLogHandlerAddsTraceID(t *testing.T) {
 	var buf bytes.Buffer
-	log := slog.New(LogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	log := slog.New(LogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}), nil))
 	// With keeps working through the wrapper.
 	log = log.With("part", "test")
 
@@ -56,7 +56,7 @@ func TestLogHandlerAddsTraceID(t *testing.T) {
 // TestLogHandlerRespectsLevel checks that the wrapper keeps the inner
 // handler's level, so debug lines cost nothing at info level.
 func TestLogHandlerRespectsLevel(t *testing.T) {
-	h := LogHandler(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	h := LogHandler(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelInfo}), nil)
 	if h.Enabled(context.Background(), slog.LevelDebug) {
 		t.Error("debug enabled at info level")
 	}

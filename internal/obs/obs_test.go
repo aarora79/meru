@@ -135,7 +135,7 @@ func TestSetupRefusesNonLoopback(t *testing.T) {
 	t.Cleanup(func() { current.Store(nil) })
 	for _, endpoint := range []string{"http://10.1.2.3:4318", "http://example.com:4318", "http://0.0.0.0:4318"} {
 		t.Run(endpoint, func(t *testing.T) {
-			shutdown, err := Setup(context.Background(), config.Observability{OTLPEndpoint: endpoint})
+			shutdown, err := Setup(context.Background(), config.Observability{OTLPEndpoint: endpoint}, nil)
 			if err == nil {
 				_ = shutdown(context.Background())
 				t.Fatalf("Setup(%q) succeeded, want an error", endpoint)
@@ -152,7 +152,7 @@ func TestSetupRejectsBadInterval(t *testing.T) {
 	t.Cleanup(func() { current.Store(nil) })
 	for _, interval := range []string{"soon", "0s", "-5s"} {
 		cfg := config.Observability{OTLPEndpoint: "http://127.0.0.1:4318", MetricsInterval: interval}
-		if _, err := Setup(context.Background(), cfg); err == nil {
+		if _, err := Setup(context.Background(), cfg, nil); err == nil {
 			t.Errorf("Setup with metrics_interval %q succeeded, want an error", interval)
 		}
 	}
@@ -190,7 +190,7 @@ func TestSetupWithoutEndpoint(t *testing.T) {
 		capture bool
 	}{{false}, {true}}
 	for _, tt := range tests {
-		shutdown, err := Setup(context.Background(), config.Observability{CaptureContent: tt.capture})
+		shutdown, err := Setup(context.Background(), config.Observability{CaptureContent: tt.capture}, nil)
 		if err != nil {
 			t.Fatalf("Setup with no endpoint: %v", err)
 		}
@@ -640,7 +640,7 @@ func TestSetupExportsToLoopback(t *testing.T) {
 		MetricsInterval: "1h",       // only the shutdown flush should send
 		Traces:          true,
 		CaptureContent:  true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}

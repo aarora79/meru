@@ -227,13 +227,17 @@ a secret. Spans carry no prompt or response text unless `capture_content = true`
 `slog` never logs prompt text or tool results at info.
 
 **Where the code enforces it.** `Resolve`, `Redact`, `Set` and `checkMode` in
-[`internal/secrets/`](../../../../internal/secrets/). The redaction calls in
-`cmd/merud/tools.go`. The check in `internal/builtin/remember.go`. `CaptureContent` in
+[`internal/secrets/`](../../../../internal/secrets/). The `obs.Redactor`, which
+`merud` builds in `main.go` and the tool service `Set`s on each load of
+`secrets.toml`, behind `merud.log`'s handler (`obs.LogHandler`), the span exporter
+(`redactExporter` in `internal/obs/redact.go`) and the server errors in
+`mcpStatus` and `mcpBackend.Status`; `dispatch`'s calls in `cmd/merud/tools.go`. The check in `internal/builtin/remember.go`. `CaptureContent` in
 `internal/obs`. `AuditArgs` in `internal/commands/set.go`.
 
 **What to check.** A new config key that takes a raw token. A new `slog` call or span
 attribute holding arguments, results or prompt text. A new tool result path that
-skips `Redact`.
+skips `Redact`. A logger built without `obs.LogHandler`, a trace exporter set up
+outside `obs.setup`, or a new error string sent to a client without the redactor.
 
 ---
 

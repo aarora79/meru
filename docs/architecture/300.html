@@ -2743,7 +2743,14 @@ meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HT
 
 <p><code>env</code> belongs to a stdio server, which <code>merud</code> starts. A <code>url</code> entry with <code>env</code> fails at startup: <code>merud</code> starts no process for it, so the variables would go nowhere. The message names the server and points at <code>headers</code>, the way to send a key to an HTTP server.</p>
 
-<p><code>merud</code> swaps in the value when it starts a server or calls an agent, and refuses to start when group or other users can read <code>secrets.toml</code> (it says to run <code>chmod 600</code>). <code>meru mcp add</code> writes the file with mode <code>0600</code>. Before <code>dispatch</code> writes a transcript line, a <code>tool_calls</code> row, a log line or a span, it replaces each stored value of 8 or more characters with <code>[secret:&lt;name&gt;]</code>; shorter values would match ordinary words. A config file you share or commit holds names only.</p>
+<p><code>merud</code> swaps in the value when it starts a server or calls an agent, and refuses to start when group or other users can read <code>secrets.toml</code> (it says to run <code>chmod 600</code>). <code>meru mcp add</code> writes the file with mode <code>0600</code>. Every stored value of 8 or more characters becomes <code>[secret:&lt;name&gt;]</code> before it lands anywhere; shorter values would match ordinary words:</p>
+<ul>
+  <li><code>dispatch</code> redacts each call's arguments and result before the transcript line and the <code>tool_calls</code> row;</li>
+  <li>the handler behind <code>merud.log</code> redacts every line's message and attributes, an error's text included;</li>
+  <li>the trace exporter redacts each span's attributes, events and status before the span leaves <code>merud</code>;</li>
+  <li><code>merud</code> redacts a server's last error before <code>mcp_status</code> and Settings show it.</li>
+</ul>
+<p>All four read one redactor, which <code>merud</code> hands the secret set each time it loads <code>secrets.toml</code>, so a key added in Settings is hidden from the next line on. A config file you share or commit holds names only.</p>
 
 <p>On a Mac, the installer in each release's disk image does all of this in a window, and more: it installs Ollama, starts <code>merud</code> at login, and hands <code>merud</code> the connectors you turned on (see <a href="#installer">The Mac installer</a>).</p>
 
