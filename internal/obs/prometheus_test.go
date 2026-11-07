@@ -175,7 +175,7 @@ func TestMetricsHandlerHost(t *testing.T) {
 // endpoint: the instruments record, and the page shows what they recorded.
 func TestSetupPrometheusOnly(t *testing.T) {
 	t.Cleanup(func() { current.Store(nil) })
-	shutdown, err := Setup(context.Background(), config.Observability{Prometheus: "127.0.0.1:9464"})
+	shutdown, err := Setup(context.Background(), config.Observability{Prometheus: "127.0.0.1:9464"}, nil)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}

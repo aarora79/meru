@@ -95,7 +95,12 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 		return fmt.Errorf("create %s: %w", cfg.Dir, err)
 	}
 
-	log, closeLog, err := openLog(filepath.Join(cfg.Dir, "merud.log"), cfg.Log.Level)
+	// red hides secrets in the log and the spans. It hides nothing until the
+	// tool service loads secrets.toml and hands it the secret set; that
+	// happens before the first MCP server starts, so a key a server echoes
+	// back in an error never reaches merud.log.
+	red := obs.NewRedactor()
+	log, closeLog, err := openLog(filepath.Join(cfg.Dir, "merud.log"), cfg.Log.Level, red)
 	if err != nil {
 		return err
 	}
@@ -111,7 +116,7 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 		"traces", cfg.Observability.Traces, "capture_content", cfg.Observability.CaptureContent,
 		"log_level", cfg.Log.Level, "index_folders", len(cfg.Index.Folders))
 
-	err = serve(ctx, cfg, *configPath, *socketPath, log, buildEngine)
+	err = serve(ctx, cfg, *configPath, *socketPath, log, red, buildEngine)
 	if err != nil {
 		log.Error("merud stopped", "err", err)
 		return err
@@ -134,8 +139,8 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 // Until merud is ready, requests go through a gate that waits, or answers
 // from the watch while Ollama fails; nothing that needs the engine starts
 // before Ollama is ready.
-func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, buildEngine engineBuilder) error {
-	shutdownObs, err := obs.Setup(ctx, cfg.Observability)
+func serve(ctx context.Context, cfg config.Config, configPath, socketPath string, log *slog.Logger, red *obs.Redactor, buildEngine engineBuilder) error {
+	shutdownObs, err := obs.Setup(ctx, cfg.Observability, red)
 	if err != nil {
 		return fmt.Errorf("observability: %w", err)
 	}
@@ -249,7 +254,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// they have nothing to read, so merud leaves them out and the model
 	// never sees them, until the desktop app adds a folder.
 	search := searchAdapter{st: st, eng: eng}
-	tools, err := newToolService(gctx, cfg, configPath, st, mem, ix, search, eng, mems.syncNow, log)
+	tools, err := newToolService(gctx, cfg, configPath, st, mem, ix, search, eng, mems.syncNow, log, red)
 	if err != nil {
 		return fail(err)
 	}
@@ -557,9 +562,10 @@ func handler(svc services) rpc.Handler {
 // openLog opens (or creates) the log file at path for appending, with mode
 // 0600, and returns a slog logger that writes key=value lines at level and
 // above. level is a [log] level name that config has already checked. Lines
-// logged with a context that holds a span gain its trace_id (see
-// obs.LogHandler). The returned func closes the file.
-func openLog(path, level string) (*slog.Logger, func(), error) {
+// logged with a context that holds a span gain its trace_id, and every line
+// passes through red, which hides secrets (see obs.LogHandler). The returned
+// func closes the file.
+func openLog(path, level string, red *obs.Redactor) (*slog.Logger, func(), error) {
 	lv, ok := config.LogLevel(level)
 	if !ok {
 		return nil, nil, fmt.Errorf("log level %q is unknown", level)
@@ -569,7 +575,7 @@ func openLog(path, level string) (*slog.Logger, func(), error) {
 		return nil, nil, fmt.Errorf("open log %s: %w", path, err)
 	}
 	text := slog.NewTextHandler(f, &slog.HandlerOptions{Level: lv})
-	return slog.New(obs.LogHandler(text)), func() { _ = f.Close() }, nil
+	return slog.New(obs.LogHandler(text, red)), func() { _ = f.Close() }, nil
 }
 
 // engineBuilder is the type of newEngine: it builds the engine from config,

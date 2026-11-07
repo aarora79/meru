@@ -47,7 +47,7 @@ func (b *lockedBuffer) String() string {
 func debugLog() (*slog.Logger, *lockedBuffer) {
 	buf := &lockedBuffer{}
 	h := slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-	return slog.New(obs.LogHandler(h)), buf
+	return slog.New(obs.LogHandler(h, nil)), buf
 }
 
 // recordSpans installs a tracer provider that keeps every finished span in

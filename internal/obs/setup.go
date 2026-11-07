@@ -44,7 +44,7 @@ const defaultInterval = 10 * time.Second
 //
 // It returns two values, a function and an error; Go functions may return
 // several values, and by convention the error comes last.
-func setup(ctx context.Context, cfg config.Observability) (func(context.Context) error, error) {
+func setup(ctx context.Context, cfg config.Observability, r *Redactor) (func(context.Context) error, error) {
 	// noop is a shutdown function with nothing to flush. A function literal
 	// like this one is a value, so it can be stored and returned.
 	noop := func(context.Context) error { return nil }
@@ -136,7 +136,8 @@ func setup(ctx context.Context, cfg config.Observability) (func(context.Context)
 		// turn never waits on the network.
 		tracerProvider = sdktrace.NewTracerProvider(
 			sdktrace.WithResource(res),
-			sdktrace.WithBatcher(traceExporter),
+			// redactExporter hides secrets in each span on its way out.
+			sdktrace.WithBatcher(redactExporter{next: traceExporter, r: r}),
 		)
 	}
 

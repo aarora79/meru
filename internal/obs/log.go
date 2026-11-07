@@ -1,6 +1,7 @@
 // This file joins merud's log to its traces: a slog handler that stamps each
-// line with the trace ID of the span in its context, and Preview, which cuts
-// captured text down to a length that fits on one log line.
+// line with the trace ID of the span in its context and hides any secret in
+// it, and Preview, which cuts captured text down to a length that fits on one
+// log line.
 
 package obs
 
@@ -25,14 +26,20 @@ const maxPreview = 200
 // Only the *Context logging calls pass a context through, so code that wants
 // the trace ID on a line calls log.DebugContext(ctx, ...) rather than
 // log.Debug(...). A record with no span in its context passes through as is.
-func LogHandler(next slog.Handler) slog.Handler {
-	return traceHandler{next: next}
+//
+// Every record also passes through r, so a key a server echoes back in an
+// error never reaches the log file: the message and each attribute come out
+// with [secret:<name>] in place of the key. r may be nil, which hides nothing.
+func LogHandler(next slog.Handler, r *Redactor) slog.Handler {
+	return traceHandler{next: next, r: r}
 }
 
 // traceHandler is the slog.Handler LogHandler returns. It holds the handler
-// it wraps and adds one attribute on the way through.
+// it wraps and the Redactor, adds one attribute on the way through, and
+// redacts the rest.
 type traceHandler struct {
 	next slog.Handler
+	r    *Redactor
 }
 
 // Enabled reports whether next would write a record at level, so a debug
@@ -41,26 +48,38 @@ func (h traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.next.Enabled(ctx, level)
 }
 
-// Handle adds trace_id when ctx carries a span with a trace ID, and passes
-// the record on. slog hands each handler its own copy of the record, so
-// adding to r here changes nothing the caller holds.
+// Handle builds a copy of r with its message and attributes redacted, adds
+// trace_id when ctx carries a span with a trace ID, and passes the copy on.
+// A record can't have its attributes replaced in place, so the copy starts
+// from slog.NewRecord and takes each attribute through the Redactor.
 func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	out := slog.NewRecord(r.Time, r.Level, h.r.Redact(r.Message), r.PC)
+	// Attrs calls the function once per attribute; returning true goes on.
+	r.Attrs(func(a slog.Attr) bool {
+		out.AddAttrs(h.r.attr(a))
+		return true
+	})
 	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
-		r.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
+		out.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
 	}
-	return h.next.Handle(ctx, r)
+	return h.next.Handle(ctx, out)
 }
 
-// WithAttrs returns a handler whose lines carry attrs as well. It wraps the
-// result again, so a logger built with log.With(...) keeps its trace IDs.
+// WithAttrs returns a handler whose lines carry attrs as well, redacted with
+// the secrets known now. It wraps the result again, so a logger built with
+// log.With(...) keeps its trace IDs and its redaction.
 func (h traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return traceHandler{next: h.next.WithAttrs(attrs)}
+	hidden := make([]slog.Attr, len(attrs))
+	for i, a := range attrs {
+		hidden[i] = h.r.attr(a)
+	}
+	return traceHandler{next: h.next.WithAttrs(hidden), r: h.r}
 }
 
 // WithGroup returns a handler that nests later attributes under name,
 // wrapped again for the same reason as WithAttrs.
 func (h traceHandler) WithGroup(name string) slog.Handler {
-	return traceHandler{next: h.next.WithGroup(name)}
+	return traceHandler{next: h.next.WithGroup(name), r: h.r}
 }
 
 // Discard returns a logger that writes nothing. Packages that take an

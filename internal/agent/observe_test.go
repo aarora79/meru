@@ -62,7 +62,7 @@ func (b *lockedBuffer) String() string {
 func bufferLog(level slog.Level) (*slog.Logger, *lockedBuffer) {
 	buf := &lockedBuffer{}
 	h := slog.NewTextHandler(buf, &slog.HandlerOptions{Level: level})
-	return slog.New(obs.LogHandler(h)), buf
+	return slog.New(obs.LogHandler(h, nil)), buf
 }
 
 // recordSpans installs a tracer provider that keeps every finished span in
@@ -79,11 +79,11 @@ func recordSpans(t *testing.T) *tracetest.SpanRecorder {
 // its own tracer provider, so call this before recordSpans.
 func captureContent(t *testing.T) {
 	t.Helper()
-	if _, err := obs.Setup(context.Background(), config.Observability{CaptureContent: true}); err != nil {
+	if _, err := obs.Setup(context.Background(), config.Observability{CaptureContent: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = obs.Setup(context.Background(), config.Observability{})
+		_, _ = obs.Setup(context.Background(), config.Observability{}, nil)
 		otel.SetTracerProvider(tracenoop.NewTracerProvider())
 	})
 }

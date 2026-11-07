@@ -60,7 +60,7 @@ allows only code inside this repo to import.
 | `internal/secrets` | `~/.meru/secrets.toml`: load with a mode check, resolve `secret:<name>`, redact, save | `secrets.go`: `Load`, `Resolve`, `Redact`, `Set` |
 | `internal/transcript` | reads and writes session files (JSONL), and lists them | `transcript.go`: `New`, `Append`, `History`, then `list.go`: `List` |
 | `internal/rpc` | the socket protocol between `meru` and `merud` | `protocol.go`, then `client.go` and `server.go` |
-| `internal/obs` | OpenTelemetry metrics and traces | `obs.go` |
+| `internal/obs` | OpenTelemetry metrics and traces, the log handler, and the `Redactor` that keeps secrets out of both | `obs.go`, `redact.go` |
 | `internal/tui` | the `meru chat` screen (Bubble Tea, Lip Gloss, Glamour), with the desktop app's features as slash commands and boxes | `run.go`: `Run`, then `model.go`, `view.go`, `commands.go` and `box.go` |
 | `internal/about` | the tagline, the version and the project's links, for the desktop app and `meru chat` | `about.go`: `Version`, `ShortVersion`, `Links` |
 | `internal/loopback` | the rule "this address is on this machine" | `loopback.go`: `CheckURL` |

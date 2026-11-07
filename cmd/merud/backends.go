@@ -26,6 +26,9 @@ import (
 // only changes the shape of what goes in and out.
 type mcpBackend struct {
 	pool *mcp.Pool
+	// redact hides secrets in a server's last error before Status hands it
+	// to the clients; a server can echo a key back in one. nil hides nothing.
+	redact func(string) string
 }
 
 // This line makes the compiler check that mcpBackend has every method of
@@ -85,7 +88,7 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 			Kind:      dispatch.KindMCP,
 			Transport: st.Transport,
 			Connected: st.Connected,
-			LastError: st.LastError,
+			LastError: hide(b.redact, st.LastError),
 			Offered:   st.Offered,
 			Unknown:   st.Unknown,
 			Tools:     []rpc.ToolInfo{}, // an empty list, not null, in the JSON
@@ -115,8 +118,9 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 // mcpStatus turns the pool's report into the rows `meru mcp` prints. A
 // server that isn't connected gets Tools = -1, which the client shows as
 // "—": it has no tool list, so any count would be a guess. Allowed and
-// Confirm come from config, so they show either way.
-func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
+// Confirm come from config, so they show either way. redact hides secrets
+// in each server's last error, which can echo a key back.
+func mcpStatus(servers []mcp.ServerStatus, redact func(string) string) []rpc.MCPStatus {
 	out := make([]rpc.MCPStatus, 0, len(servers))
 	for _, st := range servers {
 		row := rpc.MCPStatus{
@@ -129,7 +133,7 @@ func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
 			Confirm:   st.Confirms,
 		}
 		if !st.Connected {
-			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, st.LastError
+			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, hide(redact, st.LastError)
 		}
 		if st.Managed {
 			// A connector: the supervisor's state and sentence say more
@@ -139,6 +143,15 @@ func mcpStatus(servers []mcp.ServerStatus) []rpc.MCPStatus {
 		out = append(out, row)
 	}
 	return out
+}
+
+// hide returns text with redact run over it, or text as it is when redact
+// is nil, as in tests that build a backend by hand.
+func hide(redact func(string) string, text string) string {
+	if redact == nil {
+		return text
+	}
+	return redact(text)
 }
 
 // mcpServerConfigs turns the [[mcp.servers]] entries into the pool's

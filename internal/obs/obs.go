@@ -56,11 +56,12 @@ func load() *instruments {
 // MetricsHandler serves when cfg.Prometheus is set. With neither it leaves
 // OpenTelemetry's no-op providers in place. It refuses a non-loopback
 // endpoint. Call the returned shutdown function before exiting, so the last
-// batch of data is sent.
+// batch of data is sent. Every exported span passes through r, which hides
+// secrets in its text; r may be nil.
 //
 // The body lives in setup.go.
-func Setup(ctx context.Context, cfg config.Observability) (shutdown func(context.Context) error, err error) {
-	return setup(ctx, cfg)
+func Setup(ctx context.Context, cfg config.Observability, r *Redactor) (shutdown func(context.Context) error, err error) {
+	return setup(ctx, cfg, r)
 }
 
 // Tracer returns the tracer every Meru span comes from. Before Setup it is

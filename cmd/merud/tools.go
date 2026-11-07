@@ -30,6 +30,7 @@ import (
 	"github.com/aarora79/meru/internal/index"
 	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/memory"
+	"github.com/aarora79/meru/internal/obs"
 	"github.com/aarora79/meru/internal/platform"
 	"github.com/aarora79/meru/internal/render"
 	"github.com/aarora79/meru/internal/rpc"
@@ -68,6 +69,7 @@ type toolService struct {
 	// JavaScript in a headless Chrome. Close stops any render in flight.
 	renderer *render.Renderer
 
+	red       *obs.Redactor    // hides secrets in the log, spans and server errors; set on each secrets load
 	mu        sync.Mutex       // guards secrets, pool, a2a and connected
 	secrets   *secrets.Secrets // swapped on reload
 	pool      *mcp.Pool        // swapped on reload
@@ -89,11 +91,14 @@ type toolService struct {
 // when a command, server or agent entry is wrong; merud then refuses to
 // start, so a bad entry shows at once. A command's program missing from
 // PATH is only a warning in the log.
-func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, search builtin.FileSearcher, eng builtin.Generator, onRemember func(context.Context), log *slog.Logger) (*toolService, error) {
+func newToolService(ctx context.Context, cfg config.Config, configPath string, st *store.Store, mem *memory.Store, ix *index.Indexer, search builtin.FileSearcher, eng builtin.Generator, onRemember func(context.Context), log *slog.Logger, red *obs.Redactor) (*toolService, error) {
 	sec, err := secrets.Load(secrets.Path(cfg.Dir))
 	if err != nil {
 		return nil, err
 	}
+	// From here on the log and the spans hide these secrets. It comes before
+	// newPool, whose servers may echo a key back in their first error.
+	red.Set(sec.Redact)
 	// The commands come first: they start nothing, so a bad entry stops
 	// merud before any MCP server starts.
 	cmds, err := commands.New(cfg.Commands, log)
@@ -124,7 +129,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		return nil, fmt.Errorf("a2a: %w", err)
 	}
 
-	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, a2a: ac, secrets: sec, pool: pool,
+	s := &toolService{configPath: configPath, dir: cfg.Dir, st: st, log: log, red: red, a2a: ac, secrets: sec, pool: pool,
 		conns: conns, started: cfg, connected: agent.ConnectedTools(conns.routerServers(cfg))}
 	outputDir, err := expandHome(cfg.Skills.OutputDir)
 	if err != nil {
@@ -197,7 +202,7 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 	// the built-ins first, so no server can shadow configure, then the
 	// commands, so an MCP server named "cmd" can't shadow one.
 	s.dispatcher = dispatch.New(
-		[]dispatch.Backend{bt, cmds, mcpBackend{pool: pool}, ac},
+		[]dispatch.Backend{bt, cmds, mcpBackend{pool: pool, redact: red.Redact}, ac},
 		st,
 		// Attachments hands dispatch the text of a mail attachment that an
 		// MCP or A2A call saved, read by read_file's rules.
@@ -305,6 +310,10 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Hide the new secrets before the new pool starts, so a key added
+	// through Settings is hidden from its server's first error on. A reload
+	// that fails after this leaves more hidden than needed, never less.
+	s.red.Set(sec.Redact)
 	pool, err := newPool(ctx, cfg, sec, s.conns, s.log)
 	if err != nil {
 		return err
@@ -319,7 +328,7 @@ func (s *toolService) reloadMCP(ctx context.Context) error {
 	// keeps the rest as merud last loaded them.
 	s.connected = agent.ConnectedTools(s.conns.routerServers(s.started))
 	s.mu.Unlock()
-	s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool})
+	s.dispatcher.Replace(dispatch.KindMCP, mcpBackend{pool: pool, redact: s.red.Redact})
 	old.Close()
 	s.log.Info("mcp servers reloaded", "servers", len(cfg.MCP.Servers), "tools", len(s.dispatcher.Tools()))
 	return nil
@@ -421,7 +430,7 @@ func (s *toolService) handleMCPStatus(emit func(rpc.Event) error) error {
 	s.mu.Lock()
 	pool := s.pool
 	s.mu.Unlock()
-	rows := mcpStatus(pool.Status())
+	rows := mcpStatus(pool.Status(), s.red.Redact)
 	// The pool knows a connector only by its Spawn hook, so it calls each
 	// one stdio; an http connector, Google, says where it answers.
 	for i, r := range rows {

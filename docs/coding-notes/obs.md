@@ -290,21 +290,64 @@ isn't a fault. Any other error goes through `span.RecordError`, which adds an
 
 ### log.go
 
-`LogHandler` wraps the `slog` handler `merud` writes with:
+`LogHandler(next, r)` wraps the `slog` handler `merud` writes with. It does two
+jobs on each line: it hides secrets, and it adds the turn's trace ID.
 
 ```go
 func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
+    out := slog.NewRecord(r.Time, r.Level, h.r.Redact(r.Message), r.PC)
+    r.Attrs(func(a slog.Attr) bool {
+        out.AddAttrs(h.r.attr(a))
+        return true
+    })
     if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
-        r.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
+        out.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
     }
-    return h.next.Handle(ctx, r)
+    return h.next.Handle(ctx, out)
 }
 ```
+
+A `slog.Record` can't have an attribute replaced in place, so `Handle` builds a
+new record and copies each attribute across through the `Redactor`. `r.Attrs`
+calls the function once per attribute and stops early if it returns false.
+`WithAttrs` redacts the attributes a `log.With(...)` adds, once, when the logger
+is built.
 
 Code that logs with `log.DebugContext(ctx, ...)` passes the context along, and the
 handler reads the current span out of it. So every line of a turn carries
 `trace_id=...` without any caller adding it. A plain `log.Debug(...)` has no
 context and gets no ID.
+
+### redact.go
+
+A `Redactor` holds the function that hides secrets: `merud` builds one at
+startup, passes it to `LogHandler` and `Setup`, and calls `Set(sec.Redact)` each
+time it loads `secrets.toml`. It keeps the function in an `atomic.Pointer`, not
+behind a mutex, because a line can be logged by code that holds any lock, and
+`Redact` must never wait on one. A nil `*Redactor`, or one never `Set`, hides
+nothing, which is what tests and the first lines before secrets load see.
+
+`attr` redacts one attribute. It resolves a `slog.LogValuer` first, walks groups,
+and for any other value checks the text the handler would print: an error's
+`Error()`, or what `fmt` makes of the rest. A value that holds no secret keeps its
+type.
+
+Spans are redacted once, on their way out. `setup.go` hands the batcher a
+`redactExporter` instead of the OTLP exporter itself, and `ExportSpans` wraps
+each span in a `redactedSpan`:
+
+```go
+type redactedSpan struct {
+    trace.ReadOnlySpan
+    r *Redactor
+}
+```
+
+The first field has a type and no name, which is Go's *embedding*: a
+`redactedSpan` gets every method of the span it holds, and only `Attributes`,
+`Events` and `Status`, the three that carry text, are written again to redact.
+That covers an error a span recorded, since `RecordError` puts its message in an
+event attribute.
 
 `Preview` cuts a text to 200 characters for the debug log. Callers use it only when
 `CaptureContent()` is true. `Discard` returns a logger that writes nothing, for
