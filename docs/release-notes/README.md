@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.7.3](v0.7.3.md): secrets stay out of merud.log, spans and server errors
 - [v0.7.2](v0.7.2.md): web search with Podman, a clear sentence when Ollama stops, and new chats on Auto
 - [v0.7.1](v0.7.1.md): questions of fact go to the main model, never the fast one
 - [v0.7.0](v0.7.0.md): the router picks which model answers, a large model on request, and answer models on your own network after your yes
