@@ -25,9 +25,10 @@ type labelledPick struct {
 	Kind string   `json:"kind"`
 }
 
-// researchSkills are the two skills whose mix-up the eval measures: one
-// sends the model into the user's folders, the other to the web.
-var researchSkills = []string{"file-research", "web-research"}
+// researchSkills are the skills whose mix-up the eval measures: one sends
+// the model into the user's folders, one to the web, and one to mail and
+// the calendar. A stray pick of any of them counts as wrong.
+var researchSkills = []string{"file-research", "mail-research", "web-research"}
 
 // loadPicks reads the labelled questions at path, one JSON object a line,
 // skipping blank lines. It fails on a line that doesn't parse or has no

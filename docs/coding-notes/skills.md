@@ -14,8 +14,8 @@ header with a `name` and a `description`, then Markdown instructions. This packa
 reads those folders into a `Registry`. `merud` puts each skill's name and
 description in the system prompt, and reads the instructions only when a turn
 picks the skill (see [agent](agent.md) for the pick). The package also carries
-Meru's four built-in skills, `writing`, `explainer`, `web-research` and
-`file-research`, inside the binary, and copies each to disk when its folder is
+Meru's five built-in skills, `writing`, `explainer`, `web-research`,
+`file-research` and `mail-research`, inside the binary, and copies each to disk when its folder is
 missing.
 
 ## The picture
@@ -189,9 +189,9 @@ come from the owner's `my-ai-assets` repo. Nobody edits them here. To update one
 copy the new version into both places. `TestBuiltinsMatchRepo` fails when the two
 copies differ.
 
-`builtin/web-research/SKILL.md` and `builtin/file-research/SKILL.md` are
-Meru's own, so they have no twin in `.claude/skills/`, and
-`TestBuiltinsMatchRepo` checks only the two copied skills against the repo (the
+`builtin/web-research/SKILL.md`, `builtin/file-research/SKILL.md` and
+`builtin/mail-research/SKILL.md` are Meru's own, so they have no twin in
+`.claude/skills/`, and `TestBuiltinsMatchRepo` checks only the two copied skills against the repo (the
 `fromAssets` list). It tells the model how to answer a
 question about current facts with `web_search` and `web_fetch`: search the
 user's own words first, with a name in double quotes; never swap in a product
@@ -204,8 +204,8 @@ when the fast model picks it, so it names the questions that need it: "how to
 use a program or command, the latest version or release of something, news,
 prices", and "when asked to search the web". The integration test in
 `internal/agent` checks that the `lite` model picks it for "search the web for
-the latest Go release", and `make pick-eval` scores the pick on 25 labelled
-questions (see [agent](agent.md)). The last four, of kind `images`, ask about
+the latest Go release", and `make pick-eval` scores the pick on 29 labelled
+questions (see [agent](agent.md)). Four, of kind `images`, ask about
 pictures. Their first run, on MiniCPM5-2B, got 3 of 12 right: a request to find
 pictures like a coffee shop receipt loaded `web-research` beside
 `file-research` every time, which is how a turn came to search the web before
@@ -225,7 +225,8 @@ an older product with a similar name and answered about that one. A copy of
 reset web-research`.
 
 Both name their tools in `allowed-tools`: `web-research` lists `web_search,
-web_fetch` and `file-research` its six file tools. A copy installed before the
+web_fetch`, `file-research` its file tools and `mail-research` the `google`
+server's mail tools and `get_events`. A copy installed before the
 key existed doesn't have it; `meru skills reset <name>` brings the new one.
 
 `file-research` does the same job for your own files. It names the six file
@@ -241,9 +242,28 @@ find, read or compare. It ends "Not for how to use a program or command", the ha
 fix that keeps the pick off this skill. It matters most with `[index] retrieval = "agentic"`, where no excerpts
 sit in the prompt.
 
+`mail-research` does the same job for the user's email and calendar, through
+the `google` server. Its `allowed-tools` line names MCP tools by their full
+`server.tool` names, such as `google.search_gmail_messages` and
+`google.get_events`, where the other two name built-ins. Its steps say to
+write Gmail queries (`after:2026/11/01`, `newer_than:30d`, `from:`,
+`has:attachment`, `filename:pdf`, and `{receipt invoice folio}` for one of
+several words) and never web operators such as `site:`; to search newest first
+for "last" or "recent", starting at `newer_than:60d`; and to search for what
+the email is, such as a receipt, a folio or "your stay", since a hotel near a
+city may sit in another town and the city's name may not appear. The model
+reads every result's subject and sender, opens a receipt's attachment, calls
+`get_events` first when the user names a trip or a meeting, and quotes amounts
+as the email writes them. A real turn drove it: asked what a recent hotel stay
+cost, the model searched the user's old expense folders and never looked at
+mail, where last week's receipt sat. `make pick-eval` gained four mail
+questions, such as "did the airline email me a new departure time?". The pick
+got 9 of the 12 mail picks right, and 69 of 87 (79%) in all, with the 25
+questions from before at 60 of 75, the same as without it.
+
 `merud` runs `InstallBuiltins` at every start, and it copies only a skill whose
-folder is missing. So a user who installed Meru before `web-research` or
-`file-research` shipped gets them on the next start, and keeps any edits to the
+folder is missing. So a user who installed Meru before `web-research`, `file-research` or
+`mail-research` shipped gets them on the next start, and keeps any edits to the
 others. The same rule means a changed built-in, such as `file-research` once it
 named pictures, reaches an existing install only through `meru skills reset
 <name>`.

@@ -46,15 +46,16 @@ func TestSkillService(t *testing.T) {
 		t.Fatalf("newSkillService: %v", err)
 	}
 
-	// First run: the four built-ins, none edited.
+	// First run: the five built-ins, none edited.
 	evs, err := collect(t, func(emit func(rpc.Event) error) error { return s.handleList(ctx, emit) })
 	if err != nil || len(evs) != 1 {
 		t.Fatalf("list = %v, %v", evs, err)
 	}
 	got := evs[0].Skills
-	if len(got) != 4 || got[0].Name != "explainer" || got[1].Name != "file-research" || got[2].Name != "web-research" || got[3].Name != "writing" ||
-		!got[0].Builtin || !got[1].Builtin || got[0].Edited || got[1].Edited || got[2].Edited || got[3].Edited || got[0].Description == "" {
-		t.Fatalf("skills = %+v, want explainer, file-research, web-research and writing, built-in and not edited", got)
+	if len(got) != 5 || got[0].Name != "explainer" || got[1].Name != "file-research" || got[2].Name != "mail-research" ||
+		got[3].Name != "web-research" || got[4].Name != "writing" ||
+		!got[0].Builtin || !got[2].Builtin || got[0].Edited || got[1].Edited || got[2].Edited || got[3].Edited || got[4].Edited || got[0].Description == "" {
+		t.Fatalf("skills = %+v, want explainer, file-research, mail-research, web-research and writing, built-in and not edited", got)
 	}
 
 	// Hand edits count on the next call: a new skill, a broken one, and an
@@ -105,7 +106,7 @@ func TestSkillService(t *testing.T) {
 		t.Error("after reset writing still has the edited description")
 	}
 	if err := s.handleReset(ctx, rpc.Request{Op: rpc.OpSkillReset, ID: "notes"}); err == nil ||
-		!strings.Contains(err.Error(), "explainer, file-research, web-research and writing") {
+		!strings.Contains(err.Error(), "explainer, file-research, mail-research, web-research and writing") {
 		t.Errorf("reset notes error = %v, want one naming the built-ins", err)
 	}
 }
@@ -168,7 +169,7 @@ func TestSkillServiceDisabled(t *testing.T) {
 		}
 		names = append(names, name)
 	}
-	if want := "file-research,web-research,writing,explainer(off),not-yet(off)"; strings.Join(names, ",") != want {
+	if want := "file-research,mail-research,web-research,writing,explainer(off),not-yet(off)"; strings.Join(names, ",") != want {
 		t.Errorf("skills = %v, want %s", names, want)
 	}
 }

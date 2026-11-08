@@ -50,6 +50,13 @@ func plansOnly(text string) bool {
 const planNudge = "You said what you would do next but didn't do it. " +
 	"Do it now: call the tool, or answer from what you have."
 
+// lastRoundNote joins the last round of a turn that had tools, the round
+// that offers none. It tells the model to answer from what it has, and to
+// say what it didn't get to, rather than plan another search it can't run.
+const lastRoundNote = "This is your last step: no more tool calls are possible. " +
+	"Answer the question now from what the tools already returned. " +
+	"Then say in one sentence what you didn't get to check, so the user can ask for it."
+
 // capAnswer is the answer to a turn that used every round with nothing to
 // show. %d is max_rounds; %s names the tools tried, as tried writes them.
 const capAnswer = "Meru used all %d rounds of tool calls this question allows and didn't reach an answer. " +
@@ -134,4 +141,39 @@ func failedWord(outcome string) string {
 		return "cancelled"
 	}
 	return "failed"
+}
+
+// meruNoteStarts are the openings of the notes only Meru writes: the cap
+// note after a turn that ran out of rounds, and the tool and web notes the
+// history carries after an answer. A model must never write them itself.
+var meruNoteStarts = []string{
+	"[Meru stopped here:",
+	"(Meru's record of the tools",
+	"(Meru's notes on the pages",
+}
+
+// withoutMeruNotes returns text with any of Meru's own notes the model
+// copied into it cut out, and the rest trimmed. A cap note ends at its
+// closing bracket; a tool or web note runs to the end of the text, as it
+// does in history. A real Continue turn called no tool and wrote back a cap
+// note naming calls it never made, then the tool record from the history;
+// cut, its text was only the plan "Let me get the actual folio PDF
+// content", which the plan nudge then acts on.
+func withoutMeruNotes(text string) string {
+	for _, start := range meruNoteStarts {
+		for {
+			i := strings.Index(text, start)
+			if i < 0 {
+				break
+			}
+			end := len(text)
+			if start[0] == '[' {
+				if j := strings.Index(text[i:], "]"); j >= 0 {
+					end = i + j + 1
+				}
+			}
+			text = text[:i] + text[end:]
+		}
+	}
+	return strings.TrimSpace(text)
 }

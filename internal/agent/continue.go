@@ -28,10 +28,13 @@ var errNothingToContinue = errors.New("the last answer in this chat is complete,
 
 // The hand-off's size. resultChars of each result is enough to recall what
 // a call found; past handoffChars the oldest calls drop out, since a long
-// hand-off would fill the window that cut the answer off.
+// hand-off would fill the window that cut the answer off. resultChars was
+// 600, and a real Continue lost a receipt's total: a downloaded
+// attachment's result spends its first 600 characters on the file's name,
+// size and download link before the text Meru read from it.
 const (
-	resultChars  = 600
-	handoffChars = 8000
+	resultChars  = 2000
+	handoffChars = 16000
 )
 
 // continuation reads lines, the last turn of a session, and returns its

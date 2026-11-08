@@ -560,3 +560,24 @@ func skillInfos(names []string) []rpc.SkillInfo {
 	}
 	return out
 }
+
+// addRecordsSkill returns p's names with recordsSkill added, for a turn
+// whose question asks about the user's own records (signRecords). It adds
+// the skill only when the registry holds it, the pick hasn't chosen it,
+// and config offers at least one of the tools it names: with no mail tool
+// on, its Gmail rules would only fill the prompt. The rule is a word test,
+// like the routing rule it rides on, so it costs no model call.
+func (a *Agent) addRecordsSkill(p pickedSkills) []string {
+	if p.reg == nil || slices.Contains(p.names, recordsSkill) {
+		return p.names
+	}
+	s, ok := p.reg.Get(recordsSkill)
+	if !ok {
+		return p.names
+	}
+	offered := a.offeredNames()
+	if !slices.ContainsFunc(s.AllowedTools, func(n string) bool { return slices.Contains(offered, n) }) {
+		return p.names
+	}
+	return append(p.names, recordsSkill)
+}

@@ -154,6 +154,11 @@ func TestToolTarget(t *testing.T) {
 		{"list the folders in ~/backup", specs, ""},
 		{"search the web for the latest Go release", []engine.ToolSpec{spec("read_file")}, ""},
 		{"remember that my name is Dana", nil, ""},
+		// The user's own records, while a server such as google is connected.
+		{"what did i spend on my last trip to nyc", specs, "asks about the user's records"},
+		{"how about one from a hotel in jersey city", specs, "asks about the user's records"},
+		{"find the receipt for the headphones I ordered", specs, "asks about the user's records"},
+		{"what did i spend on my last trip to nyc", []engine.ToolSpec{spec("read_file"), spec("search_files")}, ""},
 		// Apple Notes: named outright, only while its tools are offered.
 		{"search my Apple Notes for the garden plan", appleNotes, "names Apple Notes"},
 		{"what's in the Notes app about Lisbon?", appleNotes, "names Apple Notes"},

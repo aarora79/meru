@@ -326,3 +326,43 @@ func TestWebSkillSkipsFileSearch(t *testing.T) {
 		t.Error("with no skill picked, the files weren't searched")
 	}
 }
+
+// TestRecordsQuestionLoadsMailSkill: the pick chooses no skill for a trip
+// question, and the records rule loads mail-research anyway when the mail
+// tools are on, and not when they are off.
+func TestRecordsQuestionLoadsMailSkill(t *testing.T) {
+	tests := []struct {
+		name  string
+		specs []engine.ToolSpec
+		want  bool
+	}{
+		{"mail tools on", []engine.ToolSpec{spec("google.search_gmail_messages"), spec("google.get_events"), spec("read_file")}, true},
+		{"only another server", []engine.ToolSpec{spec("obsidian.search"), spec("read_file")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := testConfig(t)
+			eng := &pickEngine{fakeEngine: &fakeEngine{pieces: []string{"You paid $735.34."}}, answer: func(string) string { return "none" }}
+			tools := &fakeTools{specs: tt.specs}
+			a := New(cfg, eng, &fakeRouter{dec: Decision{Route: "search", Confidence: 0.84, Outcome: "ok"}}, nil, tools, nil, nil, quietLog())
+			a.UseSkills(fixedSkills{reg: builtinRegistry(t)})
+			evs, err := run(context.Background(), a, rpc.Request{Text: "what did i spend on my last trip to nyc"})
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			var route rpc.Event
+			for _, ev := range evs {
+				if ev.Type == rpc.EventRoute {
+					route = ev
+				}
+			}
+			got := slices.ContainsFunc(route.Skills, func(s rpc.SkillInfo) bool { return s.Name == "mail-research" })
+			if got != tt.want {
+				t.Errorf("route skills = %+v, want mail-research = %v", route.Skills, tt.want)
+			}
+			if loaded := strings.Contains(eng.lastCall().msgs[0].Content, "Skill: mail-research"); loaded != tt.want {
+				t.Errorf("mail-research body in the prompt = %v, want %v", loaded, tt.want)
+			}
+		})
+	}
+}

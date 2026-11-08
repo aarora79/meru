@@ -339,6 +339,11 @@ func TestRoundCapForcesAnswer(t *testing.T) {
 		if offered := len(c.tools) > 0; offered != (i < 2) {
 			t.Errorf("round %d offered tools = %v, want %v", i+1, offered, i < 2)
 		}
+		// Only the last round tells the model to answer now.
+		last := c.msgs[len(c.msgs)-1]
+		if told := last.Role == engine.RoleUser && last.Content == lastRoundNote; told != (i == 2) {
+			t.Errorf("round %d carries the last-round note = %v, want %v", i+1, told, i == 2)
+		}
 	}
 	if n := len(tools.recorded()); n != 2 {
 		t.Errorf("dispatch ran %d calls, want 2: the last round's call is ignored", n)

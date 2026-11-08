@@ -182,7 +182,14 @@ type sortKey struct {
 // rows matched, one citation for the sheet and the rows it drew on. With
 // only a path, and perhaps a sheet or header_row, it describes the sheet.
 // It fails, with text the model reads, on bad fields, a path it may not
-// read, a file that isn't a table, a limit, and a cancelled turn.
+// read, a limit, and a cancelled turn.
+//
+// A file that isn't a table, such as a receipt PDF, gets its text back, as
+// read_file would return it, under one line that says so. A real turn
+// showed why: the model called analyze_table on a hotel's receipt PDF, got
+// "read this one with read_file", and never did, so the receipt it needed
+// went unread. Only a file read_file can't read either, such as a picture,
+// still fails.
 func (t *Tools) analyzeTable(ctx context.Context, raw json.RawMessage) (string, []rpc.Citation, error) {
 	var a tableArgs
 	if err := decode(AnalyzeTable, raw, &a); err != nil {
@@ -201,7 +208,14 @@ func (t *Tools) analyzeTable(ctx context.Context, raw json.RawMessage) (string, 
 	tables, reason, err := t.files.ReadTable(c.Path)
 	switch {
 	case errors.Is(err, index.ErrNotTable):
-		return "", nil, fmt.Errorf("analyze_table: %s isn't a table. It reads Excel (.xlsx) and delimited text (.csv, .tsv, .tab) files; read this one with read_file", t.show(c.Path))
+		notTable := fmt.Errorf("analyze_table: %s isn't a table. It reads Excel (.xlsx) and delimited text (.csv, .tsv, .tab) files; read this one with read_file", t.show(c.Path))
+		// json.Marshal of a struct of strings can't fail, so its error is dropped.
+		args, _ := json.Marshal(readFileArgs{Path: a.Path})
+		text, rerr := t.readFile(args)
+		if rerr != nil {
+			return "", nil, notTable
+		}
+		return "analyze_table: " + t.show(c.Path) + " isn't a table, so here is its text, as read_file returns it.\n\n" + text, nil, nil
 	case err != nil:
 		return "", nil, fmt.Errorf("analyze_table: %s: %v", t.show(c.Path), err)
 	case reason != "":

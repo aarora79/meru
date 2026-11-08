@@ -1,0 +1,22 @@
+---
+name: mail-research
+description: Search the user's email inbox and calendar - emailed receipts and invoices, booking and order confirmations, appointments, flight changes and replies from people. Use when a question asks whether someone emailed the user, what an email says, what an emailed receipt or booking shows, or when an appointment, meeting or trip is, or asks to check mail or the calendar.
+allowed-tools: google.search_gmail_messages, google.get_gmail_message_content, google.get_gmail_messages_content_batch, google.get_gmail_thread_content, google.get_gmail_attachment_content, google.get_events
+---
+
+# Mail research
+
+1. Write Gmail queries, not web searches. Gmail understands these, and nothing like `site:`:
+   - dates: `after:2026/11/01`, `before:2026/12/01`, `newer_than:30d`. A month or a year written as a word only matches that word.
+   - a sender: `from:bookings.example.com`, or the name the user gave, such as `from:dentist`.
+   - attachments: `has:attachment`, `filename:pdf`.
+   - one of several words: `{receipt invoice folio}`.
+   - Gmail matches every word you write, so keep a query to two or three words plus its filters. A long list, such as "hotel reservation Cambridge Boston November 2026", finds nothing.
+2. For what a stay, a trip or an order cost, search for the receipt first: `has:attachment {folio receipt invoice} newer_than:60d`. A "thank you for your stay" email often shows only points, with a link to the invoice; the receipt is the email with the attachment.
+3. For "last", "latest" or "recent", search by date, newest first: start with `newer_than:60d` and widen it only if nothing comes back. Take the year from today's date in the system prompt; a month the user names without a year is the latest one that has passed. A trip you found in the user's files may not be the latest: still search mail newest first.
+4. Search for what the email is, not where it happened. A receipt says receipt, folio, invoice, order, "your stay" or "thank you for your purchase"; it often comes from a no-reply address. A place name may not appear: a hotel near a city is in another town. Never make up a sender address, and never put the user's own address in `from:` unless the question is about mail the user sent.
+5. A search returns 10 emails at first. Before you say nothing is there, add receipt words such as `{folio receipt invoice}` to the query, or ask for more with `page_size` 25. Read the subjects and senders of every result before you pick. The email you need may have a subject such as "We hope you enjoyed your stay". Open the ones that could answer, and open a receipt's attachment too: the amounts are often only there.
+6. When the user names an event, such as a trip or a meeting, call get_events for its dates first, then search mail inside those dates.
+7. Once a receipt or an email answers the question, answer: give what it says, and offer to look for the rest, such as flights or rides, instead of searching for them unasked. Quote amounts, dates and names exactly as the email or the attachment writes them. Add up only what the receipt itemizes, and say the total is yours when the receipt doesn't give one.
+8. Describe only emails a tool returned in this turn or an earlier one. Never write an email's sender, date, amounts or card number from memory or guesswork; if you haven't opened it, open it first.
+9. If nothing you found answers the question, say which queries you ran, and ask the user for a sender, a date or a word from the email.

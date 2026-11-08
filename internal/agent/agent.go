@@ -572,6 +572,19 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			unbacked = true
 			notice = strings.TrimSpace(notice + " " + missingNotice(missing))
 		}
+		// A money amount in the answer that no tool result, excerpt or
+		// user message holds, on a turn whose tools returned something or
+		// whose route was about the user's data, and that showed the model
+		// no picture. A real turn on a search+tools route called no tool and
+		// described a hotel receipt with its amounts and card number, none
+		// of which Meru had read; the check now covers such a turn too. A
+		// direct turn, such as a question about prices in general, stays
+		// out. See amounts.go.
+		if (t.readTools > 0 || route != "direct") && !t.sawPicture && len(t.images) == 0 {
+			if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
+				notice = strings.TrimSpace(notice + " " + n)
+			}
+		}
 	}
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
@@ -770,6 +783,11 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
+	// A records question loads the mail skill itself, when the pick left
+	// it out and its tools are on; see addRecordsSkill.
+	if target == signRecords {
+		picked.names = a.addRecordsSkill(picked)
+	}
 	// fileTurn says whether the turn is about the user's files; see
 	// aboutFiles.
 	fileTurn := aboutFiles(dec.Route, target)
@@ -943,6 +961,15 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	// routed and searched on.
 	if t.handoff != "" {
 		question = t.handoff
+	}
+	// The amounts check compares the answer against what this prompt holds
+	// and the user's own words; earlier answers stay out, so a figure the
+	// model moved from one trip to another doesn't count as read.
+	t.noteRead(question, memories, files, web)
+	for _, m := range history {
+		if m.Role == engine.RoleUser {
+			t.noteRead(m.Content)
+		}
 	}
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,

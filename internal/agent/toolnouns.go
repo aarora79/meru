@@ -93,7 +93,7 @@ func describeSource(name, prefix string, allow []string) string {
 // toolTarget returns what in question points at one of the tools in
 // specs, as words for a log line, or "" when nothing does. Handle uses it
 // twice: to add tools to a route that lacks them, and to skip the search
-// before the answer on a "tools" turn (see aboutFiles). It checks five
+// before the answer on a "tools" turn (see aboutFiles). It checks these
 // signs, in order, each added after the router missed one:
 //
 //   - "names a tool server": "search my obsidian vault" routed to search,
@@ -105,6 +105,9 @@ func describeSource(name, prefix string, allow []string) string {
 //     phrases come from webPhrases.
 //   - "gives a web address": a question that holds an http or https URL
 //     needs web_fetch, whatever route the router picked.
+//   - "asks about the user's records": "what did I spend on my last trip"
+//     routed to search, twice, and the model answered from old expense
+//     folders while the receipt sat in mail. See asksAboutRecords.
 //   - "names what a tool handles": "what was the last email I sent?" routed
 //     to search, and the model grepped the user's files.
 //
@@ -126,10 +129,52 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 		return "asks for the web"
 	case givesURL(question, specs):
 		return "gives a web address"
+	case asksAboutRecords(question, specs):
+		return signRecords
 	case asksAboutToolNoun(question, specs):
 		return "names what a tool handles"
 	}
 	return ""
+}
+
+// signRecords is the words toolTarget returns for asksAboutRecords. The
+// agent also reads it to load the mail skill (see recordsSkill).
+const signRecords = "asks about the user's records"
+
+// recordsSkill is the skill a records question loads when its tools are
+// on the turn. The skill pick runs on the fast model, which chose no skill
+// for "what did I spend on my last trip to nyc" three times out of three,
+// so the turn's Gmail queries named the city and missed the receipt from
+// a hotel just outside it. See (*Agent).addRecordsSkill.
+const recordsSkill = "mail-research"
+
+// recordWords are words that mark a question about the user's own
+// records: what they paid, booked or ordered, where they went or stayed,
+// and when an appointment was. Such a record lives in mail and the
+// calendar as often as in the user's files, so a question with one of
+// them gets the connected tools as well as the file search.
+var recordWords = []string{
+	"trip", "travel", "stay", "stayed", "hotel", "folio", "flight", "booking", "booked",
+	"reservation", "receipt", "invoice", "order", "ordered", "spend", "spent", "paid",
+	"appointment",
+}
+
+// asksAboutRecords reports whether question holds one of recordWords while
+// specs hold a tool from an MCP server, such as the google server's mail
+// and calendar. The route then widens from search to search+tools, so the
+// turn can look in mail too; the sources note in the prompt names each
+// place (see sourcesNote). With no server connected there is nowhere else
+// to look, so it reports false.
+func asksAboutRecords(question string, specs []engine.ToolSpec) bool {
+	if !slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return toolKind(s.Name) == dispatch.KindMCP }) {
+		return false
+	}
+	for _, w := range words(question) {
+		if slices.Contains(recordWords, w) || slices.Contains(recordWords, singular(w)) {
+			return true
+		}
+	}
+	return false
 }
 
 // asksForAppleNotes reports whether question names Apple Notes, as

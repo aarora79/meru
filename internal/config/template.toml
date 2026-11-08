@@ -270,12 +270,13 @@ trusted_sites = []
 # The one folder write_file may write in. web_fetch saves downloads in its
 # downloads/ folder.
 output_dir = "~/meru-output"
-# Skills merud doesn't load. Four ship with Meru, and merud copies them to
-# skills/ on first run:
+# Skills merud doesn't load. Five ship with Meru, and merud copies each to
+# skills/ when its folder is missing:
 #   writing        plain-English rules for any prose Meru writes
 #   explainer      builds a self-contained HTML page that teaches a topic
 #   web-research   searches, reads the best pages and cites them
 #   file-research  finds things in your files with the file tools and cites them
+#   mail-research  searches mail and the calendar with Gmail's own query words
 # A built-in named here isn't copied again. A folder you add to skills/
 # loads with no change here. For example: disabled = ["explainer"]
 disabled = []

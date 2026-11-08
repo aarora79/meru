@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `rewrite_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -519,11 +519,17 @@ space but no wrong answer.
 
 **Scoring the pick.** `make pick-eval` runs `TestPickEval`, which asks the pick
 each question in `testdata/picks.jsonl` three times and prints the share it got
-right, by kind and overall. The file holds 25 invented questions of five kinds:
-how to use a program, current facts, the user's own files, plain chat, and
-pictures in the user's folders.
+right, by kind and overall. The file holds 29 invented questions of six kinds:
+how to use a program, current facts, the user's own files, plain chat,
+pictures in the user's folders, and mail. The four mail questions came with
+`mail-research`, such as "what did the hotel charge me for my stay last week?
+check my email". On the `lite` fast model the pick got 9 of the 12 mail picks
+right and 69 of 87 (79%) in all. On the 25 questions from before it got 60
+of 75, the same as without it: one image question about receipts in a folder
+now picks `mail-research` too, and one question about a release date stopped
+picking `file-research`.
 `pickRight` in `pickeval_test.go` decides what counts: the pick names every
-wanted skill and no research skill (`file-research` or `web-research`) the
+wanted skill and no research skill (`file-research`, `mail-research` or `web-research`) the
 question doesn't want. An extra `writing` or `explainer` still counts, since it
 changes how the answer reads, not where the facts come from. On the `lite` fast
 model the old descriptions scored 50 of 63 and sent the btop question to
@@ -1186,6 +1192,74 @@ with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.
 
+### Amounts the turn didn't read (amounts.go)
+
+A fourth check looks at money. Asked what a hotel stay cost, a model read the
+receipt and then wrote a total the receipt didn't hold. So `Handle`, after the
+missing-files check, runs:
+
+```go
+if (t.readTools > 0 || route != "direct") && !t.sawPicture && len(t.images) == 0 {
+    if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
+        notice = strings.TrimSpace(notice + " " + n)
+    }
+}
+```
+
+Four `turn` fields feed it, all guarded by `t.mu`, since the calls of one
+round run in their own goroutines. `read` is a slice of strings: everything
+the turn showed the model that isn't an earlier answer. `readChars` counts its
+length. `readTools` counts the successful tool results in it. `sawPicture`
+turns true when a tool result carries a picture, such as `view_image` on a
+receipt. A picture's amounts reach the model as pixels, which the check can't
+search, so with a picture, or an attached image in `t.images`, it stays quiet.
+With no successful tool result it stays quiet too: an answer from the model's
+own knowledge, such as "a night in a city hotel often costs about $250", has
+nothing to check against.
+
+`noteRead` adds text to `read`. `runCalls` calls it with each successful tool
+result, then bumps `readTools`. `finishPrompt` calls it with the question, the
+recalled memories, the file excerpts and the web section, and with each
+earlier message whose role is `engine.RoleUser`. Earlier answers stay out, so
+a figure the model moved from one trip to another doesn't count as read.
+`noteRead` stops at `maxReadChars`, `2 << 20`, which is 2 shifted left 20
+bits, or 2 MiB, and cuts the last piece to fit. The `...string` parameter lets
+a caller pass any number of strings, which arrive as a slice.
+
+`unreadAmounts` first builds a set of every number in `read`. Go has no set
+type, so it uses `map[int64]bool`: `seen[c] = true` adds a value, and `seen[c]`
+reads false for one never added, because a map returns the zero value for a
+missing key. `numberPattern` finds each number, and `cents` turns "1,042.25"
+into 104225: it drops the commas, parses the rest with `strconv.ParseFloat`,
+multiplies by 100 and rounds with `math.Round`, so floating-point error such as
+57199.99999 still lands on 57200. Comparing whole hundredths makes `$572` and
+`572.00` the same value, and `EUR 27.00` the same as `€27`. `cents` refuses
+anything over 1e13, since a number that long is an ID.
+
+Then it reads the answer, with fenced code taken out by `withoutCode` (from
+`honest.go`) and inline code by the regular expression `inlineCode`, since code
+may hold sample figures such as `echo $9.99`. `amountPattern` finds an amount:
+a currency sign or code before the number (`$95.18`, `€ 27`, `EUR 1,042.25`)
+or a code after it (`27.00 EUR`). `(?:…)` in a pattern groups without
+capturing, so only the number lands in a submatch; `FindAllStringSubmatch`
+returns, for each match, the whole match and then each captured group, and
+group 1 or group 2 holds the number. An amount whose value isn't in `seen`
+joins the list as the answer wrote it, and goes into `seen` so the list names
+it once.
+
+`amountsNotice` writes the notice: "This amount isn't in what Meru read this
+turn, so the model worked it out: $95.18. Check before you rely on it.", or
+"These amounts aren't" for more than one. It names at most `maxAmountsNamed`,
+five, then "and 2 more". The check makes no model call. It misses an amount
+written in words, and passes a made-up amount that equals any number the turn
+read, such as a room number.
+
+`TestUnreadAmounts` covers amounts read and not, `$286` against `$286.00`,
+codes before and after, an amount named twice, and inline code. `TestAmountsNotice` checks the one, many and "more"
+forms. `TestAmountsCheckInATurn` runs a fake turn whose mail tool returns a
+hotel folio: an answer with a made-up tax total gets the notice, one that
+quotes the folio gets none, and one with no tool call gets none.
+
 ### Links to the files a turn saved (saved.go)
 
 The notice says a link is wrong; `savedLinks` keeps the link right in the
@@ -1276,7 +1350,7 @@ question that `aboutPastChats` accepts becomes `search` too, while search or
 the file tools are on (see [Earlier conversations](#earlier-conversations-earliergo)).
 
 A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
-seven signs that a question points at a connected tool, and returns the first
+eight signs that a question points at a connected tool, and returns the first
 it finds as words for the log line, or `""` for none:
 
 | Sign | Example | Found by |
@@ -1287,6 +1361,7 @@ it finds as words for the log line, or `""` for none:
 | asks for a schedule | "every weekday at 7, brief me on my calendar" | `asksToSchedule`: "schedule" or "scheduled"; a word in `repeating` ("daily", "weekly"...); "every" or "each" before a word in `recurring` ("weekday", "morning", "other", "tuesday"...); or "job" with a time of day ("8am" by `clockTime`, or a word in `timeOfDay`), while `schedule_job` is on. "every file" and "the Blue Origin job posting" don't count |
 | asks for the web | "search the web: what is SearXNG?" | `asksForWeb`, with the phrases in `webPhrases` |
 | gives a web address | "what does https://acme.example/flow say?" | `givesURL` |
+| asks about the user's records | "what did I spend on my last trip to nyc" | `asksAboutRecords`: a word in `recordWords` ("trip", "hotel", "folio", "receipt", "spent", "booked"...), alone or with its plural cut by `singular`, while any MCP tool is offered |
 | names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
 
 When it finds one and the route is `direct` or `search`, `withTools` adds the
@@ -1298,6 +1373,16 @@ assistant's name. `Handle` reads the tools on each turn, because the
 configure tool can add a server while `merud` runs. In testing, the router
 sent "Search my Obsidian vault for notes mentioning 'AI'" to `search`, and
 the model, offered no tools, said it couldn't search the vault.
+
+The records sign does one more thing. When `target` is `signRecords`,
+`respond` calls `addRecordsSkill` (skills.go), which adds `recordsSkill`,
+`mail-research`, to the picked skills if the pick left it out, the registry
+holds it, and config offers at least one tool its `allowed-tools` names. The
+pick runs on the fast model, which chose no skill for "what did I spend on my
+last trip to nyc" in three tries out of three; without the skill's Gmail rules
+the model searched for the city's name and missed a receipt from a hotel just
+outside it. `TestRecordsQuestionLoadsMailSkill` checks both sides: mail tools
+on loads the skill's body, another server alone doesn't.
 
 `toolnouns.go` also holds `ConnectedTools`, which tells the router what is
 connected before it picks, so it needs these signs less. It reads config, not
@@ -1807,6 +1892,30 @@ sees, then a second `switch` with no value after the keyword picks the note:
 each `case` holds a true-or-false test, and the first true one wins, so the
 web line comes before the plain `toolsNote`.
 
+**The sources note.** `noteFor` now calls `toolsNoteFor`, which holds the
+logic above, and then `sourcesNote(specs)`, and joins the two with a space
+when both have text. `sourcesNote` walks the tools once more and collects the
+places that hold the user's own records: the file tools (`builtin.IsFileTool`),
+the Apple Notes tools (`builtin.IsNotesTool`), and each MCP server, whose name
+is the part of a tool's name before the first dot, cut off with
+`strings.Cut`. `slices.Contains` keeps each server once, and `slices.Sort`
+puts them in order, so the line reads the same whatever order the tools came
+in. Web tools, `cmd.` commands and A2A agents don't count: they hold no record
+of the user's life. With two places or more it returns, for example:
+
+```text
+The user's own records sit in several places here: the user's files and the google tools. For a question about the user's own life, such as a trip, a purchase, a meeting or a message, check each place that could hold the answer before you answer or say it isn't there. When the question says last, latest or recent, search by date, newest first, and answer from the newest match.
+```
+
+`joinAnd` writes the list with commas and a last "and". A real turn drove the
+note: asked what a recent hotel stay cost, the model searched the user's old
+expense folders, answered from a stay ten months back, and never looked at
+mail, where last week's receipt sat. Like the web notes, it depends only on the
+tools offered, so it keeps its place among the parts Ollama reuses. It rides
+on the tools note, so a turn with no tools note gets none. `TestSourcesNote`
+in `amounts_test.go` checks files with mail, three places in sorted order,
+files alone, and web tools with a command, which get no note.
+
 `Handle` also records the schemas' size, characters divided by four, as
 `meru.context.tokens` with `section = "tools"`.
 
@@ -1833,7 +1942,18 @@ for {
 ```
 
 - **The cap.** `[agent] max_rounds` (default 8) caps model calls per turn.
-  The last round offers no tools, so the model has to answer. A model that
+  The last round offers no tools, and `converse` adds `lastRoundNote` as a
+  user message to that one call: "This is your last step: no more tool calls
+  are possible. Answer the question now from what the tools already
+  returned…". `slices.Concat` builds a new slice, so `msgs` keeps no note for
+  the transcript or a later round. A real turn showed why: it held a hotel
+  receipt by round five, then spent round eight on "Let me check your email
+  more broadly" and ended capped.
+- **Copied notes.** A round that ends without calls runs `withoutMeruNotes`
+  (plans.go) over its text first. It cuts the openings in `meruNoteStarts`:
+  a cap note to its closing `]`, and a tool or web note to the end. What's
+  left then meets the empty and plan checks, so a reply that was a plan plus
+  a copied cap note gets the plan nudge. A model that
   calls a tool it wasn't offered gets no call run; that round is its answer.
 - **Repeats.** `runRound` sits between `converse` and `runTools`. It gives
   each call a key, `callKey`: the tool's name and its arguments decoded and
@@ -2088,7 +2208,8 @@ those lines into two strings:
 
 `continuation` pairs each `tool_result` line with its `tool_call` by
 `CallID`, through a map from ID to the call's place in the list. Past
-`handoffChars` (8,000) it keeps the newest calls and says how many earlier ones
+`handoffChars` (16,000) it keeps the newest calls, each result cut to its
+first `resultChars` (2,000) characters, and says how many earlier ones
 it left out, since a long summary would fill the window that may have cut the
 answer off. The partial answer stays out of the message: `History` already
 gives it to the model as the last assistant message.
@@ -2226,8 +2347,14 @@ them out means the model never tries.
 - **Regular expressions** — `regexp.MustCompile` turns a pattern into a
   `*regexp.Regexp` once, when the program starts, and panics on a bad pattern,
   which a test catches at once. `(?i)` in a pattern ignores case and `\b`
-  marks a word boundary. `honest.go` keeps its patterns in package-level
-  variables, which nothing changes after start-up.
+  marks a word boundary. `honest.go` and `amounts.go` keep their patterns in
+  package-level variables, which nothing changes after start-up.
+- **A map as a set**: `unreadAmounts` keeps the values it has seen in a
+  `map[int64]bool`, since Go has no set type; a missing key reads `false`.
+- **Rounding to hundredths**: `cents` multiplies by 100 and calls
+  `math.Round`, so a float such as 57199.99999 becomes the whole number 57200.
+- **A variadic parameter**: `noteRead(texts ...string)` takes any number of
+  strings and sees them as one slice.
 
 ## Try it
 

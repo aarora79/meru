@@ -27,7 +27,7 @@ func TestContinuation(t *testing.T) {
 	answer := func(outcome string) transcript.Line {
 		return transcript.Line{Type: transcript.TypeAssistant, Text: "The first one", Outcome: outcome}
 	}
-	long := strings.Repeat("release ", 200)
+	long := strings.Repeat("release ", 400)
 
 	tests := []struct {
 		name    string

@@ -379,8 +379,15 @@ func startStack(t *testing.T) *stack {
 }
 
 // startMerud starts merud on h's config and socket without waiting for it.
+//
+// merud runs with HOME (and USERPROFILE, its Windows name) set to the
+// test's home, ahead of env, so a "~" in config, such as the default
+// [skills] output_dir of ~/meru-output, lands inside the test. Without it,
+// every run of TestFindLikeThisE2E left a copy of its picture in the real
+// ~/meru-output/uploads, until the hundredth run found no free name.
 func startMerud(t *testing.T, h *home, env []string) *proc {
 	t.Helper()
+	env = append([]string{"HOME=" + h.dir, "USERPROFILE=" + h.dir}, env...)
 	return startProc(t, "merud", env, "-config", h.config, "-socket", h.socket)
 }
 
