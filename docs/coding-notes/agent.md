@@ -1374,6 +1374,16 @@ configure tool can add a server while `merud` runs. In testing, the router
 sent "Search my Obsidian vault for notes mentioning 'AI'" to `search`, and
 the model, offered no tools, said it couldn't search the vault.
 
+The records sign does one more thing. When `target` is `signRecords`,
+`respond` calls `addRecordsSkill` (skills.go), which adds `recordsSkill`,
+`mail-research`, to the picked skills if the pick left it out, the registry
+holds it, and config offers at least one tool its `allowed-tools` names. The
+pick runs on the fast model, which chose no skill for "what did I spend on my
+last trip to nyc" in three tries out of three; without the skill's Gmail rules
+the model searched for the city's name and missed a receipt from a hotel just
+outside it. `TestRecordsQuestionLoadsMailSkill` checks both sides: mail tools
+on loads the skill's body, another server alone doesn't.
+
 `toolnouns.go` also holds `ConnectedTools`, which tells the router what is
 connected before it picks, so it needs these signs less. It reads config, not
 the live tool list, so a server that hasn't connected yet still counts. For

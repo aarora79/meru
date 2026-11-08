@@ -130,12 +130,23 @@ func toolTarget(question string, specs []engine.ToolSpec) string {
 	case givesURL(question, specs):
 		return "gives a web address"
 	case asksAboutRecords(question, specs):
-		return "asks about the user's records"
+		return signRecords
 	case asksAboutToolNoun(question, specs):
 		return "names what a tool handles"
 	}
 	return ""
 }
+
+// signRecords is the words toolTarget returns for asksAboutRecords. The
+// agent also reads it to load the mail skill (see recordsSkill).
+const signRecords = "asks about the user's records"
+
+// recordsSkill is the skill a records question loads when its tools are
+// on the turn. The skill pick runs on the fast model, which chose no skill
+// for "what did I spend on my last trip to nyc" three times out of three,
+// so the turn's Gmail queries named the city and missed the receipt from
+// a hotel just outside it. See (*Agent).addRecordsSkill.
+const recordsSkill = "mail-research"
 
 // recordWords are words that mark a question about the user's own
 // records: what they paid, booked or ordered, where they went or stayed,

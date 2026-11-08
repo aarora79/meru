@@ -783,6 +783,11 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)
 		dec.Route = r
 	}
+	// A records question loads the mail skill itself, when the pick left
+	// it out and its tools are on; see addRecordsSkill.
+	if target == signRecords {
+		picked.names = a.addRecordsSkill(picked)
+	}
 	// fileTurn says whether the turn is about the user's files; see
 	// aboutFiles.
 	fileTurn := aboutFiles(dec.Route, target)

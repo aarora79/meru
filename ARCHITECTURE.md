@@ -3379,6 +3379,14 @@ got 60 of 75, the same as without it: "when is the next Ubuntu LTS release due?"
 stopped picking `file-research`, and "itemize the receipts in my trips folder"
 now picks `mail-research` too, which the eval counts as wrong.
 
+The pick still missed trip questions: "what did I spend on my last trip to
+nyc" got no skill three times out of three, so the turn wrote Gmail queries
+that named the city and missed a receipt from a hotel just outside it. A
+question that trips the records rule (a word such as trip, hotel, receipt or
+spent, while a server is connected) now loads `mail-research` itself when the
+pick left it out and its mail tools are on. Like the rule it rides on, it is a
+word test with no model call.
+
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
   `~/.meru/skills/<name>/` unless that folder already exists or `[skills]
