@@ -38,7 +38,12 @@ func writeFileDescription(dir string) string {
 	return "Saves a text file for the user, such as a document, an email draft or an HTML page, in the folder " +
 		dir + ". Pass path relative to that folder, such as \"drafts/landlord-email.md\", and the whole file as content. " +
 		"It refuses to replace a file that exists unless overwrite is true. " +
-		"The result gives a link to the file; give the user that link as it stands, so they can click it."
+		"The result gives a link to the file; give the user that link as it stands, so they can click it. " +
+		"To put a picture in an HTML page, such as a photo in a card, write <img src=\"...\"> or a CSS url(...) with the " +
+		"picture's path inside " + dir + ", such as a downloaded attachment's path; write_file puts the picture itself " +
+		"into the page, so it shows on a phone too, and its result says which pictures went in. You can't make or edit " +
+		"a picture's pixels; lay the picture out with HTML and CSS instead. Use only pictures the user gave or named, " +
+		"never ID cards, certificates or other documents."
 }
 
 // writeFile checks args and writes the file inside t.outputDir. It returns
@@ -95,11 +100,21 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 			"then call again with overwrite set to true, or pick another path. Nothing was written", a.Path)
 	}
 
-	if err := writeAtomic(root, rel, []byte(a.Content)); err != nil {
+	// An HTML page gets its local pictures put in; see inline.go.
+	content, note := a.Content, ""
+	if isPage(rel) {
+		if content, note, err = t.inlinePictures(root, rel, content); err != nil {
+			return "", fmt.Errorf("write_file: %s: %w. Nothing was written", a.Path, err)
+		}
+	}
+	if err := writeAtomic(root, rel, []byte(content)); err != nil {
 		return "", fmt.Errorf("write_file: write %s: %w. Nothing was written", a.Path, err)
 	}
 	abs := filepath.Join(t.outputDir, rel)
-	return fmt.Sprintf("%s %d bytes, at %s.\n%s[%s](%s)", verb, len(a.Content), abs,
+	if note != "" {
+		note = " " + note
+	}
+	return fmt.Sprintf("%s %d bytes, at %s.%s\n%s[%s](%s)", verb, len(content), abs, note,
 		linkLead, filepath.Base(abs), FileURL(abs)), nil
 }
 

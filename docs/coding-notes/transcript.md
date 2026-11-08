@@ -166,7 +166,17 @@ how it ended, and the first 300 characters of the result on one line. Arguments
 a crash tore aren't valid JSON, so `json.Compact` fails, and they go in as they
 stand rather than drop the call. A `web_search` or `web_fetch` line stops after
 the outcome, since the web notes hold what it found. Lines that start "Cite "
-come out, since the next turn numbers its sources afresh. After 6 lines, or
+come out, since the next turn numbers its sources afresh. A line that starts
+`savedLead`, "Saved at ", moves to the front of the excerpt: Meru adds that
+line when it saves a file for a call, such as a mail attachment, and it names
+the path. `resultExcerpt` collects such lines in a slice of their own, `saved`,
+and `append(saved, kept...)` joins the two with `saved` first; the `...` hands
+the `kept` slice's items to `append` one by one. A real chat downloaded a family
+photo for a greeting card, and two turns later, asked to put the photo in, the
+model searched the user's folders for one and picked ID documents. The
+300-character cut had kept the attachment's long ID and dropped the path.
+`TestResultExcerptKeepsSavedPath` checks that a long result still starts with
+the path. After 6 lines, or
 1,200 characters, the rest of the calls go on one line, "and 4 more: grep ×3,
 list_folder", so "what tools did you use?" still sees all of them.
 

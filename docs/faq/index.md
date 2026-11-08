@@ -23,6 +23,7 @@ steps and links to [running.md](../running.md) for the full story.
 - [How do I ask about a spreadsheet?](spreadsheets.md)
 - [How do I give Meru a file or an image?](attach-files.md)
 - [How do I save an answer, a chat or a file Meru makes?](save-answers.md)
+- [How do I make a card or a poster from a photo?](save-answers.md)
 
 ## Tools and connections
 
