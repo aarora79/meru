@@ -1772,8 +1772,10 @@ order.
    a `direct` question that names an indexed folder or asks about past chats
    becomes `search`, a question that names a connected tool server gets tools, and so does a
    question that says "remember", names Apple Notes, asks for the web, gives a
-   URL, or names what a connected server's tools act on ("email" for Gmail's
-   tools). The
+   URL, asks about the user's own records while a server is connected ("trip",
+   "hotel", "receipt", "spent", "booked" and the like, so "what did I spend on
+   my last trip" gets mail as well as the files), or names what a connected
+   server's tools act on ("email" for Gmail's tools). The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
@@ -2277,7 +2279,11 @@ which the first check reads instead when no tool ran.
 A fourth check looks at the money amounts in a full answer. Asked what a hotel
 stay cost, a model read the receipt and then wrote a total the receipt didn't
 hold. The check runs on a turn where at least one tool call returned a
-successful result and the model saw no picture: no `view_image` result and no
+successful result, or whose route was `search`, `tools` or `search+tools`
+even with no call, and where the model saw no picture. A turn on a
+`search+tools` route once called no tool and described a hotel receipt, with
+its amounts and card number, that it had never read; a `direct` turn, such as a
+question about prices in general, stays out. The picture rule: no `view_image` result and no
 attached image, since amounts in a picture reach the model as pixels and the
 check can't tell read from made up. `merud` finds each amount in the answer,
 outside code blocks and inline code: a currency sign or code before a number,

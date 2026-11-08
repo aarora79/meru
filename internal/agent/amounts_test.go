@@ -68,13 +68,16 @@ func TestAmountsNotice(t *testing.T) {
 func TestAmountsCheckInATurn(t *testing.T) {
 	tests := []struct {
 		name   string
+		route  string
 		answer string
 		calls  bool
 		want   string // part of the notice; "" for none
 	}{
-		{"a made-up sum", "Taxes were $95.18 and you paid $735.34.", true, "$95.18"},
-		{"every amount read", "You paid $735.34 for two nights at $286.00.", true, ""},
-		{"no tool ran", "A night in a city hotel often costs about $250.", false, ""},
+		{"a made-up sum", "tools", "Taxes were $95.18 and you paid $735.34.", true, "$95.18"},
+		{"every amount read", "tools", "You paid $735.34 for two nights at $286.00.", true, ""},
+		{"a direct turn", "direct", "A night in a city hotel often costs about $250.", false, ""},
+		// The model called no tool and described a receipt it never read.
+		{"no tool ran on a tools route", "search+tools", "Here is the folio email: the room was $308.27 and you paid $361.17.", false, "$308.27"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -85,9 +88,9 @@ func TestAmountsCheckInATurn(t *testing.T) {
 			if tt.calls {
 				rounds = append([]fakeRound{{calls: []engine.ToolCall{call("google.get_gmail_message_content", `{"message_id":"m1"}`)}}}, rounds...)
 			}
-			router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
+			router := &fakeRouter{dec: Decision{Route: tt.route, Confidence: 0.9, Outcome: "ok"}}
 			a := New(cfg, &fakeEngine{rounds: rounds}, router, nil, tools, nil, nil, quietLog())
-			evs, err := run(context.Background(), a, rpc.Request{Text: "what did my hotel stay cost?"})
+			evs, err := run(context.Background(), a, rpc.Request{Text: "and the bill?"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
 			}

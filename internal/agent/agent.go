@@ -573,9 +573,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			notice = strings.TrimSpace(notice + " " + missingNotice(missing))
 		}
 		// A money amount in the answer that no tool result, excerpt or
-		// user message holds, on a turn whose tools returned something and
-		// that showed the model no picture. See amounts.go.
-		if t.readTools > 0 && !t.sawPicture && len(t.images) == 0 {
+		// user message holds, on a turn whose tools returned something or
+		// whose route was about the user's data, and that showed the model
+		// no picture. A real turn on a search+tools route called no tool and
+		// described a hotel receipt with its amounts and card number, none
+		// of which Meru had read; the check now covers such a turn too. A
+		// direct turn, such as a question about prices in general, stays
+		// out. See amounts.go.
+		if (t.readTools > 0 || route != "direct") && !t.sawPicture && len(t.images) == 0 {
 			if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
 				notice = strings.TrimSpace(notice + " " + n)
 			}

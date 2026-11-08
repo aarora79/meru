@@ -1199,7 +1199,7 @@ receipt and then wrote a total the receipt didn't hold. So `Handle`, after the
 missing-files check, runs:
 
 ```go
-if t.readTools > 0 && !t.sawPicture && len(t.images) == 0 {
+if (t.readTools > 0 || route != "direct") && !t.sawPicture && len(t.images) == 0 {
     if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
         notice = strings.TrimSpace(notice + " " + n)
     }
@@ -1350,7 +1350,7 @@ question that `aboutPastChats` accepts becomes `search` too, while search or
 the file tools are on (see [Earlier conversations](#earlier-conversations-earliergo)).
 
 A second rule does the same for tools. `toolTarget` (toolnouns.go) looks for
-seven signs that a question points at a connected tool, and returns the first
+eight signs that a question points at a connected tool, and returns the first
 it finds as words for the log line, or `""` for none:
 
 | Sign | Example | Found by |
@@ -1361,6 +1361,7 @@ it finds as words for the log line, or `""` for none:
 | asks for a schedule | "every weekday at 7, brief me on my calendar" | `asksToSchedule`: "schedule" or "scheduled"; a word in `repeating` ("daily", "weekly"...); "every" or "each" before a word in `recurring` ("weekday", "morning", "other", "tuesday"...); or "job" with a time of day ("8am" by `clockTime`, or a word in `timeOfDay`), while `schedule_job` is on. "every file" and "the Blue Origin job posting" don't count |
 | asks for the web | "search the web: what is SearXNG?" | `asksForWeb`, with the phrases in `webPhrases` |
 | gives a web address | "what does https://acme.example/flow say?" | `givesURL` |
+| asks about the user's records | "what did I spend on my last trip to nyc" | `asksAboutRecords`: a word in `recordWords` ("trip", "hotel", "folio", "receipt", "spent", "booked"...), alone or with its plural cut by `singular`, while any MCP tool is offered |
 | names what a tool handles | "what was the last email I sent?" | `asksAboutToolNoun` |
 
 When it finds one and the route is `direct` or `search`, `withTools` adds the

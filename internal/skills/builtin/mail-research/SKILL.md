@@ -11,9 +11,10 @@ allowed-tools: google.search_gmail_messages, google.get_gmail_message_content, g
    - a sender: `from:bookings.example.com`, or the name the user gave, such as `from:dentist`.
    - attachments: `has:attachment`, `filename:pdf`.
    - one of several words: `{receipt invoice folio}`.
-2. For "last", "latest" or "recent", search by date, newest first: start with `newer_than:60d` and widen it only if nothing comes back.
-3. Search for what the email is, not where it happened. A receipt says receipt, folio, invoice, order, "your stay" or "thank you for your purchase"; it often comes from a no-reply address. A place name may not appear: a hotel near a city is in another town. Never make up a sender address.
-4. Read the subjects and senders of every result before you pick. The email you need may have a subject such as "We hope you enjoyed your stay". Open the ones that could answer, and open a receipt's attachment too: the amounts are often only there.
+2. For "last", "latest" or "recent", search by date, newest first: start with `newer_than:60d` and widen it only if nothing comes back. Take the year from today's date in the system prompt; a month the user names without a year is the latest one that has passed. A trip you found in the user's files may not be the latest: still search mail newest first.
+3. Search for what the email is, not where it happened. A receipt says receipt, folio, invoice, order, "your stay" or "thank you for your purchase"; it often comes from a no-reply address. A place name may not appear: a hotel near a city is in another town. Never make up a sender address, and never put the user's own address in `from:` unless the question is about mail the user sent.
+4. A search returns 10 emails at first. Before you say nothing is there, add receipt words such as `{folio receipt invoice}` to the query, or ask for more with `page_size` 25. Read the subjects and senders of every result before you pick. The email you need may have a subject such as "We hope you enjoyed your stay". Open the ones that could answer, and open a receipt's attachment too: the amounts are often only there.
 5. When the user names an event, such as a trip or a meeting, call get_events for its dates first, then search mail inside those dates.
 6. Quote amounts, dates and names exactly as the email or the attachment writes them. Add up only what the receipt itemizes, and say the total is yours when the receipt doesn't give one.
-7. If nothing you found answers the question, say which queries you ran, and ask the user for a sender, a date or a word from the email.
+7. Describe only emails a tool returned in this turn or an earlier one. Never write an email's sender, date, amounts or card number from memory or guesswork; if you haven't opened it, open it first.
+8. If nothing you found answers the question, say which queries you ran, and ask the user for a sender, a date or a word from the email.
