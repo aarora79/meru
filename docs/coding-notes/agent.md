@@ -1932,7 +1932,18 @@ for {
 ```
 
 - **The cap.** `[agent] max_rounds` (default 8) caps model calls per turn.
-  The last round offers no tools, so the model has to answer. A model that
+  The last round offers no tools, and `converse` adds `lastRoundNote` as a
+  user message to that one call: "This is your last step: no more tool calls
+  are possible. Answer the question now from what the tools already
+  returned…". `slices.Concat` builds a new slice, so `msgs` keeps no note for
+  the transcript or a later round. A real turn showed why: it held a hotel
+  receipt by round five, then spent round eight on "Let me check your email
+  more broadly" and ended capped.
+- **Copied notes.** A round that ends without calls runs `withoutMeruNotes`
+  (plans.go) over its text first. It cuts the openings in `meruNoteStarts`:
+  a cap note to its closing `]`, and a tool or web note to the end. What's
+  left then meets the empty and plan checks, so a reply that was a plan plus
+  a copied cap note gets the plan nudge. A model that
   calls a tool it wasn't offered gets no call run; that round is its answer.
 - **Repeats.** `runRound` sits between `converse` and `runTools`. It gives
   each call a key, `callKey`: the tool's name and its arguments decoded and
@@ -2187,7 +2198,8 @@ those lines into two strings:
 
 `continuation` pairs each `tool_result` line with its `tool_call` by
 `CallID`, through a map from ID to the call's place in the list. Past
-`handoffChars` (8,000) it keeps the newest calls and says how many earlier ones
+`handoffChars` (16,000) it keeps the newest calls, each result cut to its
+first `resultChars` (2,000) characters, and says how many earlier ones
 it left out, since a long summary would fill the window that may have cut the
 answer off. The partial answer stays out of the message: `History` already
 gives it to the model as the last assistant message.

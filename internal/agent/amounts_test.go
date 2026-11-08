@@ -143,3 +143,48 @@ func TestSourcesNote(t *testing.T) {
 		})
 	}
 }
+
+func TestWithoutMeruNotes(t *testing.T) {
+	copied := "Let me get the actual folio PDF content.\n\n" +
+		"[Meru stopped here: it used all 8 rounds of tool calls before the answer was done. It tried: read_file ×2. Continue picks it up.]\n\n" +
+		"(Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above.)\n- google.get_gmail_message_content ok"
+	tests := []struct{ in, want string }{
+		{copied, "Let me get the actual folio PDF content."},
+		{"You paid $735.34 for the stay.", "You paid $735.34 for the stay."},
+		{"[Meru stopped here: no closing bracket", ""},
+		{"(Meru's notes on the pages this turn read.) [1] a page", ""},
+	}
+	for _, tt := range tests {
+		if got := withoutMeruNotes(tt.in); got != tt.want {
+			t.Errorf("withoutMeruNotes(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// TestCopiedNoteGetsThePlanNudge runs a round whose reply is a plan with a
+// copied cap note: Meru cuts the note, nudges the model, and the next
+// round's answer stands alone.
+func TestCopiedNoteGetsThePlanNudge(t *testing.T) {
+	cfg := testConfig(t)
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("google.get_gmail_message_content")},
+		results: map[string]fakeResult{"google.get_gmail_message_content": {text: folio}}}
+	eng := &fakeEngine{rounds: []fakeRound{
+		{pieces: []string{"Let me get the actual folio PDF content.\n\n[Meru stopped here: it used all 8 rounds of tool calls. It tried: read_file ×2. Continue picks it up.]"}},
+		{calls: []engine.ToolCall{call("google.get_gmail_message_content", `{"message_id":"m1"}`)}},
+		{pieces: []string{"You paid $735.34 for the stay."}},
+	}}
+	router := &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.9, Outcome: "ok"}}
+	a := New(cfg, eng, router, nil, tools, nil, nil, quietLog())
+	evs, err := run(context.Background(), a, rpc.Request{Text: "Continue"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if n := len(eng.calls); n != 3 {
+		t.Fatalf("model called %d times, want 3: the plan, the call, the answer", n)
+	}
+	lines := readLines(t, cfg, evs[0].Session)
+	last := lines[len(lines)-1]
+	if strings.Contains(last.Text, "Meru stopped here") || !strings.Contains(last.Text, "$735.34") {
+		t.Errorf("answer = %q, want the real answer and no copied note", last.Text)
+	}
+}

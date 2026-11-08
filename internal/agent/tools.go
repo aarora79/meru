@@ -551,10 +551,17 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			offer = nil
 		}
 		call := msgs
+		// The last round of a turn that had tools says why they're gone.
+		// Without it, a real turn that held the receipt it needed by round
+		// five spent its last round writing "Let me check your email more
+		// broadly" and ended capped with no answer.
+		if len(specs) > 0 && t.rounds >= a.maxRounds {
+			call = slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: lastRoundNote}})
+		}
 		if nudge {
 			// slices.Concat builds a new slice, so msgs keeps no nudge for
 			// the rounds after this one.
-			call = slices.Concat(msgs, []engine.Message{{Role: engine.RoleUser, Content: outputNudge}})
+			call = slices.Concat(call, []engine.Message{{Role: engine.RoleUser, Content: outputNudge}})
 			nudge = false
 		}
 		t.offer = offer
@@ -593,6 +600,14 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 		if len(rep.calls) == 0 || len(offer) == 0 {
 			a.log.DebugContext(ctx, "round finished", "round", t.rounds, "tool_calls", 0,
 				"ms", time.Since(start).Milliseconds())
+			// Meru's own notes, copied by the model, never count as an
+			// answer: cut them before the checks below, so a reply that held
+			// only a plan and a copied note gets the plan nudge.
+			if cut := withoutMeruNotes(rep.text); cut != strings.TrimSpace(rep.text) {
+				a.log.WarnContext(ctx, "the model copied one of Meru's notes into its answer; cut it", "round", t.rounds)
+				rep.text = cut
+				total.text = cut
+			}
 			if a.retriesEmpty(t, rep) {
 				return a.retryEmpty(ctx, t, msgs, total, emptyNudge)
 			}
