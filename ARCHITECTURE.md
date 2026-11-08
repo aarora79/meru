@@ -784,7 +784,7 @@ model's mistakes.
 | Layer | Packages and files |
 | --- | --- |
 | Harness core | `engine`; the tool rounds in `agent/tools.go`; `dispatch`; `mcp`; `skills`, with the skill pick in `agent/skills.go`; `commands`; `a2a`; `transcript`; the budget in `agent/budget.go`; `obs` |
-| Meru the assistant | `router`, with the route rules in `agent/toolnouns.go`; `retrieve`; `memory` and the profile (`agent/profile.go`, `agent/recall.go`); recall of earlier chats (`agent/earlier.go`, `summarize`); web first (`agent/webfirst.go`, `agent/webnotes.go`); the fixes for small-model failures: `agent/honest.go`, the retries after bad output and empty replies in `agent/tools.go` and `agent/agent.go`, and `agent/notools.go` |
+| Meru the assistant | `router`, with the route rules in `agent/toolnouns.go`; `retrieve`; `memory` and the profile (`agent/profile.go`, `agent/recall.go`); recall of earlier chats (`agent/earlier.go`, `summarize`); web first (`agent/webfirst.go`, `agent/webnotes.go`); the fixes for small-model failures: `agent/honest.go`, the amounts check in `agent/amounts.go`, the retries after bad output and empty replies in `agent/tools.go` and `agent/agent.go`, and `agent/notools.go` |
 
 Four places tie the loop to Meru today:
 
@@ -946,7 +946,7 @@ and arguments and offers the choices `merud` sends, from these:
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
   | `search_images` | The indexed images nearest to `query`, words for what a picture shows, or to `image`, the path of a picture in the `[index]` folders or an attached one under the output folder, read with the file tools' rules, a 20 MiB cap and a check that the bytes are an image. 8 by default, at most 20, numbered after the turn's other sources; the text holds only their paths, so the model names and cites them, and one with vision can open them with `view_image`. Offered when the index reads images. |
   | `view_image` | The picture at `path`, in the `[index]` folders or attached under the output folder, for the model to look at on its next round. The bytes ride on the tool message's `images`, as on an attached picture's question; the result's text, which the transcript and `tool_calls` keep, is one line that names the file and its size, with the picture as an image source. The same checks as `search_images` apply. A picture over 1,536 pixels on its longest side goes as a JPEG scaled down to that, since the model's cost grows with the pixels: a 4,000 by 3,000 phone photo of a bill cost `qwen3.6:35b` 1,756 tokens at 1,536 pixels, and it still read every line. A WebP picture goes as it is, since Go's standard library can't decode it. A turn opens at most 8 pictures; a ninth call is refused with text that says so. Offered only while the `main` model lists `vision` (see [Questions with images](#questions-with-images)). |
-  | `analyze_table` | An Excel sheet's or a CSV, TSV or `.tab` file's rows, filtered, grouped, counted, added up (`sum`, `avg`, `min`, `max`, `median`, and `percentile` with `p` from 0 to 100) and sorted, from fixed fields the model fills in: `path`, `sheet`, `header_row`, `where` (`=`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `starts_with`, `empty`, `not_empty`, `in`), `group_by`, `aggregate`, `columns`, `sort` and `limit`. With only a path it describes the sheet: its columns, their types and sample values, the header row it chose and the first rows. Sums add exact decimals, so a column of cents adds up to the cent; a median or percentile interpolates as Python's `statistics.quantiles(method="inclusive")` does, exactly. A list field also takes one name, or a string that holds a list. It reads every row, up to 100,000, through the indexer's readers and limits; a call takes at most 10 conditions, 100 values for `in`, 3 group columns, 10 aggregates, 20 columns and 3 sort keys, and returns at most 200 rows and 10,000 groups. The result cites the sheet and the rows it drew on. Offered when `[index] folders` is set. |
+  | `analyze_table` | An Excel sheet's or a CSV, TSV or `.tab` file's rows, filtered, grouped, counted, added up (`sum`, `avg`, `min`, `max`, `median`, and `percentile` with `p` from 0 to 100) and sorted, from fixed fields the model fills in: `path`, `sheet`, `header_row`, `where` (`=`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `starts_with`, `empty`, `not_empty`, `in`), `group_by`, `aggregate`, `columns`, `sort` and `limit`. With only a path it describes the sheet: its columns, their types and sample values, the header row it chose and the first rows. Sums add exact decimals, so a column of cents adds up to the cent; a median or percentile interpolates as Python's `statistics.quantiles(method="inclusive")` does, exactly. A list field also takes one name, or a string that holds a list. It reads every row, up to 100,000, through the indexer's readers and limits; a call takes at most 10 conditions, 100 values for `in`, 3 group columns, 10 aggregates, 20 columns and 3 sort keys, and returns at most 200 rows and 10,000 groups. The result cites the sheet and the rows it drew on. A file that isn't a table, such as a PDF, a Word file, Markdown or plain text, gets its text back as `read_file` returns it, under the line "analyze_table: *path* isn't a table, so here is its text, as read_file returns it."; only a file `read_file` can't read either, such as a picture, still fails. The tool once refused such a file and said to use `read_file`: a real turn called it on a hotel receipt PDF, got that answer, and never read the receipt. Offered when `[index] folders` is set. |
   | `datetime` | The current date and time with weekday and zone; the time in another zone; a date's weekday and how many days it is from today. Offered on every route, `direct` included, because "what day is Christmas?" routes direct. |
   | `about_meru` | `merud`'s own facts, in under 2,000 characters: the profile; the `main`, `fast` and `embed` models and what each does; the main model's capabilities, size, quantization and context length from Ollama's `/api/show`; the Ollama version, on a labelled line of its own; the computer; the `[index]` folders with file and chunk counts and the size of `meru.db`; each MCP server and A2A agent with its state and tool count; the local commands, built-in tools, skills and memory counts by kind; the output folder; and `merud`'s build. It copies names, counts and paths only; secrets, env and header values, a server's last error, a memory's text and transcript lines stay out. Offered on every route, as `datetime` is: asked "which model are you using?" on a `direct` turn, a model answered from its training with another company's name and no version. Its description asks the model to quote names, versions and numbers as the tool gives them: with the version inside a sentence, a model read `Ollama 0.34.0` and wrote "Ollama 0.44". |
   | `web_search` | Web results from SearXNG, numbered after the turn's other sources: title, URL, a snippet and the date when known. Each result joins the turn's `sources` event as a web source. Offered when `[web] searxng_url` is set, on every route, `direct` included. |
@@ -1874,6 +1874,21 @@ order.
    "answer from what you know". A real turn drove both: "help me understand
    btop with some simple commands" grepped the user's folders, found only pages
    that name btop in passing, and answered with flags btop doesn't have.
+   A turn whose tools reach two or more of the user's own data sources ends
+   the tools note with a sources note. The sources are the file tools, the
+   Apple Notes tools and each MCP server, such as `google` or `obsidian`; web
+   tools, commands and A2A agents hold no record of the user's life and don't
+   count. The note names each place, such as "the user's files, the google
+   tools and the obsidian tools", with the servers sorted. It tells the model
+   to check each place that could hold the answer to a question about the
+   user's own life, such as a trip, a purchase, a meeting or a message, before
+   it answers or says the answer isn't there; and, when the question says
+   last, latest or recent, to search by date, newest first, and answer from
+   the newest match. It depends only on the tools offered, so it keeps its
+   place among the parts that stay the same. A real turn drove it: asked what
+   a recent hotel stay cost, the model searched the user's old expense
+   folders, answered from a stay ten months back, and never looked at mail,
+   where last week's receipt sat.
    `meru.context.tokens` records each part's size per turn, to tune the caps by.
    On the `tools` and `search+tools` routes, the loop first asks each connected MCP server
    for its tools again and gives each server that isn't connected one try, then
@@ -2259,6 +2274,27 @@ another reason, such as a folder you can't open, counts as there. It misses a
 missing file named as a plain path, such as "saved to ~/meru-output/plan.html",
 which the first check reads instead when no tool ran.
 
+A fourth check looks at the money amounts in a full answer. Asked what a hotel
+stay cost, a model read the receipt and then wrote a total the receipt didn't
+hold. The check runs on a turn where at least one tool call returned a
+successful result and the model saw no picture: no `view_image` result and no
+attached image, since amounts in a picture reach the model as pixels and the
+check can't tell read from made up. `merud` finds each amount in the answer,
+outside code blocks and inline code: a currency sign or code before a number,
+such as `$95.18` or `EUR 1,042.25`, or a code after it, such as `27.00 EUR`.
+It then looks for that value among every number in what the turn read: this
+turn's successful tool results, the question, the recalled memories, the file
+excerpts and web section in the prompt, and the user's earlier messages.
+Earlier answers don't count, so a figure the model moved from one trip to
+another doesn't pass. It compares values in hundredths, so `$572` matches
+`572.00` and `EUR 27.00` matches `€27`. When amounts turn up nowhere, the same
+`notice` event says "This amount isn't in what Meru read this turn, so the
+model worked it out: $95.18. Check before you rely on it.", or "These amounts
+aren't" for more than one, naming up to five and then "and 3 more". The check
+makes no model call and keeps at most 2 MiB of what the turn read. It misses
+an amount written in words, such as "ninety dollars", and passes a made-up
+amount that happens to equal any number the turn read, such as a room number.
+
 ### Routing
 
 A small model asked to write its route as JSON (JavaScript Object Notation) fails in
@@ -2531,8 +2567,8 @@ folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off`, `window_full`, `capped`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when a check on
-the answer warned, such as a claimed action with no successful tool call or a
-link to a file that isn't there (see
+the answer warned, such as a claimed action with no successful tool call, a
+link to a file that isn't there, or a money amount the turn didn't read (see
 [Claims no tool backs](#claims-no-tool-backs)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
@@ -3307,8 +3343,9 @@ with no change to config.
 
 ### Built-in skills
 
-Meru ships with four skills. `writing` and `explainer` come from the owner's
-`my-ai-assets` repo; `web-research` and `file-research` are Meru's own:
+Meru ships with five skills. `writing` and `explainer` come from the owner's
+`my-ai-assets` repo; `web-research`, `file-research` and `mail-research` are
+Meru's own:
 
 | Skill | What it does |
 | --- | --- |
@@ -3316,6 +3353,7 @@ Meru ships with four skills. `writing` and `explainer` come from the owner's
 | `explainer` | Builds a self-contained HTML page that teaches a topic, with diagrams |
 | `web-research` | For how to use a program or command, and for questions that need current facts: search the user's own words first, with a name in double quotes; never swap in a product or company the model knows for the one named; search again when the results are about something else; read the one or two best pages with `web_fetch` and a prompt, prefer primary sources, check dates against today, quote versions from the page, cite URLs, and say when sources disagree. Brings `web_search` and `web_fetch` |
 | `file-research` | For questions about the user's own files and pictures, and not for how to use a program: `search_files` for a topic in any words, `grep` for an exact name or phrase, `list_folder` to see a folder, `read_file` for the whole text, `search_images` for pictures and `view_image` to look at one; try other words once, stop after two or three rounds, cite the numbered excerpts. Brings those six tools |
+| `mail-research` | For the user's email and calendar: receipts, bookings, orders, invoices, confirmations, appointments and replies. Write Gmail queries, such as `after:2026/11/01`, `newer_than:30d`, `from:`, `has:attachment`, `filename:pdf` and `{receipt invoice folio}`, never web operators such as `site:`; for last, latest or recent, start with `newer_than:60d`, newest first; search for what the email is (a receipt, a folio, an invoice, "your stay"), since the place name may be missing: a hotel near a city sits in another town; read the subject and sender of every result, and open a receipt's attachment, where the amounts often are; call `get_events` for an event's dates first; quote amounts, dates and names as written. Brings the `google` server's mail search and read tools, its attachment tool and `get_events` |
 
 The fast model picks from the descriptions alone, so their words decide which
 skill loads. `make pick-eval` asks the pick 21 labelled questions three times
@@ -3328,10 +3366,18 @@ out in `file-research`, got 52 of 63, with no stray `file-research` pick. A
 line in the pick prompt that said to choose `file-research` only for the user's
 own files did worse, 42 of 63: naming the skill drew the model to it.
 
+`mail-research` added four mail questions, such as "what did the hotel charge
+me for my stay last week? check my email", for 29 questions and 87 picks. The
+pick got 9 of the 12 mail picks right, and 69 of 87 (79%) in all. On the 25 questions from before it
+got 60 of 75, the same as without it: "when is the next Ubuntu LTS release due?"
+stopped picking `file-research`, and "itemize the receipts in my trips folder"
+now picks `mail-research` too, which the eval counts as wrong.
+
 - **They ship inside the binary** (Go's `embed` package) and live in the repo under
   `internal/skills/builtin/`. On first run, `merud` copies each one to
   `~/.meru/skills/<name>/` unless that folder already exists or `[skills]
-  disabled` names it.
+  disabled` names it. It checks again on each start, so a built-in that a
+  newer Meru adds, such as `mail-research`, lands on an existing install.
 - **Your copy wins.** `merud` never overwrites a skill you've edited, or one a
   newer Meru changed. To get the shipped version back, run
   `meru skills reset <name>`; a copy of `web-research` from before
@@ -3690,7 +3736,7 @@ and Skip. You can skip every step but About you.
 | 5 | Web search | keeps a SearXNG that already answers JSON on `127.0.0.1:8888`, which `merud` then only watches. Otherwise it looks for the `docker` command in its usual places, and hands the SearXNG connector to the last step, turned on | `[web] searxng_url`; `web_search` and `web_fetch` in `[builtin] tools` |
 | 6 | Obsidian notes | takes your vault folder from the folder dialog, checks it is a folder, and hands the Obsidian connector to the last step with it. An `obsidian` entry in `[[mcp.servers]]` stays as it is, or goes to the last step as an Adopt | nothing |
 | 7 | Apple Notes | turns on the three notes tools; a button opens the Full Disk Access list in System Settings and another shows `merud` in Finder, to drag into it. No program can grant that access, so the step can't check it; `merud` checks on each call | `search_notes`, `list_notes` and `read_note` in `[builtin] tools` |
-| 8 | Skills and commands | takes the four built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
+| 8 | Skills and commands | takes the built-in skills out of `[skills] disabled`, and offers the template's sample `[[commands]]`: the Mac snapshots start ticked, and a sample whose program or folder this Mac lacks is greyed out | the ticked `[[commands]]`, uncommented, at the end of the file |
 | 9 | Gmail, Calendar and Drive | walks through Google's console in three screens, takes your address, client ID and secret, and hands the Google connector to the last step with them. A `google` entry stays as it is, or goes to the last step as an Adopt | `~/meru-output/attachments/` |
 | 10 | About you | asks your name, your email and how you like answers | `memory/me/` and `memory/preferences/` |
 | 11 | Start Meru | writes `com.meru.merud.plist` from `deploy/launchd/` with the paths filled in, loads it, waits for `ping`, hands `merud` the connectors, then follows `merud`'s own first scan through `index_status` for up to two minutes | the launchd job; `merud` writes `[connectors.<id>]` and `secrets.toml` |
@@ -5946,7 +5992,7 @@ We'll settle these with working code and measurements.
 - **Indexing:** only the folders in `[index] folders`, nothing by default; secrets,
   hidden files, build folders and ignored files skipped; symlinks never followed;
   email, calendar and Drive reached live through MCP, not indexed.
-- **Built-in skills:** `writing`, `explainer`, `web-research` and `file-research` ship in the binary
+- **Built-in skills:** `writing`, `explainer`, `web-research`, `file-research` and `mail-research` ship in the binary
   and are copied to `~/.meru/skills/` on first run; your edits always win.
 - **Setup:** `meru setup` checks Ollama, pulls the models, writes a first
   `config.toml`, and offers a catalog of MCP servers, each added "for you" (with

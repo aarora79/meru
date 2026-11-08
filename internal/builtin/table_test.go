@@ -42,8 +42,8 @@ func tableTools(t *testing.T) (*Tools, string) {
 			{{"Total", "277"}},
 			{{"No", "City", "Amount"}, {"14", "Amsterdam", "64.50"}, {"15", "Rome", "10"}},
 		}),
-		"notes.md": []byte("# Notes\n"),
-		"old.xls":  {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1},
+		"receipt.md": []byte("# Hotel receipt\n\nGuest room, two nights: $572.00\n"),
+		"old.xls":    {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1},
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(root, name), body, 0o600); err != nil {
@@ -209,7 +209,6 @@ func TestAnalyzeTableRefuses(t *testing.T) {
 		{"an unknown sort", `{"path":"%s/trip.csv","columns":["City"],"sort":[{"by":"Amount"}]}`, `sort by "Amount" matches no column of the result`},
 		{"an unknown sheet", `{"path":"%s/budget.xlsx","sheet":"Payroll"}`, `no sheet is named "Payroll". The sheets are: Summary (1 row), Invoices (3 rows)`},
 		{"a header past the end", `{"path":"%s/trip.csv","header_row":40}`, "header_row 40 is past the last row"},
-		{"not a table", `{"path":"%s/notes.md"}`, "isn't a table"},
 		{"an old .xls", `{"path":"%s/old.xls"}`, "save it as .xlsx"},
 		{"a folder", `{"path":"%s"}`, "is a folder"},
 	}
@@ -223,6 +222,17 @@ func TestAnalyzeTableRefuses(t *testing.T) {
 				t.Errorf("result names the tool twice: %q", res.Text)
 			}
 		})
+	}
+}
+
+func TestAnalyzeTableReadsADocument(t *testing.T) {
+	// A receipt that isn't a table comes back as text the model can read,
+	// instead of a refusal it may ignore.
+	tools, root := tableTools(t)
+	res := callTable(t, tools, root, `{"path":"%s/receipt.md"}`)
+	if !strings.Contains(res.Text, "isn't a table, so here is its text, as read_file returns it.") ||
+		!strings.Contains(res.Text, "Guest room, two nights: $572.00") {
+		t.Errorf("analyze_table on a receipt:\n%s", res.Text)
 	}
 }
 

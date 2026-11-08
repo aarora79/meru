@@ -695,8 +695,18 @@ names it, and the model can fix the call.
 **The sheet.** `analyzeTable` resolves the path with the same `resolve` as
 `read_file`, so it reaches the same files, and asks the indexer for
 `ReadTable`, the parse `read_file` and `grep` share (see [index](index.md)). A
-Word or Markdown file gets `index.ErrNotTable` and a line that says to use
-`read_file`; an old `.xls` gets `oldOffice`'s line. `pickSheet` takes the named
+PDF, Word, Markdown or text file gets `index.ErrNotTable`, and
+`analyzeTable` then reads it the way `read_file` does: `json.Marshal` turns a
+`readFileArgs` with the same path into the JSON `read_file` takes, and
+`t.readFile` returns the text. `json.Marshal` returns a value and an error, and
+the code drops the error with `_`, because a struct that holds only strings
+always encodes. The result opens with the line "analyze_table: *path* isn't a
+table, so here is its text, as read_file returns it." Only when `read_file`
+fails too, as on a picture, does the call fail, with the old line that says
+the tool reads Excel and delimited text. The tool used to refuse every such
+file: a real turn called it on a hotel receipt PDF, got "read this one with
+read_file", and never read the receipt. An old `.xls` still gets `oldOffice`'s
+line. `pickSheet` takes the named
 sheet, ignoring case, or the first shown sheet with data. The header row is
 `header_row`, or `index.HeaderRow`'s guess. `sheetColumns` names each column
 from it, and `dataRows` keeps the rows below it that hold something, each with
@@ -1241,7 +1251,8 @@ cancelled filter. `table_test.go` runs `analyze_table` through `Call` on a CSV
 file with a title row above its header and a workbook: the description, a
 sum, a group sorted by its sum, a count by group, a list of rows by date, `in`
 with a column letter, a sheet of a workbook, no match, and one refusal per
-check, an unknown field among them.
+check, an unknown field among them. `TestAnalyzeTableReadsADocument` calls
+it on a Markdown receipt and checks that the receipt's text comes back.
 
 `web_test.go` never leaves the machine. `TestWebSearch` runs `web_search`
 against an `httptest` server that plays SearXNG: JSON results, the `403` HTML page

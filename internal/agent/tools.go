@@ -99,7 +99,20 @@ const webNote = "When you aren't sure of a fact, such as a song, a film, a book,
 // alone doesn't bring either note: with no search, the model would have
 // to guess a URL, and web_fetch asks the user before it fetches a URL that
 // no search result gave.
+//
+// When specs reach more than one of the user's own data sources, the
+// sources note from sourcesNote comes last (see there).
 func noteFor(specs []engine.ToolSpec) string {
+	note := toolsNoteFor(specs)
+	if src := sourcesNote(specs); src != "" && note != "" {
+		note += " " + src
+	}
+	return note
+}
+
+// toolsNoteFor returns toolsNote with the web lines that suit specs, as
+// noteFor's comment describes, or "" when specs hold no tool.
+func toolsNoteFor(specs []engine.ToolSpec) string {
 	var other, files, web bool
 	for _, s := range specs {
 		switch {
@@ -123,6 +136,67 @@ func noteFor(specs []engine.ToolSpec) string {
 		return toolsNote
 	}
 	return ""
+}
+
+// sourcesNote returns the line that tells the model where the user's own
+// data sits, when specs reach more than one such place: the indexed files,
+// Apple Notes, and each MCP server, such as google or obsidian. It returns
+// "" for one place or none, and for web tools, commands and A2A agents,
+// which hold no record of the user's own life.
+//
+// A real turn showed why. Asked what a recent hotel stay cost, the model
+// searched the user's old expense folders, answered from a stay ten months
+// back, and never looked at mail, where the receipt from last week sat. The
+// line names every place and says to search newest first for "last" or
+// "recent". It depends only on the tools offered, so it stays with the
+// parts of the prompt Ollama reuses.
+func sourcesNote(specs []engine.ToolSpec) string {
+	var files, notes bool
+	var servers []string
+	for _, s := range specs {
+		switch {
+		case builtin.IsFileTool(s.Name):
+			files = true
+		case builtin.IsNotesTool(s.Name):
+			notes = true
+		case toolKind(s.Name) == dispatch.KindMCP:
+			server, _, _ := strings.Cut(s.Name, ".")
+			if !slices.Contains(servers, server) {
+				servers = append(servers, server)
+			}
+		}
+	}
+	// Sorting keeps the line the same whatever order the tools come in.
+	slices.Sort(servers)
+	var places []string
+	if files {
+		places = append(places, "the user's files")
+	}
+	if notes {
+		places = append(places, "Apple Notes")
+	}
+	for _, s := range servers {
+		places = append(places, "the "+s+" tools")
+	}
+	if len(places) < 2 {
+		return ""
+	}
+	return "The user's own records sit in several places here: " + joinAnd(places) + ". " +
+		"For a question about the user's own life, such as a trip, a purchase, a meeting or a message, " +
+		"check each place that could hold the answer before you answer or say it isn't there. " +
+		"When the question says last, latest or recent, search by date, newest first, and answer from the newest match."
+}
+
+// joinAnd joins items with commas and a final "and": "a", "a and b",
+// "a, b and c".
+func joinAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
 // offersWebSearch reports whether specs hold the web_search tool.
@@ -292,11 +366,24 @@ type turn struct {
 	web []webHit
 
 	// mu guards cites, which the calls of one round, each in its own
-	// goroutine, count up at the same time.
+	// goroutine, count up at the same time, and read and readChars.
 	mu sync.Mutex
 	// cites counts the citation numbers handed out so far: to the
 	// excerpts in the prompt, then to those tools return (see nextCites).
 	cites int
+	// read holds what the turn showed the model that the user didn't write
+	// as an answer: each successful tool result, the excerpts and memories
+	// in the prompt, the question and the user's earlier messages. The
+	// amounts check compares the answer's money amounts against it (see
+	// amounts.go). readChars is its length, capped at maxReadChars;
+	// readTools counts the successful tool results in it. sawPicture is
+	// true once a tool returned a picture, such as view_image on a receipt:
+	// its amounts reach the model as pixels, not text, so the check can't
+	// tell read from made up, and stays quiet.
+	read       []string
+	readChars  int
+	readTools  int
+	sawPicture bool
 	// sources holds every excerpt the turn has shown the model, numbered,
 	// for the "sources" event. runTools adds the ones tools return.
 	sources []rpc.Citation
@@ -936,6 +1023,13 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		if o != dispatch.OutcomeOK {
 			continue
 		}
+		t.noteRead(out[i].Content)
+		t.mu.Lock()
+		t.readTools++
+		if len(out[i].Images) > 0 {
+			t.sawPicture = true
+		}
+		t.mu.Unlock()
 		if caller == "" && !builtin.ReadOnly(calls[i].Name) {
 			t.succeeded++
 		}

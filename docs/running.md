@@ -794,12 +794,14 @@ half a minute of the first memory.
 ### Skills
 
 A skill is a Markdown file of instructions for one kind of task. Meru ships
-four: `writing`, plain-English rules for emails, summaries and reports;
+five: `writing`, plain-English rules for emails, summaries and reports;
 `explainer`, which builds a one-page HTML explainer on a topic;
 `web-research`, which tells the model how to search and read pages for a
 question about how to use a program or about current facts; and
 `file-research`, which tells it how to find and read things in your files
-with the file tools. When it starts, `merud` copies each one it
+with the file tools; and `mail-research`, which tells it how to search your
+Gmail and calendar through the `google` server: Gmail's own query words, the
+newest mail first for "last", and a receipt's attachment opened. When it starts, `merud` copies each one it
 doesn't find to `~/.meru/skills/<name>/SKILL.md`.
 
 Every prompt lists each skill's name and description. For each question, a short
@@ -814,7 +816,7 @@ meru skills reset writing     # put the shipped copy back
 ```
 
 `reset` replaces your edits, so on a terminal it asks first; in a script, add
-`--yes`. It works only on the four built-ins. A copy of `web-research` from
+`--yes`. It works only on the five built-ins. A copy of `web-research` from
 before this release lacks the rule to search a name as you wrote it; run
 `meru skills reset web-research` to get it.
 
@@ -824,7 +826,8 @@ after an upgrade, so run `meru skills reset` to take a newer shipped version.
 
 **A skill brings its tools.** A skill can list the tools its steps use in an
 `allowed-tools` line, as Claude's skills do. `web-research` lists `web_search,
-web_fetch`, and `file-research` its four file tools. When the pick chooses a
+web_fetch`, `file-research` its file tools, and `mail-research` the `google`
+server's mail tools and `get_events`. When the pick chooses a
 skill and the question's route lacks those tools, the turn gets them and the
 route widens: `direct` becomes `tools`, `search` becomes `search+tools`. The
 route badge shows the wider route. A skill only brings tools your config

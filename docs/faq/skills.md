@@ -1,7 +1,8 @@
 # How do I add, change or turn off a skill?
 
 A skill is a Markdown file of instructions for one kind of task. Meru ships
-four: `writing`, `explainer`, `web-research` and `file-research`. For each
+five: `writing`, `explainer`, `web-research`, `file-research` and
+`mail-research`. For each
 question, the fast model picks at most two skills, and only their instructions
 join the prompt.
 

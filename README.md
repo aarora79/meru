@@ -160,7 +160,7 @@ done
 | **MCP tools** | `meru setup` offers two servers: `google` for Gmail, Calendar and Drive, and `obsidian` for notes. It adds each one for you or shows you what to paste, and `meru mcp` shows which ones are connected. |
 | **Other agents** | Meru hands tasks to agents you have allowed, over A2A. |
 | **Memory** | Meru saves what it learns about you as small Markdown files you can edit or delete. |
-| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer`, `web-research` and `file-research`; `[skills] disabled` turns one off. |
+| **Skills** | A skill is a Markdown file of instructions that Meru loads when a question needs it. Meru ships with `writing`, `explainer`, `web-research`, `file-research` and `mail-research`; `[skills] disabled` turns one off. |
 | **Scheduled jobs** | Meru asks a question, runs a skill or runs a command you declared on a schedule, such as every weekday at 7 or every other Tuesday, so it can tell you things before you ask. Each run is a chat in the Jobs folder. Add jobs in Settings, with `/jobs` in `meru chat`, or by asking ("every weekday at 7, brief me on my calendar"), which shows the schedule in words before you approve it. |
 | **Observability** | Meru records the tokens, time and tool calls of every question as OpenTelemetry metrics and traces. The Usage page charts them with nothing to install, and a Prometheus you run can read them from `merud` on your machine. |
 

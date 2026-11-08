@@ -572,6 +572,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			unbacked = true
 			notice = strings.TrimSpace(notice + " " + missingNotice(missing))
 		}
+		// A money amount in the answer that no tool result, excerpt or
+		// user message holds, on a turn whose tools returned something and
+		// that showed the model no picture. See amounts.go.
+		if t.readTools > 0 && !t.sawPicture && len(t.images) == 0 {
+			if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
+				notice = strings.TrimSpace(notice + " " + n)
+			}
+		}
 	}
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
@@ -943,6 +951,15 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	// routed and searched on.
 	if t.handoff != "" {
 		question = t.handoff
+	}
+	// The amounts check compares the answer against what this prompt holds
+	// and the user's own words; earlier answers stay out, so a figure the
+	// model moved from one trip to another doesn't count as read.
+	t.noteRead(question, memories, files, web)
+	for _, m := range history {
+		if m.Role == engine.RoleUser {
+			t.noteRead(m.Content)
+		}
 	}
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,

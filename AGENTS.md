@@ -165,9 +165,9 @@ The skills `writing`, `explainer` and `poster-making` come from the owner's
 `explainer` as built-in skills under `internal/skills/builtin/`; `poster-making` is a
 repo tool only and doesn't ship. The built-in `writing` carries `SKILL.md` alone:
 Meru's model can't run `prose-scan.py`, so the script stays in `.claude/skills/writing/`. Update those two built-ins by copying from
-`my-ai-assets`, never by editing them in place. The other two built-ins,
-`web-research` and `file-research`, are Meru's own; their only copies live in
-`internal/skills/builtin/`.
+`my-ai-assets`, never by editing them in place. The other three built-ins,
+`web-research`, `file-research` and `mail-research`, are Meru's own; their only
+copies live in `internal/skills/builtin/`.
 
 ## Non-negotiables
 
@@ -322,8 +322,8 @@ internal/
                      one-list edits and removals in it; Adopt's edit and its undo (adopt.go);
                      adding, replacing and removing one [[jobs]] entry (jobs.go)
   secrets/           ~/.meru/secrets.toml: secret:<name> references and redaction
-  skills/            loads SKILL.md folders; builtin/ ships writing, explainer, web-research and
-                     file-research
+  skills/            loads SKILL.md folders; builtin/ ships writing, explainer, web-research,
+                     file-research and mail-research
   memory/            one Markdown file per memory under memory/<kind>/; the profile kinds go in every prompt
   summarize/         session summaries: the fast model summarizes quiet sessions, for recall by episode
   agent/             one turn: ask before an answer endpoint off the machine (consent.go), route,
