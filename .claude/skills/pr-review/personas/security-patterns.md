@@ -381,6 +381,45 @@ whether a panic in the parser is recovered, and whether a test proves each cap.
 Raising one cap alone, such as cells, while the byte caps stay, keeps memory
 bounded; dropping a byte cap doesn't.
 
+## 14. An OAuth sign-in that leaks or trusts too much
+
+**The mistake.** A sign-in to a remote MCP server whose callback listens on every
+address, so another machine on the network can hand `merud` a code; a callback
+that takes a second request, or echoes the server's error text into the page; a
+token, code, state or sign-in link written to `merud.log`, a span or an error a
+client shows; a token file other accounts can read; or an OAuth client that
+follows a redirect, goes through a proxy, or reaches an address on the user's
+network because a server's metadata named it.
+
+**The rule.** The callback binds `127.0.0.1` (and `::1` for a `localhost`
+redirect) and takes one GET on its path; it shows fixed text with only an RFC 6749
+error code, HTML-escaped. The SDK checks `state` and runs PKCE with S256. Tokens
+live in `~/.meru/oauth/<server>.json` at 0600 in a 0700 folder, written by temp
+file and rename, and `load` refuses a file others can read. The OAuth client uses
+https only (loopback excepted), follows no redirect, uses no proxy, and reaches a
+private address only when the server's own URL is private, checked at dial time.
+Errors become fixed sentences (`signInError`); the raw error never reaches a log or
+a client, since it can quote the server's reply. A client secret lives only in
+`secrets.toml` as `secret:<name>`. Removing a server's entry deletes its token.
+
+**Where the code enforces it.**
+
+- `internal/mcp/oauth.go`: `listenCallback` and `callback.ServeHTTP`,
+  `tokenStore` (`load`, `save`, `prune`), `newOAuthClient` and its `httpsOnly`
+  RoundTripper, `signInError`, `PruneSignIns`.
+- `internal/mcp/config.go`: `checkAuth` refuses an `Authorization` header with
+  `auth = "oauth"`, an http issuer, and a redirect off loopback or without a port.
+- `cmd/merud/backends.go`: `client_secret` must be a `secret:` reference.
+- `internal/agent/signin.go`: the `sign_in_needed` event carries server names,
+  never a link.
+- Tests: `TestCallback`, `TestOAuthClientRules`, `TestSignInWrongState`,
+  `TestSignInRefusals`, `TestSignInError`, `TestCheckAuth`, and `TestSignInNeeded`
+  in `internal/agent`. Added for #237.
+
+**What to check.** A change to the sign-in: where the callback listens and how many
+requests it takes, what reaches a log or an error, the token file's mode, and
+whether the OAuth client can reach an address the server's URL doesn't justify.
+
 ---
 
 ## Review checklist

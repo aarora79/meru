@@ -333,6 +333,29 @@ mouse_copy = true
 # always_confirm = ["delete_item"]
 # timeout = "60s"                        # longest one call may take; the default
 #
+# A server on the internet that signs you in with OAuth: auth = "oauth" needs
+# a url and remote = true, and no Authorization header. Sign in with
+# `meru mcp login <name>`, /signin in meru chat, or Sign in in the app;
+# merud keeps the token in oauth/ next to this file. With no oauth table,
+# Meru registers itself with the server. A server that doesn't allow that,
+# such as GitHub or Slack, needs the app you registered with it: its
+# client_id, its client_secret in secrets.toml, the issuer, the scopes to
+# ask for, and redirect when the app fixes the callback, such as Slack's
+# "http://localhost:3118/callback". docs/faq/oauth-mcp-server.md has both.
+#
+# [[mcp.servers]]
+# name   = "github"
+# url    = "https://api.githubcopilot.com/mcp/"
+# remote = true
+# auth   = "oauth"
+# allow  = ["get_me", "search_issues", "issue_read"]
+#   [mcp.servers.oauth]
+#   client_id     = "Ov23liExampleId00000"
+#   client_secret = "secret:github_client_secret"
+#   issuer        = "https://github.com/login/oauth"
+#   scopes        = ["repo", "read:user"]
+#   redirect      = ""
+#
 # Secrets: API keys and tokens live in secrets.toml next to this file, one
 # name = "value" per line, never here. A "secret:<name>" value in env or
 # headers reads from it. merud refuses the file unless only you can read
@@ -525,6 +548,9 @@ mouse_copy = true
 # only read. Uncomment the ones you want and restart merud. If merud can't
 # find gh on its PATH, give argv[0] the full path `command -v gh` prints.
 # docs/running.md, "GitHub", shows how to add a command that writes.
+# The last three ask gh api for a repository's numbers; their repository
+# can't start with a dot, since it sits inside an API path, where ".."
+# would climb out.
 #
 # [[commands]]
 # name        = "gh-prs"
@@ -591,6 +617,36 @@ mouse_copy = true
 #   type        = "string"
 #   pattern     = "[A-Za-z0-9-]+"
 #   description = "The user or organization, such as dana-reyes"
+#
+# [[commands]]
+# name        = "gh-repo-stats"
+# description = "A GitHub repository's stars, forks, watchers and open issues, and when it last got a push"
+# argv        = ["gh", "api", "repos/{repo}", "--jq", "{{stars: .stargazers_count, forks: .forks_count, watchers: .subscribers_count, open_issues: .open_issues_count, pushed_at: .pushed_at}}"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9-]+/[A-Za-z0-9_][A-Za-z0-9_.-]*"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#
+# [[commands]]
+# name        = "gh-repo-traffic"
+# description = "Clones or views of a GitHub repository over the last 14 days, in total and by day, with unique visitors. Needs push access to the repository."
+# argv        = ["gh", "api", "repos/{repo}/traffic/{kind}"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9-]+/[A-Za-z0-9_][A-Za-z0-9_.-]*"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
+#   [commands.params.kind]
+#   type   = "enum"
+#   values = ["clones", "views"]
+#
+# [[commands]]
+# name        = "gh-release-downloads"
+# description = "How many times each file of each recent release of a GitHub repository was downloaded"
+# argv        = ["gh", "api", "repos/{repo}/releases", "--jq", "[.[] | {{tag: .tag_name, published_at: .published_at, files: [.assets[] | {{name: .name, downloads: .download_count}}]}}]"]
+#   [commands.params.repo]
+#   type        = "string"
+#   pattern     = "[A-Za-z0-9-]+/[A-Za-z0-9_][A-Za-z0-9_.-]*"
+#   description = "The repository as owner/name, such as dana-reyes/garden-planner"
 
 # Other agents Meru may hand a task to over A2A (Agent2Agent). None by
 # default. Each allowed skill, by the ID on the agent's card, becomes the

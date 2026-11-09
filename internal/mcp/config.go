@@ -73,6 +73,15 @@ type ServerConfig struct {
 	// Timeout caps one tool call. Zero means DefaultCallTimeout.
 	Timeout time.Duration
 
+	// Auth is "" or AuthOAuth. With AuthOAuth the server signs the user in
+	// by the MCP authorization spec (see signin.go); it needs URL and
+	// Remote, and no Authorization header.
+	Auth string
+	// OAuth holds the settings for Auth = AuthOAuth. Its zero value means:
+	// register with the server, take the scopes it lists, and use a free
+	// loopback port for the callback.
+	OAuth OAuthConfig
+
 	// Spawn, when set, makes this a managed server: a connector, whose
 	// program a supervisor in merud runs (internal/connectors). Command,
 	// Args, Env, URL, Remote and Headers then stay empty, since the
@@ -80,6 +89,32 @@ type ServerConfig struct {
 	// [[mcp.servers]] entry, so a server added by hand keeps the Pool's own
 	// connect rules.
 	Spawn Spawner
+
+	// handler is the server's OAuth handler, for auth = "oauth". The Pool
+	// sets it; dialTransport hands it to the transport.
+	handler *signIn
+}
+
+// AuthOAuth is the one value ServerConfig.Auth takes besides "".
+const AuthOAuth = "oauth"
+
+// OAuthConfig is a server's [mcp.servers.oauth] table, with the client
+// secret already read from secrets.toml.
+type OAuthConfig struct {
+	ClientID     string   // from an app the user registered; "" means register dynamically
+	ClientSecret string   // the secret itself, resolved by merud; "" for a public client
+	Issuer       string   // optional: the only authorization server the client may use
+	Scopes       []string // optional: exactly what to ask for
+	Redirect     string   // optional: the callback URL the app registered
+	// TokenDir is the folder the sign-in is kept in, ~/.meru/oauth. merud
+	// sets it; it isn't a config key.
+	TokenDir string
+}
+
+// set reports whether any of o's fields holds a value.
+func (o OAuthConfig) set() bool {
+	// TokenDir doesn't count: merud sets it on every entry.
+	return o.ClientID != "" || o.ClientSecret != "" || o.Issuer != "" || len(o.Scopes) > 0 || o.Redirect != ""
 }
 
 // transport names the transport this entry uses: "stdio" or "http". Status
@@ -165,6 +200,8 @@ func (c ServerConfig) Validate() error {
 			errs = append(errs, err)
 		}
 	}
+
+	errs = append(errs, c.checkAuth()...)
 
 	for k := range c.Env {
 		if k == "" || strings.ContainsAny(k, "=\x00") {
@@ -292,4 +329,73 @@ func checkServerURL(raw string, remote bool) error {
 // would also accept letters from other scripts, which look alike on screen.
 func isASCIIAlnum(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+// checkAuth checks Auth and OAuth and returns one error per problem.
+func (c ServerConfig) checkAuth() []error {
+	var errs []error
+	add := func(format string, args ...any) {
+		errs = append(errs, fmt.Errorf(format, args...))
+	}
+	switch c.Auth {
+	case "":
+		if c.OAuth.set() {
+			add(`the oauth table needs auth = "oauth"`)
+		}
+		return errs
+	case AuthOAuth:
+	default:
+		add(`auth %q is unknown; use "oauth" or leave it out`, c.Auth)
+		return errs
+	}
+	if strings.TrimSpace(c.URL) == "" || !c.Remote {
+		add(`auth = "oauth" needs url and remote = true`)
+	}
+	for k := range c.Headers {
+		// The sign-in sends its own Authorization header; a second one
+		// from headers would fight it.
+		if strings.EqualFold(k, "Authorization") {
+			add(`auth = "oauth" and an Authorization header can't both be set; leave the header out`)
+		}
+	}
+	o := c.OAuth
+	if o.ClientSecret != "" && o.ClientID == "" {
+		add("oauth: client_secret needs client_id")
+	}
+	if o.Issuer != "" {
+		if u, err := url.Parse(o.Issuer); err != nil || u.Scheme != "https" || u.Host == "" {
+			add("oauth: issuer %q must be an https URL", o.Issuer)
+		}
+	}
+	if o.Redirect != "" {
+		if err := checkRedirect(o.Redirect); err != nil {
+			add("oauth: redirect %q: %v", o.Redirect, err)
+		}
+	}
+	for _, s := range o.Scopes {
+		if strings.TrimSpace(s) == "" || strings.ContainsAny(s, " \t\r\n") {
+			add("oauth: scope %q must be one word", s)
+		}
+	}
+	return errs
+}
+
+// checkRedirect checks a fixed callback URL: http, a loopback host named
+// 127.0.0.1, [::1] or localhost, a port, and a path. The callback listens
+// only on loopback, so any other host could never receive the code.
+func checkRedirect(raw string) error {
+	u, err := url.Parse(raw)
+	switch {
+	case err != nil:
+		return err
+	case u.Scheme != "http":
+		return errors.New("use http; the callback listens on this machine only")
+	case u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" && u.Hostname() != "localhost":
+		return errors.New("the host must be 127.0.0.1, [::1] or localhost")
+	case u.Port() == "":
+		return errors.New("give a port, such as http://localhost:3118/callback")
+	case u.Path == "" || u.Path == "/":
+		return errors.New("give a path, such as /callback")
+	}
+	return nil
 }

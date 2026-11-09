@@ -926,6 +926,9 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if len(specs) > 0 && (dec.Route == "tools" || dec.Route == "search+tools") {
 		a.tools.Refresh(ctx)
 		specs = a.toolSpecs(dec.Route)
+		if err := a.signInNeeded(t); err != nil {
+			return res, err
+		}
 	}
 	web, err := a.runWebFirst(ctx, t, webCalls)
 	if err != nil {

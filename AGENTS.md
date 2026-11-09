@@ -268,7 +268,7 @@ cmd/
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
-                     `skills list|show|reset`, `mcp list|status|add|remove` (mcp.go, probe.go),
+                     `skills list|show|reset`, `mcp list|status|add|remove|login` (mcp.go, probe.go),
                      `mcp adopt|unadopt` (adopt.go),
                      `check` and `check report` (check.go, checkfile.go, checkreport.go), `run --json`
                      (run.go), `transcribe` (transcribe.go), the approval prompt (approve.go) and
@@ -296,7 +296,8 @@ internal/
                      xlsx.go, csv.go, and table.go, which chunks a sheet by rows
   dispatch/          the one path for every tool call: allowlist, approval, audit, metrics
   mcp/               the MCP client pool: stdio and Streamable HTTP, allowlists, the probe
-                     `meru mcp add` runs before it saves a server
+                     `meru mcp add` runs before it saves a server, and the OAuth sign-in to a
+                     remote server, with its loopback callback and saved tokens (oauth.go)
   a2a/               the A2A client: agent cards, skills as tools, streaming calls
   builtin/           the nineteen tools inside merud: `configure`, `datetime`, `about_meru`,
                      `remember`, `write_file`, `edit_file` (editfile.go), the read-only `read_file`, `list_folder`,

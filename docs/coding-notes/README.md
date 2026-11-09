@@ -86,6 +86,7 @@ Read them in this order; each builds on the ones before it.
 - [XML streaming](go-basics/xml-streaming.md)
 - [Server-sent events](go-basics/server-sent-events.md)
 - [Generics](go-basics/generics.md)
+- [oauth2.TokenSource](go-basics/oauth2-tokensource.md)
 
 ## Rules for writing a note
 

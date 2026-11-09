@@ -57,13 +57,15 @@ func TestExampleCommands(t *testing.T) {
 		"cmd.system-load cmd.top-processes cmd.find-process cmd.memory-free "+
 		"cmd.kernel cmd.macos-version cmd.hardware-summary cmd.system-report cmd.battery cmd.disk-list cmd.uptime "+
 		"cmd.file-lines cmd.count-lines cmd.csv-column cmd.csv-sum "+
-		"cmd.gh-prs cmd.gh-pr cmd.gh-issues cmd.gh-issue cmd.gh-runs cmd.gh-repos" {
+		"cmd.gh-prs cmd.gh-pr cmd.gh-issues cmd.gh-issue cmd.gh-runs cmd.gh-repos "+
+		"cmd.gh-repo-stats cmd.gh-repo-traffic cmd.gh-release-downloads" {
 		t.Errorf("samples give %v", names)
 	}
 
 	// The GitHub samples only read, so none asks first, and each
 	// repository parameter takes owner/name and nothing else.
-	for _, name := range []string{"cmd.gh-prs", "cmd.gh-pr", "cmd.gh-issues", "cmd.gh-issue", "cmd.gh-runs", "cmd.gh-repos"} {
+	for _, name := range []string{"cmd.gh-prs", "cmd.gh-pr", "cmd.gh-issues", "cmd.gh-issue", "cmd.gh-runs", "cmd.gh-repos",
+		"cmd.gh-repo-stats", "cmd.gh-repo-traffic", "cmd.gh-release-downloads"} {
 		if s.Confirm(name) != dispatch.ConfirmNever {
 			t.Errorf("%s asks first; the GitHub samples only read", name)
 		}
@@ -86,6 +88,24 @@ func TestExampleCommands(t *testing.T) {
 	repos, _ := s.lookup("cmd.gh-repos")
 	if _, err := repos.Render(map[string]string{"owner": "dana-reyes/garden"}); err == nil {
 		t.Error("gh-repos took an owner with a slash")
+	}
+	// The gh api samples put the repository inside an API path, so it
+	// can't climb out with "..", and their doubled braces reach jq as
+	// single ones.
+	traffic, _ := s.lookup("cmd.gh-repo-traffic")
+	argv, err = traffic.Render(map[string]string{"repo": "dana-reyes/garden-planner", "kind": "clones"})
+	if want := "gh api repos/dana-reyes/garden-planner/traffic/clones"; err != nil || strings.Join(argv, " ") != want {
+		t.Errorf("gh-repo-traffic renders %q, %v; want %q", argv, err, want)
+	}
+	for _, repo := range []string{"dana-reyes/..", "dana-reyes/../../user", "../garden"} {
+		if _, err := traffic.Render(map[string]string{"repo": repo, "kind": "clones"}); err == nil {
+			t.Errorf("gh-repo-traffic took %q", repo)
+		}
+	}
+	stats, _ := s.lookup("cmd.gh-repo-stats")
+	argv, err = stats.Render(map[string]string{"repo": "dana-reyes/garden-planner"})
+	if err != nil || !strings.HasPrefix(argv[len(argv)-1], "{stars: .stargazers_count,") {
+		t.Errorf("gh-repo-stats renders %q, %v", argv, err)
 	}
 
 	// The sed and awk samples take numbers, never script text, and their

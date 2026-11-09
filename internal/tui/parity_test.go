@@ -628,3 +628,59 @@ func TestToolProgress(t *testing.T) {
 	}
 	_ = m
 }
+
+// TestSignIn checks /signin, the desktop app's Sign in button: it asks
+// merud to start the sign-in, opens the page merud gives back, and asks
+// mcp_status until the server connects. Alone, /signin takes the one
+// server the newest turn said waits for a sign-in.
+func TestSignIn(t *testing.T) {
+	link := "https://github.com/login/oauth/authorize?client_id=x"
+	merud := &fakeMerud{events: []rpc.Event{{Type: rpc.EventSignIn, Text: link}, {Type: rpc.EventDone}}}
+	m := testModel(merud.ask, newFakeSender())
+	var opened []string
+	m.open = func(u string) error { opened = append(opened, u); return nil }
+	m.turns = []exchange{{question: "how many stars?", state: stateDone, signInServers: []string{"github"}}}
+
+	m, cmd := update(t, m, typeText("/signin"), press(tea.KeyEnter))
+	m, tick := update(t, m, cmd())
+	if r := lastReq(t, merud); r.Op != rpc.OpMCPSignIn || r.ID != "github" {
+		t.Fatalf("request = %+v, want mcp_sign_in for github", r)
+	}
+	if !slices.Equal(opened, []string{link}) || !strings.Contains(m.notice, "Meru waits for you to sign in") || tick == nil {
+		t.Fatalf("opened %v, notice %q, next check booked %v", opened, m.notice, tick != nil)
+	}
+
+	// A check while the browser is open books another; one after the
+	// server connects ends the sign-in.
+	merud.events = []rpc.Event{{Type: rpc.EventMCPStatus, MCP: []rpc.MCPStatus{{Name: "github", State: rpc.MCPSignIn, Link: link}}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, signInTickMsg{})
+	m, tick = update(t, m, cmd())
+	if tick == nil || m.signingIn == nil {
+		t.Fatal("a check while the browser is open didn't book the next one")
+	}
+	merud.events = []rpc.Event{{Type: rpc.EventMCPStatus, MCP: []rpc.MCPStatus{{Name: "github", State: rpc.MCPConnected}}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, signInTickMsg{})
+	m, tick = update(t, m, cmd())
+	if tick != nil || m.signingIn != nil || !strings.Contains(m.notice, "Signed in to github") {
+		t.Errorf("after the server connected: notice %q, still checking %v", m.notice, tick != nil)
+	}
+
+	// A sign-in that ends with the server still waiting, and no page open,
+	// says so.
+	merud.events = []rpc.Event{{Type: rpc.EventSignIn, Text: link}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, typeText("/signin github"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	merud.events = []rpc.Event{{Type: rpc.EventMCPStatus, MCP: []rpc.MCPStatus{{Name: "github", State: rpc.MCPSignIn}}}, {Type: rpc.EventDone}}
+	m, cmd = update(t, m, signInTickMsg{})
+	m, _ = update(t, m, cmd())
+	if m.signingIn != nil || !strings.Contains(m.notice, "didn't finish") {
+		t.Errorf("a sign-in that ended: notice %q", m.notice)
+	}
+
+	// /signin alone with no server named says what it takes.
+	m.turns = nil
+	m, _ = update(t, m, typeText("/signin"), press(tea.KeyEnter))
+	if !strings.Contains(m.notice, "/signin takes a server's name") {
+		t.Errorf("notice = %q", m.notice)
+	}
+}

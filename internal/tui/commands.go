@@ -18,7 +18,7 @@ import (
 // app's composer has the same commands in the same order;
 // TestCommandsMatchChat in internal/desktop reads this line and fails when
 // the two differ.
-const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /large, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /folders, /skills, /sites, /jobs, /model, /log, /about, /help, /exit"
+const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /large, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /signin, /folders, /skills, /sites, /jobs, /model, /log, /about, /help, /exit"
 
 // commandHelp is the /help box's line for each command, in commandList's
 // order: what to type, and what it does. TestCommandHelp fails when a
@@ -45,6 +45,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/usage [by model]", "how much you use Meru"},
 	{"/me [add|prefer <text>]", "what Meru knows about you; add to it"},
 	{"/mcp", "connectors: fix, on/off, adopt; tools: Off, Ask or Allow; add a server"},
+	{"/signin [server]", "sign in to a server that asks for it"},
 	{"/folders [add <path>]", "the folders Meru searches"},
 	{"/skills", "turn skills on or off"},
 	{"/sites [remove <site>]", "websites Meru reads without asking"},
@@ -121,6 +122,8 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		m.openBox()
 		m.mcpBox = &mcpBox{loading: true}
 		return m, requestCmd(m.ask, tagConns, rpc.Request{Op: rpc.OpConnections}, rpc.EventConnections, readTimeout)
+	case "/signin":
+		return m.signInCommand(arg)
 	case "/folders":
 		return m.foldersCommand(arg)
 	case "/skills":

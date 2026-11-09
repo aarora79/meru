@@ -1160,6 +1160,34 @@ pre {
   margin-top: 2px;
 }
 
+/* The box above an answer that offers a sign-in to a tool server whose
+   tools the answer had to go without, and the same row on the server's
+   Settings card. */
+.answer-signin {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ask-border);
+  border-radius: 8px;
+  background: var(--ask-fill);
+  color: var(--ask-ink);
+  font-size: 13px;
+}
+
+.answer-signin p {
+  margin: 0 0 6px;
+}
+
+.signin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.signin-row p {
+  margin: 4px 0;
+}
+
 /* The cited sources: one closed line under the answer, "3 sources", whose
    chevron turns down when it opens. */
 .sources-line {

@@ -251,7 +251,7 @@ Shift+F10 open the same menus from the keyboard.
 ### settings.go
 
 One method per thing Settings and Setup show or change, each a single request:
-`Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SetSecret`,
+`Connections`, `SetPolicy`, `AddConnection`, `AddCustomServer`, `RemoveConnection`, `SignIn`, `SetSecret`,
 `Folders`, `AddFolder`, `RemoveFolder`, `Memories`, `AddMemory`, `ForgetMemory`,
 `Skills`, `SetSkill`, `Models`, `UseModel`, `Activity`, `Usage` and `UsageDetail`. Each hands
 back what `merud` sent, shaped for the page: a view struct such as
@@ -289,6 +289,16 @@ The method sends it as `mcp_add` with `Request.Custom` set, and `merud` checks
 every field. A secret variable's value travels in the same request: `merud` must
 save it before it writes the entry, or the reload that follows would fail on a
 `secret:` reference with nothing behind it.
+
+`SignIn(name)` signs in to an MCP server whose entry has `auth = "oauth"`. It
+sends `mcp_sign_in` and opens the link `merud` gives back with `OpenURL`, which
+checks it first. `merud` then waits for the browser and connects the server
+once the user signs in; the page asks `Connections` every two seconds until it
+does (see `signin.js` below). A second call while a sign-in waits opens the
+same page again. `changes` in history.go lists `OpMCPSignIn` among the ops that
+get the 90-second timeout, since `merud` may wait up to 30 seconds for the
+server's sign-in page. `TestSignIn` checks the request, that the link opens,
+and that a refusal opens nothing.
 
 ### connectors.go
 
@@ -491,7 +501,10 @@ again on the newest answer, `/scope` flips the Where Meru looks switch, `/attach
 opens the file dialog, `/save` is Save to a note (`/save chat` is Share as file),
 `/used` opens the side panel on the newest answer, `/copy answer` copies the whole
 answer, `/folders`, `/skills`, `/log` and `/about` open their Settings sections, and
-`/help` opens the command menu. `app.js` hands `commands.js` the functions these
+`/help` opens the command menu. `/signin <server>` starts the same sign-in as
+the Sign in button and says on the notice line how it goes; `/signin` alone
+opens Settings, Connections, where each server that waits has its button.
+`app.js` hands `commands.js` the functions these
 need. `TestEveryCommandRuns` fails when a listed command has no case in
 `commands.js`. In the page, `/model` alone opens Settings, Models; `/model save` calls
 `SaveModels` and `/model <name>` calls `UseModelSet`, and both say on the
@@ -607,6 +620,20 @@ bundler.
   the tagline, the name, what Meru does and why it runs on your computer, the
   version and folders, a "Run setup again" link, and the three links the
   Bridge hands it.
+- `js/signin.js` holds `signIn(name, report)`, the one sign-in that three
+  places share: the chat's sign-in box, the Sign in row on a server's Settings
+  card, and `/signin` in the composer. It calls `bridge.signIn`, then asks
+  `bridge.connections()` every two seconds (`POLL_MS`) for up to ten minutes
+  (`WAIT_MS`), `merud`'s own limit. It calls `report` with `"waiting"`, then
+  `"done"` once the server's connection reads `connected`, or `"failed"` once
+  it again has `sign_in` with no `link`, as after the user said no in the
+  browser. A `merud` that doesn't answer gets asked again until the time runs
+  out. Each caller draws the words its own way. In Settings, a card with
+  `sign_in` shows "Needs sign-in" on its pill, and `signInRow` draws a
+  sentence with a Sign in button; `current.signIns`, a `Map` from server name
+  to state and words, keeps them while the section draws again. `app.css`
+  styles the box as `.answer-signin`, in the approval card's colours, and each
+  server's line as `.signin-row`.
 - `js/setup.js` draws the four Setup steps. `app.js` opens them on its own the
   first time `merud` reports no folders and no profile; the rail has no Setup
   button, so after that the only way in is "Run setup again", which calls
@@ -648,7 +675,13 @@ bundler.
   note with a warning icon, in the approval card's colours; a past turn carries
   it as `TurnView.Notice`. The event comes with #29, and `app.js` names the
   `"notice"` type in one place; the page skips any type it doesn't know, so
-  nothing breaks before #29 merges. All text goes in with `textContent`,
+  nothing breaks before #29 merges. `drawSignIn` draws the box above the
+  answer that a `sign_in_needed` event fills: `merud`'s sentence, then a "Sign
+  in to github" button per server, which runs `handlers.onSignIn` from
+  `app.js`. That handler calls `signIn` and, once a server connects, reloads the
+  status so the rail lists it. `onEvent`'s `case "sign_in_needed"` keeps the
+  servers on the turn as `t.signIn`, each with its own state and words, and a
+  row that failed offers its button again. All text goes in with `textContent`,
   which the browser never reads as HTML.
 - `js/markdown.js` renders a finished answer: `marked` turns Markdown into HTML with
   raw HTML escaped, and DOMPurify keeps a short list of tags and only `http`,

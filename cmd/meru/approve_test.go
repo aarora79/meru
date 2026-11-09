@@ -128,6 +128,26 @@ func TestAskNotice(t *testing.T) {
 	}
 }
 
+// TestAskSignIn checks that a tool server waiting for a sign-in prints a
+// "note:" line on stderr with the command that signs in.
+func TestAskSignIn(t *testing.T) {
+	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		emit(rpc.Event{Type: rpc.EventSignInNeeded, Text: "github needs you to sign in before Meru can use its tools.",
+			Servers: []rpc.ServerInfo{{Name: "github", Kind: "mcp"}}})
+		return emit(rpc.Event{Type: rpc.EventToken, Text: "I can't reach GitHub."})
+	})
+	var out, errOut bytes.Buffer
+	if code := run(context.Background(), []string{"-socket", sock, "how many stars does garden-planner have?"}, &out, &errOut); code != 0 {
+		t.Fatalf("exit code %d, stderr %q", code, errOut.String())
+	}
+	if want := "I can't reach GitHub.\n"; out.String() != want {
+		t.Errorf("stdout = %q, want %q", out.String(), want)
+	}
+	if want := "note: github needs you to sign in before Meru can use its tools. Run: meru mcp login github\n"; errOut.String() != want {
+		t.Errorf("stderr = %q, want %q", errOut.String(), want)
+	}
+}
+
 func TestToolLine(t *testing.T) {
 	tests := []struct {
 		name string

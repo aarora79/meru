@@ -52,6 +52,9 @@ type fakeTools struct {
 	// first Refresh adds them to specs, as a server the user just
 	// started would.
 	late []engine.ToolSpec
+	// servers is what Servers reports, such as a server that waits for
+	// the user to sign in.
+	servers []rpc.ServerInfo
 
 	mu       sync.Mutex // guards calls, choices and connects
 	calls    []dispatch.Call
@@ -75,6 +78,13 @@ func (f *fakeTools) Refresh(context.Context) {
 }
 
 func (f *fakeTools) Asks(name string) bool { return f.asks[name] }
+
+// Servers returns the fake's servers, such as one that waits for a sign-in.
+func (f *fakeTools) Servers() []rpc.ServerInfo {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.servers)
+}
 
 func (f *fakeTools) Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome) {
 	f.mu.Lock()

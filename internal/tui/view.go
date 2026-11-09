@@ -340,6 +340,12 @@ func (m *Model) renderTurn(t *exchange) string {
 	if t.firstTry != "" {
 		lines = append(lines, m.style.raw.Render(m.style.dim.Render(ansi.Wrap(t.firstTry, width, ""))))
 	}
+	// A server that waits for a sign-in: its tools are missing from this
+	// answer, so the line comes before it, in the colour that asks for a
+	// second look.
+	if t.signIn != "" {
+		lines = append(lines, m.style.raw.Render(m.style.notice.Render(ansi.Wrap(t.signIn, width, ""))))
+	}
 
 	switch {
 	case asking && t.answer == "":

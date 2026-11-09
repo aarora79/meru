@@ -361,6 +361,8 @@ func (m *Model) applyReply(msg replyMsg) tea.Cmd {
 		return m.applyJobRunChat(msg)
 	case tagLog:
 		m.applyLog(msg)
+	case tagSignIn, tagSignInCheck:
+		return m.applySignIn(msg)
 	}
 	return nil
 }

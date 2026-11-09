@@ -2153,7 +2153,7 @@ in it.
 
 Meru reads GitHub through `gh`, GitHub's own command-line tool, declared as
 local commands. `gh` keeps its login in your system's keychain, so Meru never
-holds a GitHub token. The config template carries six commands that only read,
+holds a GitHub token. The config template carries nine commands that only read,
 all off until you uncomment them:
 
 | Tool | What the model gets |
@@ -2164,6 +2164,9 @@ all off until you uncomment them:
 | `cmd.gh-issue` | one issue with its text and comments |
 | `cmd.gh-runs` | the 10 latest GitHub Actions runs and how each ended |
 | `cmd.gh-repos` | up to 30 repositories of one user or organization |
+| `cmd.gh-repo-stats` | a repository's stars, forks, watchers and open issues |
+| `cmd.gh-repo-traffic` | a repository's clones or views over the last 14 days, by day; needs push access |
+| `cmd.gh-release-downloads` | how many times each file of each recent release was downloaded |
 
 Each asks `gh` for JSON with a fixed list of fields. A `repo` parameter must
 look like `owner/name`, such as `dana-reyes/garden-planner`, and an `owner` like

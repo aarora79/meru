@@ -88,6 +88,20 @@ func (b *Bridge) RemoveConnection(ctx context.Context, name string) (Connections
 	return b.connections(ctx, rpc.Request{Op: rpc.OpMCPRemove, ID: name})
 }
 
+// SignIn starts the sign-in for name, an MCP server with auth = "oauth",
+// and opens the sign-in page merud gives back in the browser. merud waits
+// for the browser and connects the server once the user signs in; the page
+// asks Connections every few seconds until it does. A second call while a
+// sign-in waits opens the same page again. It fails when merud refuses,
+// as for a server without auth = "oauth", or the page can't open.
+func (b *Bridge) SignIn(ctx context.Context, name string) error {
+	ev, err := b.one(ctx, rpc.Request{Op: rpc.OpMCPSignIn, ID: name}, rpc.EventSignIn)
+	if err != nil {
+		return err
+	}
+	return b.OpenURL(ev.Text)
+}
+
 // SetSecret saves value as the secret name in secrets.toml, through merud,
 // which accepts only a name a server uses. It fails on an empty value.
 func (b *Bridge) SetSecret(ctx context.Context, name, value string) error {

@@ -30,6 +30,7 @@ steps and links to [running.md](../running.md) for the full story.
 - [How do I let Meru run more commands on my machine?](allow-commands.md)
 - [How do I let Meru read GitHub?](github.md)
 - [How do I connect Obsidian, Google or another MCP server?](connect-mcp-server.md)
+- [How do I sign in to an MCP server on the internet, such as GitHub's or Slack's?](oauth-mcp-server.md)
 - [How do I turn on web search?](web-search.md)
 - [How do I let Meru read my Apple Notes?](apple-notes.md)
 - [How do I choose which tools ask me first?](tool-approvals.md)

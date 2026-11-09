@@ -80,6 +80,13 @@ const (
 	// sends nothing to any server, so the reply comes at once while a
 	// server is down. The reply is one "mcp_status" event and "done".
 	OpMCPStatus Op = "mcp_status"
+	// OpMCPSignIn starts a sign-in for the auth = "oauth" server named in
+	// Request.ID and replies with an EventSignIn whose Text is the link the
+	// user opens, then "done". The rest of the sign-in runs in merud; the
+	// client polls mcp_status until the server connects. A sign-in already
+	// waiting for the browser replies with its link again. It fails for an
+	// unknown server or one without auth = "oauth".
+	OpMCPSignIn Op = "mcp_sign_in"
 	// OpConnectors asks for the state of each connector merud's
 	// supervisor knows (connectors.go). merud answers from what the
 	// supervisor holds and starts nothing. The reply is one "connectors"
@@ -453,6 +460,13 @@ const (
 	// client that doesn't know the type shows both answers one after the
 	// other.
 	EventEscalate EventType = "escalate"
+	// EventSignInNeeded names, in Servers, the tool servers that wait for
+	// the user to sign in, with Text saying so in one sentence. merud sends
+	// it on a turn that offers tools, before the answer, since those
+	// servers' tools are missing from it. A client offers the sign-in: a
+	// button in the desktop app, /signin in meru chat, `meru mcp login`
+	// from one question. A client that doesn't know the type skips it.
+	EventSignInNeeded EventType = "sign_in_needed"
 	// EventToolCall says the model asked for a tool, in Tool, before
 	// dispatch decides whether it runs.
 	EventToolCall EventType = "tool_call"
@@ -485,6 +499,8 @@ const (
 	EventProbe EventType = "probe"
 	// EventMCPStatus answers OpMCPStatus, in MCP.
 	EventMCPStatus EventType = "mcp_status"
+	// EventSignIn answers OpMCPSignIn: Text is the sign-in link.
+	EventSignIn EventType = "sign_in"
 	// EventSessions answers OpSessions, in Sessions.
 	EventSessions EventType = "sessions"
 	// EventTurns answers OpSessionTurns, in Turns.
@@ -863,6 +879,10 @@ type ServerInfo struct {
 	// it. Connected is then true while its tools are offered.
 	Connector string `json:"connector,omitempty"`
 	Sentence  string `json:"sentence,omitempty"`
+	// SignIn is true for an auth = "oauth" server that waits for the user
+	// to sign in; Link is the sign-in link while one waits for the browser.
+	SignIn bool   `json:"sign_in,omitempty"`
+	Link   string `json:"link,omitempty"`
 }
 
 // ToolInfo is one tool the model may use.
@@ -1080,6 +1100,9 @@ type SkillInfo struct {
 const (
 	MCPConnected    = "connected"
 	MCPNotConnected = "not connected"
+	// MCPSignIn is the state of an auth = "oauth" server that waits for
+	// the user to sign in. An older client shows it as an unknown state.
+	MCPSignIn = "sign_in"
 )
 
 // MCPStatus is one row of `meru mcp` and the chat's /mcp box: what config
@@ -1110,6 +1133,10 @@ type MCPStatus struct {
 	Confirm int `json:"confirm"`
 	// Err says in one line why the server isn't connected.
 	Err string `json:"err,omitempty"`
+	// Link is the sign-in link while a sign-in for this server waits for
+	// the browser; empty otherwise. It holds a one-time state value, so
+	// clients show it and never log it.
+	Link string `json:"link,omitempty"`
 }
 
 // ProbeServer is an MCP server to try before it goes into config: the same

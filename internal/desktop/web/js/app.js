@@ -13,13 +13,14 @@ import { bridge, onUpdate, copyText, errorText } from "./api.js";
 import { icon } from "./icons.js";
 import { setMachine, here } from "./machine.js";
 import {
-  el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice, drawFirstTry, drawBody,
+  el, button, seconds, createTurn, drawAll, drawStrip, drawApproval, drawNotice, drawFirstTry, drawBody, drawSignIn,
   appendToken, approvalCard, thumb, isWebSource, sourceIcon, sourceName, openSource, drawFooter, tickWorking,
 } from "./turns.js";
 import { setupCommands, menuKey, runCommand } from "./commands.js";
 import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.js";
 import { openSetup } from "./setup.js";
 import { connectorProgress } from "./connectors.js";
+import { signIn } from "./signin.js";
 import { setupVoice } from "./voice.js";
 import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
 
@@ -141,6 +142,14 @@ const handlers = {
     continueAnswer(t);
   },
   whyText: (v) => whyText(v),
+  // onSignIn signs in to the tool server name from the chat's sign-in
+  // box; once it connects, the rail lists it.
+  onSignIn(name, report) {
+    signIn(name, (state, words) => {
+      report(state, words);
+      if (state === "done") loadStatus();
+    });
+  },
 };
 
 // continues reports whether turn t stopped short in a way Continue can
@@ -508,6 +517,13 @@ function onEvent(u) {
     case "notice":
       t.notice = ev.text || "";
       drawNotice(t);
+      break;
+    // "sign_in_needed": a tool server waits for the user to sign in, so
+    // its tools are missing from this answer. The box above the answer
+    // offers the sign-in.
+    case "sign_in_needed":
+      t.signIn = { text: ev.text || "", servers: (ev.servers || []).map((s) => ({ name: s.name, state: "", words: "" })) };
+      drawSignIn(t, handlers);
       break;
     // "escalate": the fast model's answer ended early and the main model
     // answers afresh. The streamed text folds into "First try" above the

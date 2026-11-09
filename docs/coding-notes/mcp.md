@@ -1,9 +1,10 @@
 # mcp
 
 **Code:** `internal/mcp/` (`doc.go`, `config.go`, `pool.go`, `call.go`, `stdio.go`,
-`probe.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
+`probe.go`, `oauth.go`, and the tests `config_test.go`, `pool_test.go`, `call_test.go`,
 `headers_test.go`, `refresh_test.go`, `managed_test.go`, `stdio_test.go`,
-`stdio_unix_test.go`, `probe_test.go`, `probe_unix_test.go`, `testserver_test.go`)
+`stdio_unix_test.go`, `probe_test.go`, `probe_unix_test.go`, `oauth_test.go`,
+`testserver_test.go`)
 **Milestone:** v0.3
 **Architecture:** [MCP](../../ARCHITECTURE.md#mcp),
 [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
@@ -133,7 +134,9 @@ type ServerConfig struct {
     Confirm []string
     AlwaysConfirm []string
     Timeout time.Duration
-    Spawn   Spawner // set only for a connector
+    Auth    string      // "" or "oauth"
+    OAuth   OAuthConfig // the [mcp.servers.oauth] table
+    Spawn   Spawner     // set only for a connector
 }
 ```
 
@@ -172,6 +175,18 @@ for connectors (`serverConfigs` in `cmd/merud/connectors.go`). A managed entry
 takes no `command`, `url`, `env`, `headers` or `remote`, since the supervisor
 knows how to start the program; `Validate` refuses one that sets any of them,
 and skips the "command or url" rule for it.
+
+`Auth` and `OAuth` turn on the OAuth sign-in (see [oauth.go](#oauthgo) below).
+`checkAuth` refuses an `auth` other than `"oauth"`, and an `[mcp.servers.oauth]`
+table on an entry without `auth = "oauth"`. An OAuth entry needs `url` and
+`remote = true`, and can't carry an `Authorization` header, since the sign-in sends
+its own. In the table, `checkAuth` refuses a `client_secret` without a `client_id`,
+an `issuer` that isn't https, and a scope with a space in it. `checkRedirect`
+checks `redirect`: it must be http on 127.0.0.1, `[::1]` or `localhost`, with a
+port and a path, because the callback listens on this machine only and a code sent
+anywhere else would never come back. merud swaps the `secret:<name>` in
+`client_secret` for the secret before it fills `OAuthConfig`, and sets `TokenDir`,
+which isn't a config key.
 
 ### stdio.go
 
@@ -427,6 +442,267 @@ clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md)
 by name, with its description. `Status` hands it out as `OfferedTools`, so the
 desktop app can show a tool that config leaves off, with a switch to turn it on.
 
+### oauth.go
+
+Some remote servers, such as GitHub's and Slack's, want the user to sign in with
+OAuth instead of taking an API key in a header. An entry with `auth = "oauth"`
+asks for that. The server answers Meru's first request with 401 and a link to its
+sign-in metadata, as the MCP authorization spec describes. The Go SDK's `auth`
+package runs that protocol: it finds the authorization server, registers Meru as
+a client or uses the app you set up, builds the sign-in link, and trades the code
+the browser brings back for tokens. `oauth.go` adds what a daemon needs around
+it: a handler that never waits on a browser at startup, a loopback callback, a
+token store, and an HTTP client with Meru's address rules.
+
+A sign-in, from a click on Sign in to a connected server:
+
+```mermaid
+sequenceDiagram
+    participant C as client
+    participant P as Pool.SignIn
+    participant F as finishSignIn goroutine
+    participant S as MCP and sign-in server
+    participant B as browser
+    participant K as callback on 127.0.0.1
+    C->>P: sign in to github
+    P->>F: start the attempt
+    F->>S: connect with no token
+    S-->>F: 401 and the metadata link
+    F->>S: read metadata, register
+    F-->>P: link ready
+    P-->>C: the link
+    C->>B: open the link
+    B->>S: the user signs in
+    S-->>B: redirect to the callback
+    B->>K: GET /callback?code=…&state=…
+    K-->>F: code and state
+    F->>S: trade the code for tokens
+    F->>F: save ~/.meru/oauth/github.json
+    F->>S: connect with the token, list tools
+    F->>P: install the session
+```
+
+**The handler.** `signIn` holds one server's OAuth state. It has the two methods
+of the SDK's `auth.OAuthHandler` interface, so `dialTransport` hands it to the
+Streamable HTTP transport as `OAuthHandler`. The transport calls `TokenSource`
+before each request, and `Authorize` on a 401 or 403.
+
+```go
+type signIn struct {
+    server, resource string
+    cfg              OAuthConfig
+    client           *http.Client
+    store            *tokenStore
+    log              *slog.Logger
+
+    mu     sync.Mutex
+    source oauth2.TokenSource // nil until signed in
+    now    *attempt           // non-nil only while a sign-in runs
+}
+```
+
+`TokenSource` returns `source`. Before a sign-in that is nil, which tells the SDK
+to send no `Authorization` header. `Authorize` checks `now`. With no sign-in under
+way it returns `errSignInNeeded` at once, so `NewPool` and `Refresh` never wait on
+a browser. `connectLocked` treats that error as a state, not a failure: it sets
+`lastErr` to `signInNeeded`, merud logs it at info instead of warn, and `Status`
+sets `SignIn` on the row so the clients show a Sign in button. During a sign-in,
+`Authorize` hands the request to the attempt's SDK handler, which may wait minutes
+for the browser.
+
+No code holds `mu` across a network call or a wait. Each method copies what it
+needs and lets go before it works, so one slow token exchange can't block every
+request to the server.
+
+`dialTransport` sets `OAuthHandler` only when `cfg.handler` isn't nil. An
+interface value that holds a nil `*signIn` is itself not nil, so the SDK would
+take it for a handler and call its methods.
+
+**One attempt per sign-in.** `attempt` is one sign-in, from the click to its end:
+
+```go
+type attempt struct {
+    sdk    *auth.AuthorizationCodeHandler
+    cb     *callback
+    link   string        // set once, before ready closes
+    ready  chan struct{} // closed when link is set
+    failed chan error    // buffered, size 1
+    done   chan struct{} // closed when the attempt ends
+}
+```
+
+`start` builds a fresh one each time, so nothing from an earlier sign-in lingers.
+It opens the callback and builds the SDK's handler with Meru's settings: the
+callback URL, a request for a refresh token, `s.client` for every request, and
+either the app from `[mcp.servers.oauth]` (`PreregisteredClient`) or dynamic
+registration as a public client named "Meru" with no secret. `scopes` in config
+replaces what the server lists, through `ScopeFilter`.
+
+`ready` is a channel of `struct{}`, a type that holds nothing. Closing a channel
+signals every reader at once, and `link` reads `ready` without blocking:
+
+```go
+select {
+case <-a.ready:
+    return a.link
+default:
+    return ""
+}
+```
+
+A `select` waits on several channel operations and runs the first that can go
+ahead. With a `default` case it never waits: while `ready` is open, `default`
+runs. `fetch` writes `a.link` before `close(a.ready)`, and Go promises that a
+reader who sees the channel closed also sees every write made before the close,
+so `link` needs no lock. More in [go-basics/select.md](go-basics/select.md) and
+[go-basics/channels.md](go-basics/channels.md).
+
+`fetch` is the SDK's `AuthorizationCodeFetcher`. It checks that the sign-in link
+is https, publishes it by closing `ready`, and waits for the callback's result or
+the end of its context. After a refused reply, such as a state mismatch, the SDK
+asks for a second code; `fetch` ends the attempt then instead of sending the user
+to the browser twice.
+
+**The callback.** `listenCallback` opens the listener the browser returns to.
+With no `redirect` in config it takes a free port on 127.0.0.1 and the path
+`/callback`. A fixed redirect on `localhost` listens on both 127.0.0.1 and `[::1]`,
+since a browser may try either. Only a busy port on 127.0.0.1 fails; `[::1]` is a
+bonus.
+
+`ServeHTTP` takes one GET to its path:
+
+```go
+if !cb.got.CompareAndSwap(false, true) {
+    http.Error(w, "This sign-in link was already used.", http.StatusGone)
+    return
+}
+```
+
+`got` is an `atomic.Bool`. `CompareAndSwap(false, true)` sets it to true only if
+it was false, and reports whether it did, in one step no other goroutine can
+split. Go's HTTP server runs each request in its own goroutine, so two requests
+can arrive together; one wins, and the rest get 410 Gone. Any other path or method
+gets 404. More in [go-basics/atomic.md](go-basics/atomic.md).
+
+The page shows fixed text. On an error it names one of the seven error codes in
+RFC 6749, escaped, or "the server didn't say why" for anything else, so a crafted
+link can't put script or words on a page that looks like Meru's. The result goes
+on `cb.result`, a channel with room for one. A send on it never blocks, even when
+`fetch` has stopped listening, and the one-GET rule means no second send comes.
+
+**The token store.** `tokenStore` keeps each sign-in in
+`~/.meru/oauth/<server>.json`: the server URL, the client ID, the token URL, the
+`AuthStyle`, the scopes and the token, enough to renew it after a restart. A
+client secret stays in `secrets.toml`, and the file never holds it. `save` writes
+a temp file in the same folder, which `os.CreateTemp` makes at 0600, then renames
+it over the old file, in a folder at 0700. A rename replaces the file in one step,
+so a crash leaves the old file or the new one, never half of either. `load`
+refuses a file other users can read, as the `secrets.toml` loader does, and
+`newSignIn` ignores a file saved for another URL, since the user changed the
+entry.
+
+**Saving refreshed tokens.** An `oauth2.TokenSource` has one method, `Token`,
+which returns a good token and refreshes it once it expires. `savingSource` wraps
+the one `golang.org/x/oauth2` builds:
+
+```go
+func (ss *savingSource) Token() (*oauth2.Token, error) {
+    t, err := ss.base.Token()
+    if err != nil {
+        // clear the server's source, and log once
+        return nil, errSignInNeeded
+    }
+    ss.save(t)
+    return t, nil
+}
+```
+
+When the access token changed, `save` writes it to the store, so a refresh
+survives a restart. When the server refuses the refresh, because the user revoked
+the app or the refresh token expired, the wrapper clears `signIn.source` and
+returns `errSignInNeeded`. The server goes back to "sign in needed", and the log
+gets one warning instead of one per request. More in
+[go-basics/oauth2-tokensource.md](go-basics/oauth2-tokensource.md).
+
+**The HTTP client.** `newOAuthClient` builds the client for the metadata,
+registration and token requests. Those go to addresses the server's metadata
+names, so a hostile server could point them anywhere. The client:
+
+- sends https only (`httpsOnly`, a `RoundTripper`), except to loopback, where the
+  tests run;
+- refuses a private or loopback address unless the MCP server's own host is one.
+  The check runs in the dialer's `Control` hook, on the address the name resolved
+  to, so a public name that resolves to the user's router fails too;
+- follows no redirect and reads no proxy from the environment;
+- gives each request 30 seconds.
+
+**Errors the user reads.** `signInError` turns each sign-in failure into a fixed
+sentence, such as "you didn't allow Meru to connect" or "this server doesn't let
+Meru register itself; add oauth.client_id from an app you registered with it".
+Only `context.Canceled` has a value to test with `errors.Is`; the rest it matches
+by text. It passes the raw error through only for a busy port, a message Meru
+wrote itself, and anything it doesn't know becomes "something went wrong talking
+to the server". The raw error never reaches a log or a client, because it can
+quote the server's reply, and a reply can hold a token. For the same reason no log
+line holds a token, a code, a state value or the sign-in link. `ServerStatus.Link`
+carries the link to the clients and nowhere else.
+
+**The pool's side.** `Pool.SignIn` starts a sign-in and returns the link:
+
+```go
+if link := s.signin.link(); link != "" {
+    return link, nil
+}
+a, err := s.signin.start()
+...
+p.watchers.Add(1)
+go p.finishSignIn(s, a)
+select {
+case <-a.ready:
+    return a.link, nil
+case err := <-a.failed:
+    return "", err
+case <-time.After(linkTimeout):
+    ...
+```
+
+A second click on Sign in, after the user closed the tab, gets the link of the
+sign-in that already waits, not an error. Otherwise `SignIn` starts an attempt,
+hands the rest to a goroutine the Pool owns, and waits up to 30 seconds for the
+link or an early failure.
+
+`finishSignIn` connects with the attempt under way: the transport gets a 401,
+calls `Authorize`, and the SDK's flow waits in `fetch` for the browser. It calls
+`connectSession`, which does what `tryConnectLocked` does but takes no lock and
+touches nothing in `s`, and it takes `s.mu` only to install the session. `Status`
+and calls to other servers never wait on the browser, and `refreshLocked` skips a
+server whose sign-in is `busy`, since the sign-in connects it at the end. On a
+failure it sends the sentence on `a.failed`:
+
+```go
+select {
+case a.failed <- e:
+default:
+}
+```
+
+The channel has room for one, so the send goes through even after `SignIn` has
+returned; the `default` case makes sure the goroutine can never block on it.
+
+**Stopping.** `newPool` makes `p.ctx` with `context.WithCancel`, and
+`finishSignIn` gives each attempt `context.WithTimeout(p.ctx, signInTimeout)`,
+ten minutes. A context made from another ends when its parent ends. `Close` calls
+`p.cancel` first, which ends every sign-in under way, then waits on `watchers`,
+which counts each `finishSignIn` goroutine. `signInError` turns the
+`context.Canceled` into "the sign-in stopped because merud restarted or quit;
+sign in again". More in [go-basics/context.md](go-basics/context.md).
+
+**Pruning.** `PruneSignIns` deletes the file of each server that config no longer
+lists with `auth = "oauth"`, so a token never outlives its entry. It skips temp
+files, whose names start with a dot. merud calls it in `cmd/merud/tools.go` after
+the config loads and the pool builds, so a typo that breaks config deletes
+nothing.
+
 ### probe.go
 
 `Probe(ctx, cfg, log)` answers "what does this server offer?" before the server
@@ -534,22 +810,32 @@ failed: `tool_error` (the convention's name), or Meru's `denied`, `unavailable` 
 
 ## Go ideas used here
 
-- **os/exec** — start a program and talk to its stdin, stdout and stderr. More in
+- **os/exec**: start a program and talk to its stdin, stdout and stderr. More in
   [go-basics/os-exec.md](go-basics/os-exec.md).
-- **encoding/json and json.RawMessage** — pass tool schemas and arguments through
+- **encoding/json and json.RawMessage**: pass tool schemas and arguments through
   without decoding them. More in [go-basics/json.md](go-basics/json.md).
-- **context** — `Call` stops when its context ends. More in
+- **context**: `Call` stops when its context ends. More in
   [go-basics/context.md](go-basics/context.md).
-- **goroutines and sync.WaitGroup** — `watch` runs beside everything else, and
+- **goroutines and sync.WaitGroup**: `watch` runs beside everything else, and
   `Close` waits for it. More in [go-basics/goroutines.md](go-basics/goroutines.md).
-- **errors.Join, `%w` and errors.Is** — `Validate` joins its problems;
+- **errors.Join, `%w` and errors.Is**: `Validate` joins its problems;
   `ErrNotAllowed` travels up wrapped. More in [go-basics/errors.md](go-basics/errors.md).
-- **Type switches** — `toResult` handles each kind of content. More in
+- **Type switches**: `toResult` handles each kind of content. More in
   [go-basics/type-switches.md](go-basics/type-switches.md).
-- **Iterators** — `cs.Tools` pages through the server's tool list. More in
+- **Iterators**: `cs.Tools` pages through the server's tool list. More in
   [go-basics/iterators.md](go-basics/iterators.md).
-- **Build tags** — `stdio_unix_test.go` and `probe_unix_test.go` run only on
+- **Build tags**: `stdio_unix_test.go` and `probe_unix_test.go` run only on
   Unix-like systems. More in [go-basics/build-tags.md](go-basics/build-tags.md).
+- **atomic.Bool**: the callback's `got` lets one request through when several
+  arrive at once. More in [go-basics/atomic.md](go-basics/atomic.md).
+- **select with default, and a channel with room for one**: `link` reads
+  `ready` without waiting, and `finishSignIn` sends on `failed` the same way. More in
+  [go-basics/select.md](go-basics/select.md) and
+  [go-basics/channels.md](go-basics/channels.md).
+- **Context cancel**: `Close` cancels `p.ctx`, and every sign-in made from it
+  ends. More in [go-basics/context.md](go-basics/context.md).
+- **oauth2.TokenSource**: `savingSource` wraps the package's own to save each
+  new token. More in [go-basics/oauth2-tokensource.md](go-basics/oauth2-tokensource.md).
 
 ## Try it
 
@@ -559,6 +845,7 @@ go test -race -run 'TestCrashedServerComesBackOnTheNextTurn|TestConnectOnDemand|
 go test -race -run 'TestRefresh|TestCallOnADeadSession' -v ./internal/mcp/
 go test -run '^$' -bench Refresh ./internal/mcp/
 go test -race -run TestProbe -v ./internal/mcp/
+go test -race -run 'TestSignIn|TestCallback|TestOAuthClientRules|TestCheckAuth' -v ./internal/mcp/
 ```
 
 The tests start one test server, written with the same SDK, three ways: in memory,
@@ -601,6 +888,24 @@ a call on a dead session fails, never reaches the new server, and works again
 after the next `Refresh`. `BenchmarkRefresh` measures what `Refresh` adds to a
 turn.
 
+`oauth_test.go` runs the sign-in against `fakeAuth`, one `httptest` server that
+plays both sides: an MCP endpoint at `/mcp` that answers 401 without a good bearer
+token, and an authorization server with its metadata, `/register`, `/authorize`
+and `/token`. The `browse` helper plays the browser: it opens the link, follows
+the redirect to the callback, and reads the page. `TestSignInWithRegistration`
+signs in with dynamic registration, calls a tool, checks for the PKCE verifier and
+the file at 0600, and then opens a second pool, which connects with the saved
+token and no sign-in. `TestSignInWithAConfiguredClient` signs in with a client ID,
+a secret and a scope, against a fake that offers no registration, and checks the
+file holds no secret. A fake with neither gets the sentence about
+`oauth.client_id` (`TestSignInWithoutRegistrationOrClient`); a wrong state leaves
+the server signed out (`TestSignInWrongState`); and a second `SignIn` while one
+waits returns the first link (`TestSignInRefusals`). `TestCallback` puts a script
+in the error code, checks that the page shows fixed text only, and that a second
+GET gets 410. `TestOAuthClientRules` covers the https and private-address rules,
+`TestCheckAuth` the config checks, and `TestSignInError` that no text from the
+server, such as a token in its reply, reaches the sentence.
+
 ## Why it's built this way
 
 - **The official SDK.** It implements both transports, the handshake, paging and
@@ -633,6 +938,16 @@ turn.
 - **Probe with the Pool's own code.** `Probe` could have been a small client of
   its own. Sharing `dialTransport` and `newClient` means a server that passes a
   probe starts the same way in the Pool, environment and headers included.
+- **The SDK runs the OAuth protocol.** Discovery, registration, PKCE and the
+  state check follow a spec the SDK's maintainers track. `oauth.go` adds only
+  what a daemon needs around them.
+- **Signed out is a state, and a sign-in waits for a click.** A handler that
+  opened a browser on the first 401 would hold up merud's start and begin a
+  sign-in nobody asked for. `errSignInNeeded` lets the clients show a Sign in
+  button instead, and the user starts the sign-in when they want it.
+- **A fresh attempt each time.** Keeping the SDK handler, callback and link in one
+  `attempt`, built by `start` and dropped by `end`, means a failed or abandoned
+  sign-in leaves nothing behind for the next one to trip on.
 - **`mcp` returns its own `ProbeInfo`.** The package imports nothing from `rpc`,
   so it stays a plain MCP client. `cmd/merud` copies the result into
   `rpc.ProbeResult`, field for field.

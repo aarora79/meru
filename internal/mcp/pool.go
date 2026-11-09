@@ -87,9 +87,12 @@ type Pool struct {
 	servers []*server
 	byName  map[string]*server
 
-	// watchers counts the goroutines that wait for a session to end; Close
-	// waits for all of them.
+	// watchers counts the goroutines that wait for a session to end, and
+	// the sign-ins under way; Close waits for all of them.
 	watchers sync.WaitGroup
+	// ctx ends when Close starts, which stops every sign-in under way.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // server is the Pool's record of one configured server. cfg, allow,
@@ -120,6 +123,9 @@ type server struct {
 	// tools. A managed server never has a session here: each call gets
 	// one from Spawn.
 	offering bool
+	// signin is the server's OAuth handler, for auth = "oauth"; nil
+	// otherwise. It keeps its own lock.
+	signin *signIn
 }
 
 // ServerStatus is one server's health, for `meru tools list`, `meru mcp`
@@ -153,6 +159,12 @@ type ServerStatus struct {
 	Managed  bool
 	State    string
 	Sentence string
+	// SignIn is true for an auth = "oauth" server that needs the user to
+	// sign in, and Link holds the sign-in link while a sign-in waits for
+	// the browser. The link carries a one-time state value, so nothing
+	// logs it.
+	SignIn bool
+	Link   string
 }
 
 // Tool is one tool a server offers, by its own name, such as
@@ -193,9 +205,14 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 		dial:   dial,
 		byName: make(map[string]*server, len(servers)),
 	}
+	p.ctx, p.cancel = context.WithCancel(context.Background())
 	for _, cfg := range servers {
 		s := &server{cfg: cfg, allow: toSet(cfg.Allow), confirm: toSet(cfg.Confirm),
 			always: toSet(cfg.AlwaysConfirm), stop: func() {}}
+		if cfg.Auth == AuthOAuth {
+			s.signin = newSignIn(cfg, &tokenStore{dir: cfg.OAuth.TokenDir}, log)
+			s.cfg.handler = s.signin
+		}
 		p.servers = append(p.servers, s)
 		p.byName[cfg.Name] = s
 		if cfg.Spawn != nil {
@@ -207,6 +224,10 @@ func newPool(ctx context.Context, servers []ServerConfig, log *slog.Logger, dial
 		s.mu.Lock()
 		err := p.connectLocked(ctx, s, connectTimeout)
 		s.mu.Unlock()
+		if errors.Is(err, errSignInNeeded) {
+			log.Info("mcp sign-in needed", "mcp_server", cfg.Name)
+			continue
+		}
 		if err != nil {
 			log.Warn("mcp server failed to start", "mcp_server", cfg.Name, "transport", cfg.transport(), "err", err)
 			continue
@@ -238,7 +259,7 @@ func dialTransport(procCtx context.Context, cfg ServerConfig, log *slog.Logger) 
 	if cfg.URL == "" {
 		return newStdioTransport(procCtx, cfg, log), nil
 	}
-	return &mcp.StreamableClientTransport{
+	t := &mcp.StreamableClientTransport{
 		Endpoint:   cfg.URL,
 		HTTPClient: httpClient(cfg),
 		// The standalone stream carries notifications the server sends on
@@ -246,7 +267,14 @@ func dialTransport(procCtx context.Context, cfg ServerConfig, log *slog.Logger) 
 		// at the start of each turn that offers them (Refresh) and ignores
 		// those, so it doesn't hold the stream open.
 		DisableStandaloneSSE: true,
-	}, nil
+	}
+	// An auth = "oauth" server gets its handler, which the transport asks
+	// for a token on each request and calls on a 401. A nil *signIn must
+	// not go in: the interface would then hold a typed nil, which isn't nil.
+	if cfg.handler != nil {
+		t.OAuthHandler = cfg.handler
+	}
+	return t, nil
 }
 
 // httpClient returns the HTTP client for a Streamable HTTP server. Unless
@@ -307,6 +335,11 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // is left running.
 func (p *Pool) connectLocked(ctx context.Context, s *server, limit time.Duration) error {
 	err := p.tryConnectLocked(ctx, s, limit)
+	if errors.Is(err, errSignInNeeded) {
+		// Not a failure: the server waits for the user to sign in.
+		s.lastErr = signInNeeded
+		return err
+	}
 	if err != nil {
 		s.lastErr = err.Error()
 		return err
@@ -509,6 +542,10 @@ func (p *Pool) refreshLocked(ctx context.Context, s *server) {
 	if s.closed || s.cfg.Spawn != nil {
 		return
 	}
+	// A sign-in under way connects the server itself when it ends.
+	if s.signin != nil && s.signin.busy() {
+		return
+	}
 	if s.session != nil {
 		p.relistLocked(ctx, s)
 	}
@@ -520,7 +557,9 @@ func (p *Pool) refreshLocked(ctx context.Context, s *server) {
 		limit = httpRetryTimeout
 	}
 	if err := p.connectLocked(ctx, s, limit); err != nil {
-		p.log.Warn("mcp server still not connected", "mcp_server", s.cfg.Name, "err", err)
+		if !errors.Is(err, errSignInNeeded) {
+			p.log.Warn("mcp server still not connected", "mcp_server", s.cfg.Name, "err", err)
+		}
 		return
 	}
 	p.log.Info("mcp server connected", "mcp_server", s.cfg.Name,
@@ -653,6 +692,10 @@ func (p *Pool) Status() []ServerStatus {
 				st.LastError = st.Sentence
 			}
 		}
+		if s.signin != nil && s.session == nil {
+			st.Link = s.signin.link()
+			st.SignIn = s.lastErr == signInNeeded || st.Link != ""
+		}
 		st.Offered, st.Allowed = s.offered, len(s.tools)
 		st.OfferedTools, st.Unknown = slices.Clone(s.all), slices.Clone(s.unknown)
 		out = append(out, st)
@@ -682,6 +725,7 @@ func (p *Pool) AlwaysConfirms(name string) bool {
 // "please exit", then a signal, then a kill (see terminateWait). Calls after
 // Close fail with ErrUnavailable.
 func (p *Pool) Close() {
+	p.cancel() // ends every sign-in under way
 	for _, s := range p.servers {
 		s.mu.Lock()
 		cs := s.session

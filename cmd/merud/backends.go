@@ -18,6 +18,7 @@ import (
 	"github.com/aarora79/meru/internal/engine"
 	"github.com/aarora79/meru/internal/mcp"
 	"github.com/aarora79/meru/internal/rpc"
+	"github.com/aarora79/meru/internal/secrets"
 )
 
 // mcpBackend is the dispatch.Backend for the MCP servers in config. The
@@ -91,6 +92,8 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 			LastError: hide(b.redact, st.LastError),
 			Offered:   st.Offered,
 			Unknown:   st.Unknown,
+			SignIn:    st.SignIn,
+			Link:      st.Link,
 			Tools:     []rpc.ToolInfo{}, // an empty list, not null, in the JSON
 		}
 		if st.Managed {
@@ -134,6 +137,9 @@ func mcpStatus(servers []mcp.ServerStatus, redact func(string) string) []rpc.MCP
 		}
 		if !st.Connected {
 			row.State, row.Tools, row.Err = rpc.MCPNotConnected, -1, hide(redact, st.LastError)
+		}
+		if st.SignIn {
+			row.State, row.Link = rpc.MCPSignIn, st.Link
 		}
 		if st.Managed {
 			// A connector: the supervisor's state and sentence say more
@@ -191,6 +197,20 @@ func mcpServerConfigs(servers []config.MCPServer, resolve func(string) (string, 
 		}
 		if c.Headers, err = resolveAll(s.Headers, resolve); err != nil {
 			errs = append(errs, fmt.Errorf("mcp server %q: headers %w", s.Name, err))
+		}
+		c.Auth = s.Auth
+		if o := s.OAuth; o != nil {
+			c.OAuth = mcp.OAuthConfig{ClientID: o.ClientID, Issuer: o.Issuer, Scopes: o.Scopes, Redirect: o.Redirect}
+			// The secret must come from secrets.toml, never sit in config.
+			switch {
+			case o.ClientSecret == "":
+			case !strings.HasPrefix(o.ClientSecret, secrets.Prefix):
+				errs = append(errs, fmt.Errorf("mcp server %q: oauth client_secret must name an entry in secrets.toml, as \"secret:<name>\", never hold the secret itself", s.Name))
+			default:
+				if c.OAuth.ClientSecret, err = resolve(o.ClientSecret); err != nil {
+					errs = append(errs, fmt.Errorf("mcp server %q: oauth client_secret: %w", s.Name, err))
+				}
+			}
 		}
 		out = append(out, c)
 	}

@@ -233,11 +233,23 @@ func newPool(ctx context.Context, cfg config.Config, sec *secrets.Secrets, conns
 	if err != nil {
 		return nil, fmt.Errorf("mcp: %w", err)
 	}
+	// An auth = "oauth" server keeps its sign-in under ~/.meru/oauth.
+	tokens := filepath.Join(cfg.Dir, "oauth")
+	var oauth []string
+	for i := range cfgs {
+		if cfgs[i].Auth == mcp.AuthOAuth {
+			cfgs[i].OAuth.TokenDir = tokens
+			oauth = append(oauth, cfgs[i].Name)
+		}
+	}
 	conns.configure(cfg, sec)
 	pool, err := mcp.NewPool(ctx, append(cfgs, conns.serverConfigs()...), log)
 	if err != nil {
 		return nil, fmt.Errorf("mcp: %w", err)
 	}
+	// Only after the config loaded and the pool built: a token never
+	// outlives its entry, and a typo that breaks config deletes nothing.
+	mcp.PruneSignIns(tokens, oauth, log)
 	return pool, nil
 }
 
@@ -420,6 +432,21 @@ func (s *toolService) Close() {
 // handleTools answers OpTools with one "tools" event listing every source.
 func (s *toolService) handleTools(emit func(rpc.Event) error) error {
 	return emit(rpc.Event{Type: rpc.EventTools, Servers: s.dispatcher.Servers()})
+}
+
+// handleSignIn answers OpMCPSignIn: it starts a sign-in for the server in
+// req.ID and sends the link. The sign-in goes on in the pool after the
+// reply, so a client polls mcp_status to see it end. The link is never
+// logged.
+func (s *toolService) handleSignIn(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
+	s.mu.Lock()
+	pool := s.pool
+	s.mu.Unlock()
+	link, err := pool.SignIn(ctx, req.ID)
+	if err != nil {
+		return err
+	}
+	return emit(rpc.Event{Type: rpc.EventSignIn, Text: link})
 }
 
 // handleMCPStatus answers OpMCPStatus with one "mcp_status" event: a row

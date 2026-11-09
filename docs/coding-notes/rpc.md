@@ -133,7 +133,7 @@ holds one `MCPStatus` per `[[mcp.servers]]` entry, in config order:
 type MCPStatus struct {
     Name      string `json:"name"`
     Transport string `json:"transport"` // "stdio" or "http"
-    State     string `json:"state"`     // MCPConnected or MCPNotConnected
+    State     string `json:"state"`     // MCPConnected, MCPNotConnected or MCPSignIn
     Connector string `json:"connector,omitempty"`
     Sentence  string `json:"sentence,omitempty"`
     URL       string `json:"url,omitempty"`
@@ -141,12 +141,15 @@ type MCPStatus struct {
     Allowed   int    `json:"allowed"`
     Confirm   int    `json:"confirm"`
     Err       string `json:"err,omitempty"`
+    Link      string `json:"link,omitempty"`
 }
 ```
 
-`State` holds one of two constants, `MCPConnected` ("connected") and
-`MCPNotConnected` ("not connected"). Config has no key that turns a server off,
-so there is no third state. `Tools` is -1 for a server that isn't connected,
+`State` holds one of three constants, `MCPConnected` ("connected"),
+`MCPNotConnected` ("not connected") and `MCPSignIn` ("sign_in"), the last for
+an `auth = "oauth"` server that waits for the user to sign in. Config has no
+key that turns a server off, so no state says "off". An older client shows
+`sign_in` as a state it doesn't know. `Tools` is -1 for a server that isn't connected,
 since it has no tool list to count; the clients draw it as `—`. `Tools` has no
 `omitempty`, so a connected server that offers no tools still sends `0`.
 `Allowed` and `Confirm` come from config (`Confirm` counts `confirm` and
@@ -158,6 +161,33 @@ A connector the pool runs adds a row after the `[[mcp.servers]]` entries, with
 sentence that says it. `State` then reads `connected` while its tools are
 offered, which may be before its program runs. `rpc.ServerInfo`, the `tools`
 event's view of a source, gained the same two fields.
+
+A fourth MCP op signs the user in to a remote server whose entry has
+`auth = "oauth"`. `OpMCPSignIn` (`mcp_sign_in`) takes the server's name in
+`Request.ID` and replies with one `sign_in` event (`EventSignIn`) whose `Text`
+is the link the user opens, then `done`. The rest of the sign-in runs in
+`merud`: it waits for the browser to come back to its loopback callback, then
+connects the server. So the client polls `mcp_status` until the row reads
+`connected`. A second `mcp_sign_in` while one waits for the browser replies
+with the same link, so a double click doesn't start two. The op fails for an
+unknown server or one without `auth = "oauth"`.
+
+Three fields carry the sign-in's state. `MCPStatus.Link` holds the link while
+a sign-in waits for the browser, and stays empty otherwise. A row with state
+`sign_in` and no link means the sign-in ended without connecting, as when the
+user said no in the browser. `ServerInfo` gained `SignIn`, true while the
+server waits for a sign-in, and `Link`. The link holds a one-time state value,
+so clients show it and never log it.
+
+A turn that offers tools also tells the client when a server waits. The
+`sign_in_needed` event (`EventSignInNeeded`) names those servers in `Servers`,
+with only `name` and `kind` set, and says so in one sentence in `Text`, such
+as "github needs you to sign in before Meru can use its tools." `merud` sends
+it before the answer, since the answer goes without those servers' tools.
+Each client offers the sign-in its own way: a button in the desktop app,
+`/signin` in `meru chat`, and `meru mcp login` from one question. The event
+carries no link: the link belongs to a sign-in the user starts. A client that
+doesn't know the type skips it.
 
 ### connectors.go
 
@@ -327,7 +357,10 @@ answer model: its name, label, size, a line on what it does well and one on what
 it does badly, its capabilities, whether Ollama has it, the tiers it fills now,
 and its `ollama pull` and `ollama run` commands. `model_set` takes a model's name
 in `Request.ID`, and its reply carries `Warning` when the new answer model can't
-call tools. `CustomServer` is a server of the user's own for `mcp_add`, with its
+call tools. `Connection.SignIn` is true for an `auth = "oauth"` server that waits for a
+sign-in, and `Connection.Link`, which already held a connector's sign-in link,
+then holds the server's link while a sign-in waits for the browser; the app
+shows a Sign in button on the server's card. `CustomServer` is a server of the user's own for `mcp_add`, with its
 `EnvVar` list; a variable marked `Secret` carries a value `merud` saves to
 `secrets.toml` and never sends back.
 
@@ -453,7 +486,7 @@ a minute of audio takes 2.6 MB in base64, and only a request carries it.
 `serveConn` answers `ping` itself and hands `ask`, `index`, `index_status`,
 `tools`, `log`, `usage`, the memory ops (`memory_list`, `memory_add`,
 `memory_forget`), the skill ops (`skills`, `skill_show`, `skill_reset`) and the
-MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`), `connectors`, the
+MCP ops (`mcp_probe`, `mcp_reload`, `mcp_status`, `mcp_sign_in`), `connectors`, the
 history and settings ops, and `transcribe` to the handler. Any other op gets an
 `unknown op` error.
 

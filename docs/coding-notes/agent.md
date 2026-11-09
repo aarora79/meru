@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -123,6 +123,7 @@ type ToolRunner interface {
     Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Result, dispatch.Outcome)
     Asks(name string) bool
     Refresh(ctx context.Context)
+    Servers() []rpc.ServerInfo
 }
 ```
 
@@ -138,9 +139,11 @@ to a tool would ask you first; `toolSpecs` uses it to pick the commands the
 "search" route may offer. `Refresh` asks each connected tool server for its
 tools again, gives each server that isn't connected one try, and returns when
 all of that has ended (see
-[The tool rounds](#the-tool-rounds-toolsgo)).
+[The tool rounds](#the-tool-rounds-toolsgo)). `Servers` reports each tool
+source's state; the turn reads it for the servers that wait for the user to
+sign in (see [Servers that wait for a sign-in](#servers-that-wait-for-a-sign-in-signingo)).
 
-`merud` passes `*dispatch.Dispatcher`, which has these four methods. Tests
+`merud` passes `*dispatch.Dispatcher`, which has these five methods. Tests
 pass `fakeTools`, which answers from a table by tool name. A `nil`
 ToolRunner turns tools off.
 
@@ -1868,6 +1871,35 @@ it. Only the two routes that offer a server's tools refresh: `search` and
 to start.
 `Refresh` runs once per turn, before the first round, and never between
 rounds.
+
+### Servers that wait for a sign-in (signin.go)
+
+A remote server whose entry has `auth = "oauth"` offers no tools until the
+user signs in, and `Refresh` leaves it that way. Without a word from the turn,
+the model answers without that server's tools and never says why. So right
+after `Refresh`, on the same two routes, `Handle` calls `a.signInNeeded(t)`:
+
+```go
+for _, s := range a.tools.Servers() {
+    if s.SignIn {
+        // Only the name and kind go to the client: the link belongs
+        // to a sign-in the user starts, never to a chat.
+        waiting = append(waiting, rpc.ServerInfo{Name: s.Name, Kind: s.Kind})
+        names = append(names, s.Name)
+    }
+}
+```
+
+When any server waits, it sends one `sign_in_needed` event before the answer,
+with those servers in `Servers` and one sentence from `signInText` in `Text`:
+"github needs you to sign in before Meru can use its tools.", or "github and
+slack need you to sign in before Meru can use their tools." It copies each
+server into a fresh `rpc.ServerInfo` with two fields set, so the sign-in link
+never reaches the chat, the transcript or a client's log. A client starts the
+sign-in with its own op, `mcp_sign_in`, and gets the link from that reply.
+`signInNeeded` sends nothing when no server waits, and fails only when the
+client has gone. `TestSignInNeeded` covers one server, two, every server
+signed in, and a route that offers no tools.
 
 **Which turns offer tools.** `toolSpecs(route)` returns every schema the
 ToolRunner offers on `tools` and `search+tools`. Every other route keeps the
