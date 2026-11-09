@@ -8,6 +8,7 @@
 // turn to end, since merud would unload the model writing the answer.
 
 import { bridge, errorText } from "./api.js";
+import { signIn } from "./signin.js";
 import { el } from "./turns.js";
 
 // list holds the commands once the Bridge sends them.
@@ -166,6 +167,26 @@ function sitesCommand(rest) {
   return true;
 }
 
+// signInCommand runs /signin <server>: it opens the server's sign-in page
+// in the browser and says on the notice line how the sign-in goes. Alone,
+// it opens Settings, where each server that waits for a sign-in has its
+// own Sign in button.
+function signInCommand(rest) {
+  if (rest.length === 0) {
+    act.openSettings("connections");
+    return true;
+  }
+  if (rest.length !== 1) {
+    act.notice("/signin takes one server's name, such as /signin github");
+    return false;
+  }
+  signIn(rest[0], (state, words) => {
+    act.notice(words);
+    if (state === "done") act.refreshStatus();
+  });
+  return true;
+}
+
 // runCommand runs text as a slash command and returns true when the box
 // should empty. It returns false for an unknown command, which stays in
 // the box so the user can fix a typo, as in `meru chat`.
@@ -232,6 +253,8 @@ export function runCommand(text) {
       return true;
     case "/sites":
       return sitesCommand(rest);
+    case "/signin":
+      return signInCommand(rest);
     case "/jobs":
       act.openSettings("jobs");
       return true;

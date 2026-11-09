@@ -557,3 +557,29 @@ func TestAttachFileOp(t *testing.T) {
 		})
 	}
 }
+
+// TestFillPoliciesSignIn checks that a server waiting for a sign-in
+// reaches Settings with SignIn set, and with the link while a sign-in
+// waits for the browser, so the card offers its Sign in button.
+func TestFillPoliciesSignIn(t *testing.T) {
+	tests := []struct {
+		name string
+		info rpc.ServerInfo
+	}{
+		{"signed out", rpc.ServerInfo{Name: "github", LastError: "sign in needed", SignIn: true}},
+		{"waiting for the browser", rpc.ServerInfo{Name: "github", LastError: "sign in needed", SignIn: true, Link: "https://github.com/login/oauth/authorize"}},
+		{"signed in", rpc.ServerInfo{Name: "github", Connected: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c rpc.Connection
+			fillPolicies(&c, tt.info, "github.", []string{"get_me"}, nil, nil)
+			if c.SignIn != tt.info.SignIn || c.Link != tt.info.Link {
+				t.Errorf("connection sign_in %v link %q, want %v %q", c.SignIn, c.Link, tt.info.SignIn, tt.info.Link)
+			}
+			if want := tt.info.Connected; (c.State == rpc.MCPConnected) != want {
+				t.Errorf("state = %q", c.State)
+			}
+		})
+	}
+}

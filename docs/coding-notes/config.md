@@ -91,6 +91,30 @@ on loopback and talks to Google. `remote` names the one thing the key controls.
 entry, because `merud` starts no process whose environment it could set (see
 [mcp.md](mcp.md)).
 
+`MCPServer` also has `Auth` and `OAuth`, for a remote server that signs the
+user in by the MCP authorization spec:
+
+```go
+Auth  string   `toml:"auth"`  // "" or "oauth"
+OAuth *MCPOAuth `toml:"oauth"` // the optional [mcp.servers.oauth] table
+```
+
+`auth = "oauth"` needs `url` and `remote = true`, and `merud` keeps the
+sign-in under `~/.meru/oauth/`. With no `oauth` table, Meru registers itself
+with the server. A server that doesn't allow that, such as GitHub or Slack,
+needs the app the user registered with it once, and `MCPOAuth` holds that app:
+`client_id`, `client_secret`, `issuer`, `scopes` and `redirect`, each
+optional. `client_secret` names an entry in `secrets.toml` as
+`secret:<name>`, never the secret itself; `merud` fails the load otherwise
+(see [merud](merud.md)). `OAuth` is a pointer, so an entry without the table
+leaves it `nil`, and the code can tell "no table" from "a table with every key
+empty". `config` only decodes these keys. `checkAuth` in `internal/mcp/config.go`
+checks them when the pool starts: `auth` is `""` or `"oauth"`, an `oauth` table
+needs `auth = "oauth"`, no `Authorization` header sits beside it, a client
+secret needs a client ID, the issuer is an `https` URL, each scope is one word,
+and a fixed redirect is `http` on `127.0.0.1`, `[::1]` or `localhost` with a
+port and a path, since the callback listens on this machine only.
+
 `Web` is the `[web]` section (v0.3), for the built-in web tools
 ([builtin](builtin.md)):
 
@@ -340,9 +364,14 @@ same `Config` as no file at all; `TestTemplateMatchesDefaults` checks that.
 The `[models]` lines stay empty, with the `lite` names in comments, because a
 name there would override the profile: a user who then picked `full` would
 still run the `lite` model. The MCP servers, local commands, A2A agent and a
-`[connectors.obsidian]` table sit in comments, ready to uncomment. So do six
-read-only GitHub commands for the `gh` CLI: nothing runs until the user takes
-the `# ` off an entry, which keeps tools deny-by-default.
+`[connectors.obsidian]` table sit in comments, ready to uncomment, a GitHub
+server with `auth = "oauth"` among them. So do nine read-only GitHub commands
+for the `gh` CLI: nothing runs until the user takes the `# ` off an entry,
+which keeps tools deny-by-default. The last three call `gh api` for a
+repository's numbers: `gh-repo-stats` (stars, forks, watchers, open issues and
+the last push), `gh-repo-traffic` (clones or views over 14 days) and
+`gh-release-downloads` (downloads per file of each recent release). Their
+`--jq` filters double each brace, so `{{` reaches `jq` as `{`.
 
 `template.go` compiles the file into the binary:
 
@@ -366,8 +395,8 @@ example from the template would need a `go generate` line and a check that
 someone ran it; the test is the simpler guard.
 
 Two more tests keep the comments honest. `TestTemplateCommentedBlocks`
-uncomments every `# [[` block and loads the result, and checks it holds three
-servers, one agent and ten commands, the GitHub ones included. The catalog's two server
+uncomments every `# [[` block and loads the result, and checks it holds four
+servers, one agent, 28 commands and three model sets, the GitHub ones included. The catalog's two server
 blocks can't come from `catalog.Block` here, because `catalog` imports
 `config`, so the template holds a hand copy, and `TestTemplateHoldsCatalog` in
 the catalog package checks it against `Block`'s output.

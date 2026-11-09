@@ -62,6 +62,7 @@ export const bridge = {
   addConnection: (name, secret, key) => call("AddConnection", name, secret, key),
   addCustomServer: (server) => call("AddCustomServer", server),
   removeConnection: (name) => call("RemoveConnection", name),
+  signIn: (name) => call("SignIn", name),
   setSecret: (name, value) => call("SetSecret", name, value),
   // The connector cards (connectors.go).
   connectors: () => call("Connectors"),

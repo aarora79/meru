@@ -124,7 +124,7 @@ you before each run) and `env_allowlist` (variables passed besides `PATH`,
 | Machine facts (macOS) | `kernel`, `macos-version`, `hardware-summary`, `system-report`, `battery`, `disk-list`, `uptime` |
 | Snapshots (macOS) | `system-load`, `top-processes`, `find-process`, `memory-free` |
 | `sed` and `awk` | `file-lines`, `count-lines`, `csv-column`, `csv-sum` |
-| GitHub | `gh-prs`, `gh-pr`, `gh-issues`, `gh-issue`, `gh-runs`, `gh-repos` (see [github.md](github.md)) |
+| GitHub | `gh-prs`, `gh-pr`, `gh-issues`, `gh-issue`, `gh-runs`, `gh-repos`, `gh-repo-stats`, `gh-repo-traffic`, `gh-release-downloads` (see [github.md](github.md)) |
 
 With these in place, ask in plain words rather than naming a program. "What's
 using the most CPU?" picks `top-processes`; "run htop" may not, since no tool

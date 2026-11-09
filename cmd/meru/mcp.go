@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
@@ -30,6 +31,7 @@ const mcpUsage = `usage:
   meru mcp add stdio <name> -- <command> [args...] add a server merud starts
   meru mcp add http <name> <url> [--remote]        add a Streamable HTTP server you run
   meru mcp remove [--yes] <name>                   take a server out of config.toml
+  meru mcp login <name>                            sign in to a server whose entry has auth = "oauth"
   meru mcp adopt [--yes] <obsidian|google>         let Meru run a server you set up by hand
   meru mcp unadopt [--yes] <obsidian|google>       put the hand-added entry back
   meru mcp set <connector> [key=value...]          set a connector's fields, or enabled=true|false
@@ -61,6 +63,8 @@ func mcpCmd(ctx context.Context, socket string, args []string, c *console) error
 		}
 		_, err = c.offer(ctx, socket, e)
 		return err
+	case len(args) == 2 && args[0] == "login":
+		return mcpLogin(ctx, socket, args[1], c.out, signInPoll)
 	case len(args) >= 2 && args[0] == "remove":
 		return c.remove(ctx, socket, args[1:])
 	case len(args) >= 1 && (args[0] == "adopt" || args[0] == "unadopt"):
@@ -382,4 +386,76 @@ func (c *console) printReloaded(servers []rpc.ServerInfo, name string) {
 		}
 	}
 	fmt.Fprintf(c.out, "merud reloaded, but doesn't list %s. Run meru tools to check.\n", name)
+}
+
+// signInPoll is how often `meru mcp login` asks merud whether the sign-in
+// ended, and signInWait how long it waits in all: merud's own limit.
+const (
+	signInPoll = 2 * time.Second
+	signInWait = 10 * time.Minute
+)
+
+// mcpLogin runs `meru mcp login <name>`: it asks merud to start a sign-in
+// for the server, prints the link to open, then asks for the server's
+// state every poll until it connects, the sign-in ends without it, or
+// signInWait passes. It fails when merud refuses the sign-in, such as for
+// a server without auth = "oauth", or when the sign-in ends unconnected.
+func mcpLogin(ctx context.Context, socket, name string, out io.Writer, poll time.Duration) error {
+	link := ""
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpMCPSignIn, ID: name}, nil) {
+		if err != nil {
+			return err
+		}
+		switch ev.Type {
+		case rpc.EventSignIn:
+			link = ev.Text
+		case rpc.EventError:
+			return errors.New(ev.Error)
+		}
+	}
+	if link == "" {
+		return errors.New("merud gave no sign-in link")
+	}
+	// The link is printed first, so it can be copied even where no browser
+	// opens, such as over SSH.
+	fmt.Fprintf(out, "Open this link in your browser to sign in to %s:\n\n  %s\n\nWaiting for you to sign in…\n", name, link)
+	deadline := time.Now().Add(signInWait)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
+		}
+		row, ok := serverRow(ctx, socket, name)
+		switch {
+		case !ok:
+			continue
+		case row.State == rpc.MCPConnected:
+			// Allowed counts the names in the allow list, which may name a
+			// tool the server doesn't offer; meru tools warns about those.
+			fmt.Fprintf(out, "Signed in. %s offers %d tools, and your allow list names %d; meru tools shows which Meru can use.\n",
+				name, row.Tools, row.Allowed)
+			return nil
+		case row.State == rpc.MCPSignIn && row.Link == "":
+			// The sign-in ended and the server still needs one.
+			return fmt.Errorf("the sign-in to %s didn't finish; merud.log says why. Run meru mcp login %s to try again", name, name)
+		}
+	}
+	return fmt.Errorf("you didn't finish signing in within %v", signInWait)
+}
+
+// serverRow returns merud's mcp_status row for name, and false when merud
+// can't be reached or has no such server.
+func serverRow(ctx context.Context, socket, name string) (rpc.MCPStatus, bool) {
+	for ev, err := range rpc.Do(ctx, socket, rpc.Request{Op: rpc.OpMCPStatus}, nil) {
+		if err != nil {
+			return rpc.MCPStatus{}, false
+		}
+		for _, r := range ev.MCP {
+			if r.Name == name {
+				return r, true
+			}
+		}
+	}
+	return rpc.MCPStatus{}, false
 }

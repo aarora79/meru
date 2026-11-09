@@ -230,13 +230,14 @@ type Event struct {
 
 | Op | Events, in order |
 | --- | --- |
-| `ask` | `session`; `route` (with `Fallback` set when the router wasn't sure); `sources` when the turn searched your files and found something; `memories` when recall put any in the prompt; `token` events for each piece of text; on a tool round, a `tool_call` per call, an `approval` for each call that needs your yes, and a `tool_result` per call as it ends; `notice` when the answer claims an action and no tool call succeeded, or holds a money amount nothing the turn read holds; `done` with the turn's stats |
+| `ask` | `session`; `route` (with `Fallback` set when the router wasn't sure); `sources` when the turn searched your files and found something; `memories` when recall put any in the prompt; `sign_in_needed` on a tools route when an MCP server waits for the user to sign in; `token` events for each piece of text; on a tool round, a `tool_call` per call, an `approval` for each call that needs your yes, and a `tool_result` per call as it ends; `notice` when the answer claims an action and no tool call succeeded, or holds a money amount nothing the turn read holds; `done` with the turn's stats |
 | `ping` | `done` |
 | `index` | zero or more `progress` lines; one `report`; `done` |
 | `index_status` | one `status`; `done` |
 | `tools` | one `tools`; `done` |
 | `log` | one `log`; `done` |
 | `mcp_status` | one `mcp_status`; `done` |
+| `mcp_sign_in` | one `sign_in`, whose `Text` is the sign-in link, for the server in `ID`; `done` |
 | `connectors` | one `connectors`; `done` |
 | `sessions` | one `sessions`; `done` |
 | `session_turns` | one `turns`, for the session in `Session`; `done` |

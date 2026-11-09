@@ -110,8 +110,11 @@ type Connection struct {
 	Sentence  string   `json:"sentence,omitempty"`
 	Fix       []string `json:"fix,omitempty"`
 	// Link is the sign-in link a connector's server gave, while it waits
-	// for the user to sign in; the app shows it as a button.
-	Link string `json:"link,omitempty"`
+	// for the user to sign in; the app shows it as a button. SignIn is true
+	// for an auth = "oauth" server that waits for the user to sign in, and
+	// Link then holds the sign-in link while one waits for the browser.
+	Link   string `json:"link,omitempty"`
+	SignIn bool   `json:"sign_in,omitempty"`
 	// Web and WebSentence are set on the built-in tools' connection only:
 	// the SearXNG connector's state, one of the Connector states, and its
 	// sentence, such as "Web search can't start: Docker or Podman isn't running."

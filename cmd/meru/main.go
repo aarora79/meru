@@ -283,7 +283,8 @@ func ping(ctx context.Context, socket string, stdout io.Writer) error {
 // Tool calls show on stderr as dim lines, and approve answers merud's
 // approval questions. When merud sends a notice about the answer, such as
 // a claim of an action no tool took, a dim "note:" line on stderr follows
-// the answer. Keeping all of these off stdout means `meru "..." > file`
+// the answer, as does one per tool server that waits for the user to sign
+// in, with the `meru mcp login` that signs in. Keeping all of these off stdout means `meru "..." > file`
 // saves only the answer.
 func ask(ctx context.Context, socket, question, image string, large bool, stdout, stderr io.Writer, approve rpc.ApproveFunc) error {
 	req := withImage(rpc.Request{Op: rpc.OpAsk, Text: question, Source: rpc.SourceCLI, Large: large}, image)
@@ -291,6 +292,7 @@ func ask(ctx context.Context, socket, question, image string, large bool, stdout
 	var answer strings.Builder // the whole answer, to find its citations
 	var sources []rpc.Citation
 	var notice string     // merud's warning about the answer; "" for none
+	var signIn []string   // the tool servers that wait for a sign-in
 	var answeredBy string // the endpoint off this computer that wrote the answer, and its reach; "" for here
 	endsInNewline := false
 	dim := newLook(stderr).dim
@@ -330,6 +332,10 @@ func ask(ctx context.Context, socket, question, image string, large bool, stdout
 			midLine = !endsInNewline
 		case rpc.EventNotice:
 			notice = ev.Text
+		case rpc.EventSignInNeeded:
+			for _, s := range ev.Servers {
+				signIn = append(signIn, s.Name)
+			}
 		case rpc.EventDone:
 			if ev.AnsweredBy != "" {
 				answeredBy = ev.AnsweredBy + " (" + ev.Reach + ")"
@@ -356,6 +362,9 @@ func ask(ctx context.Context, socket, question, image string, large bool, stdout
 	}
 	if notice != "" {
 		fmt.Fprintln(stderr, dim.Render("note: "+notice))
+	}
+	for _, name := range signIn {
+		fmt.Fprintln(stderr, dim.Render("note: "+name+" needs you to sign in before Meru can use its tools. Run: meru mcp login "+name))
 	}
 	// An answer from an endpoint off this computer says where it came
 	// from, on stderr, so stdout stays the answer alone.

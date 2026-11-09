@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `connectors.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `connectors.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`, `signin.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, Settings boxes, Edit first and the version) after v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -45,6 +45,7 @@ app already sends; `merud` got no new op for it. The short version of the audit
 | What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
 | Past chats and reopening one | has: `/chats [words]` |
 | Settings: Connections, Folders, About you, Skills, Models, Activity, About, and the Usage screen | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
+| Sign in to a server with `auth = "oauth"` | has: `/signin [server]`, and the line under "Meru" that names it |
 | Setup | in another terminal: `meru setup` and `meru setup user` |
 | Version beside the name | has |
 | SVG preview, image previews, sidebar and panel layout | not in a terminal: they draw pictures or need a mouse-driven window |
@@ -423,6 +424,9 @@ never to store a context in a struct.
   ended goes nowhere.
 - `token`: add the text to the answer.
 - `notice`: keep `merud`'s warning about the answer, for the line under it.
+- `sign_in_needed`: keep `signInLine`'s text and the names of the servers that
+  wait for a sign-in, for the line before the answer and for `/signin` alone
+  (signin.go).
 - `done`: keep the stats for the line under the answer.
 - `error`: mark the turn failed and keep the message.
 
@@ -556,6 +560,10 @@ sources:
 ```
 
 The `note:` prefix keeps the line apart from the answer when colour is off.
+
+When `merud` sent a `sign_in_needed` event, an amber line sits under "Meru",
+before the answer, since the answer had to go without that server's tools:
+`merud`'s sentence, then "Type /signin github." for each server it names.
 
 The list comes from `merud`'s `sources` event, which `handleEvent` keeps in the
 turn's `sources` field. It waits until the answer is finished, because
@@ -762,7 +770,7 @@ A line that starts with `/` never reaches the model; `submit` hands it to
 file of the box they open: `/chats` in chats.go, `/scope`, `/retry` and
 `/continue` in scope.go, `/attach` in attach.go, `/save` in save.go, `/used` in used.go, `/me` in
 me.go, `/folders` in folders.go, `/model` in models.go and `/usage` in usage.go.
-`/mcp`, `/skills`, `/log`, `/about` and `/help` open their box right in `command`
+`/signin` in signin.go, `/mcp`, `/skills`, `/log`, `/about` and `/help` open their box right in `command`
 and send the first request with `requestCmd` (box.go).
 
 `commandList` is the one list of names, in the order `/help` shows them. The
@@ -1386,6 +1394,36 @@ screen, so your shell history comes back untouched when you quit.
 to send clicks and wheel turns to the program. That is why the chat opens links
 itself (open.go).
 
+### signin.go
+
+`/signin <server>` signs in to an MCP server whose entry has `auth = "oauth"`,
+as the desktop app's Sign in button does. `signInCommand` sends `mcp_sign_in`
+with the name in `ID`, using `changeTimeout` (90 seconds), since `merud` may wait up to 30
+seconds for the server's sign-in page. With no argument it takes the one server
+the newest turn's `sign_in_needed` named. When that turn named no server, or
+more than one, the notice line says what `/signin` takes. It keeps the sign-in under way in `m.signingIn`,
+the server's name and the time the chat stops asking, ten minutes on.
+
+`applySignIn` takes both replies. The first holds the link: it opens it with
+`m.open`, the opener behind clicked links (open.go), and puts the link on the
+notice line too, in case no browser opens. Then it books a check:
+
+```go
+func signInTick() tea.Cmd {
+    return tea.Tick(signInPoll, func(time.Time) tea.Msg { return signInTickMsg{} })
+}
+```
+
+`tea.Tick` runs the timer in Bubble Tea's own goroutine and sends
+`signInTickMsg` to `Update` after two seconds. `Update` answers it with
+`signInCheck`, an `mcp_status` request, so the chat never blocks while the
+browser is open. Each `mcp_status` reply ends the sign-in when the server's row
+reads `connected`, or reads `sign_in` with no link, as after the user said no in
+the browser, and otherwise books the next tick. A check that fails, as while
+`merud` restarts, asks again until the ten minutes pass. The chat waits on a
+timer here because `merud` runs the sign-in itself and has no event to push
+when it ends.
+
 ### jobs.go
 
 `/jobs` sends `OpJobs` and lists each job: its name and schedule in words, then
@@ -1434,6 +1472,7 @@ compare it with the files in `internal/tui/testdata/`: an empty screen, waiting,
 streaming, two questions queued behind a streaming answer at 80 and 40 columns, a
 finished Markdown answer, a fallback route, a route badge with a
 skill, an answer with sources, an answer with a notice at 80 and 40 columns, an
+answer under a sign-in line (`sign-in`), an
 error, a stopped answer, a 40-column terminal, tool lines, the approval box at 80
 and 40 columns, the header with usage, index size and memory count at 130, 100 and 60 columns, the
 usage box and the `/me` box at 80 and 40 columns, an answer with links at 80
@@ -1533,7 +1572,11 @@ switch, a refusal), `/save` with its approval, Edit first, forgetting from `/use
 and `/me`, `contacted`, reopening a chat, the folder and skill keys, `/me add` and
 `/me prefer`, `/copy answer`, scrolling `/help` and `/about`, and
 (`TestToolProgress`) a running tool's progress line, which goes when the call
-ends.
+ends. `TestSignIn` runs `/signin` alone after a turn that named `github`: it
+checks the `mcp_sign_in` request, that the link opens, that a check while the
+browser is open books another, that a `connected` row ends the sign-in, that a
+`sign_in` row with no link says it didn't finish, and what `/signin` says with
+no server to take.
 
 ## Why it's built this way
 

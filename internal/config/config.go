@@ -287,6 +287,36 @@ type MCPServer struct {
 	AlwaysConfirm []string `toml:"always_confirm"`
 	// Timeout caps one call, as a Go duration such as "60s". Empty means 60s.
 	Timeout string `toml:"timeout"`
+	// Auth is "" (send only Headers) or "oauth": the server signs the user
+	// in by the MCP authorization spec, and merud keeps the tokens in
+	// ~/.meru/oauth/. It needs url and remote = true. See
+	// docs/faq/oauth-mcp-server.md.
+	Auth string `toml:"auth"`
+	// OAuth holds the optional [mcp.servers.oauth] table, for a server that
+	// doesn't let Meru register itself, such as GitHub or Slack. A pointer,
+	// so an entry without the table leaves it nil.
+	OAuth *MCPOAuth `toml:"oauth"`
+}
+
+// MCPOAuth is [mcp.servers.oauth]: the app the user registered with the
+// service once, and the scopes to ask for. Every key is optional.
+type MCPOAuth struct {
+	// ClientID is the app's client ID, which isn't a secret. Empty means
+	// Meru registers itself with the server (dynamic client registration).
+	ClientID string `toml:"client_id"`
+	// ClientSecret names the app's secret in secrets.toml, as
+	// "secret:<name>"; never the secret itself.
+	ClientSecret string `toml:"client_secret"`
+	// Issuer, when set, is the only authorization server the client may
+	// sign in with, so its secret goes nowhere else.
+	Issuer string `toml:"issuer"`
+	// Scopes, when set, is exactly what Meru asks for, in place of what
+	// the server lists.
+	Scopes []string `toml:"scopes"`
+	// Redirect is the callback URL registered with the app, when the app
+	// needs a fixed one: http on 127.0.0.1, [::1] or localhost, with a port
+	// and a path. Empty means a free port on 127.0.0.1.
+	Redirect string `toml:"redirect"`
 }
 
 // A2A holds the [[a2a.agents]] entries. See ARCHITECTURE.md, "Other agents

@@ -511,6 +511,29 @@ more than connected or not: "Obsidian is ready. It starts when a question needs
 it." `mcpBackend.Status`, the list `meru tools` and `about_meru` read, does the
 same for `rpc.ServerInfo`.
 
+**Sign-in.** `mcpServerConfigs` copies an entry's `auth` into the pool's
+`Auth`, and its `[mcp.servers.oauth]` table into `mcp.OAuthConfig`: the client
+ID, issuer, scopes and redirect as they are. The client secret is the one key
+that must name an entry in `secrets.toml`:
+
+```go
+switch {
+case o.ClientSecret == "":
+case !strings.HasPrefix(o.ClientSecret, secrets.Prefix):
+    errs = append(errs, fmt.Errorf("mcp server %q: oauth client_secret must name an entry in secrets.toml, ..."))
+default:
+    if c.OAuth.ClientSecret, err = resolve(o.ClientSecret); err != nil { ... }
+}
+```
+
+The first `case` has no body: an empty secret, for an app that has none, is
+fine, and Go's `switch` doesn't fall through to the next case. A secret typed
+into `config.toml` itself fails the load, since that file is easy to share.
+`mcpBackend.Status` copies the pool's `SignIn` and `Link` into
+`rpc.ServerInfo`, and `mcpStatus` sets a waiting server's row to
+`rpc.MCPSignIn` with the link, so `meru mcp` and a polling client see the
+sign-in end.
+
 ### merud: tools.go
 
 `toolService` owns what tool calls need while `merud` runs: the secrets, the MCP
@@ -532,6 +555,13 @@ works in this order:
 3. `mcp.NewPool` starts over both lists: the entries added by hand, which it
    connects to now, and `conns.serverConfigs()`, one managed entry per
    connector that is on, which its supervisor starts on the first call.
+
+Between steps 1 and 2, `newPool` sets `OAuth.TokenDir` to `~/.meru/oauth` on
+each `auth = "oauth"` entry, the folder where the pool keeps the sign-in. After
+the pool opens, `mcp.PruneSignIns` deletes the saved sign-in of any server
+config no longer marks `auth = "oauth"`. It runs last on purpose: a token never
+outlives its entry, and a typo that stops config from loading returns before
+it, so it deletes nothing.
 
 It then joins the four backends in this order:
 
@@ -558,6 +588,7 @@ reload with the MCP servers: a change to `[[commands]]` needs a restart. Besides
 | `mcp_probe` | reads `secrets.toml`, resolves the `secret:` values in `req.Server`, and calls `mcp.Probe` | one `probe` event with every tool the server offers and its hints |
 | `mcp_reload` | `reloadMCP`, then the same reply as `tools` | one `tools` event |
 | `mcp_status` | `handleMCPStatus`: `mcpStatus(pool.Status())` | one `mcp_status` event, a row per server in config order, then one per connector the pool runs |
+| `mcp_sign_in` | `handleSignIn`: `pool.SignIn(ctx, req.ID)` | one `sign_in` event whose `Text` is the link |
 | `connectors` | `handleConnectors`: `conns.statuses(ollama.status())`, read from each supervisor and the watch on Ollama; starts nothing | one `connectors` event, a row per connector in manifest order (obsidian, ollama, searxng), off and set up by hand included |
 
 **Status.** `handleMCPStatus` takes the current pool under `s.mu`, since a reload
@@ -565,6 +596,13 @@ may swap it, and reads `pool.Status()`. That reads what the pool holds and sends
 nothing to any server, so `meru mcp` answers at once while a server is down.
 `TestMCPStatusOp` builds a pool with one server up and one that answers 503,
 checks both rows, and checks that the op sent the down server no request.
+
+**Sign-in.** `handleSignIn` takes the pool under `s.mu`, as the status does,
+and asks it to start a sign-in for the server in `req.ID`. The pool returns the
+link at once and goes on waiting for the browser after the reply, so a client
+polls `mcp_status` to see the sign-in end. A second request while one waits
+gets the same link. `handleSignIn` never logs the link, which holds a one-time
+state value.
 
 **Probe.** `handleProbe` loads `secrets.toml` from disk each time instead of using
 the copy it holds, because `meru mcp add` may have saved the server's key a moment
@@ -767,7 +805,9 @@ a fifth. `connectionsEvent` loads `config.toml` fresh and joins it with
 each A2A agent and the local commands. `fillPolicies` lists every tool a source
 offers (from `OfferedTools`) plus any config allows, each with `policyOf`'s
 answer: `off` when `allow` leaves it out, `always` when `always_confirm` names it,
-`ask` when `confirm` does, `allow` otherwise. `catalogEntries` adds the catalog,
+`ask` when `confirm` does, `allow` otherwise. It also copies the server's
+`SignIn` and `Link`, so the card of an `auth = "oauth"` server that waits for a
+sign-in shows Sign in (`TestFillPoliciesSignIn`). `catalogEntries` adds the catalog,
 marking what config has and which keys `secrets.toml` holds.
 
 After the `[[mcp.servers]]` entries come the connectors the pool runs, one
@@ -1025,7 +1065,8 @@ set names that Ollama doesn't list. It doesn't stop `merud`.
 ### merud: handler
 
 `handler` takes one `services` value, which holds each service, in place of a
-long list of parameters, and sends each op to its service.
+long list of parameters, and sends each op to its service. `mcp_sign_in` goes
+to `tools.handleSignIn`, next to `mcp_status`.
 
 ### meru: image.go
 
@@ -1091,6 +1132,11 @@ default:
   line on standard error: `note: Meru didn't run any tool for this answer, so
   nothing changed on your computer.` `TestAskNotice` checks that it stays out
   of standard output.
+- When `merud` sends a `sign_in_needed` event, because a tool server waits for
+  the user to sign in, `ask` prints one dim line per server on standard error
+  after the answer: `note: github needs you to sign in before Meru can use its
+  tools. Run: meru mcp login github`. `TestAskSignIn` checks the line and that
+  standard output holds the answer alone.
 - `meru chat` is the Bubble Tea terminal UI in `internal/tui`.
 - Exit status: 0 on success, 1 on any error, 130 after Ctrl-C (the shell's
   convention: 128 plus signal number 2).
@@ -1467,6 +1513,33 @@ says "not loaded yet". Without `merud`, the list comes from the file alone.
 `remove` asks first (or not, with `--yes`), calls `catalog.RemoveServer`, prints
 the lines it took out, and sends `mcp_reload`. It leaves `secrets.toml` alone,
 since another server may use the same key.
+
+`login <name>` runs `mcpLogin`, the sign-in to a server whose entry has
+`auth = "oauth"`. It sends `mcp_sign_in` and prints the link first, so the user
+can copy it where no browser opens, as over SSH. Then it asks `mcp_status`
+every 2 seconds, up to 10 minutes, `merud`'s own limit:
+
+```go
+for time.Now().Before(deadline) {
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    case <-time.After(poll):
+    }
+    row, ok := serverRow(ctx, socket, name)
+    ...
+}
+```
+
+`select` waits on two channels and takes whichever is ready first: Ctrl-C
+cancels `ctx`, or `time.After` fires after `poll`. A row that reads
+`connected` ends with success: "Signed in. github offers 46 tools, and your
+allow list names 8; meru tools shows which Meru can use." The count comes
+from the allow list, which may name a tool the server doesn't offer, so the
+line sends the user to `meru tools`. A row back at `sign_in` with no link means
+the sign-in ended without connecting, and the command fails and points at
+`merud.log`. `serverRow` returns false while `merud` can't answer, and the loop
+asks again. The poll interval is a parameter, so a test can pass a short one.
 
 `reload` sends `mcp_reload` and prints the new server's block with `toolsText`,
 the function behind `meru tools`. A reload that fails doesn't fail the command:

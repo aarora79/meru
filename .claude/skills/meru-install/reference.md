@@ -115,8 +115,9 @@ meru config template \
   | sed -e 's/^# \{0,1\}//' -e "s|\[\"gh\", |[\"$GH\", |"
 ```
 
-Show the output. It holds six `[[commands]]` entries that only read:
-`gh-prs`, `gh-pr`, `gh-issues`, `gh-issue`, `gh-runs` and `gh-repos`. First
+Show the output. It holds nine `[[commands]]` entries that only read:
+`gh-prs`, `gh-pr`, `gh-issues`, `gh-issue`, `gh-runs`, `gh-repos`,
+`gh-repo-stats`, `gh-repo-traffic` and `gh-release-downloads`. First
 check that `~/.meru/config.toml` has no uncommented `name = "gh-prs"` already.
 With a yes, back up the config and append the block:
 

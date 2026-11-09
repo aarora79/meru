@@ -33,7 +33,7 @@ import (
 // Handler answers one request whose op isn't OpPing: OpAsk, OpIndex,
 // OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd,
 // OpMemoryForget, OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe,
-// OpMCPReload, OpMCPStatus, OpConnectors, OpConnectorAdopt, OpConnectorUnadopt,
+// OpMCPReload, OpMCPStatus, OpMCPSignIn, OpConnectors, OpConnectorAdopt, OpConnectorUnadopt,
 // OpSessions, OpSessionTurns, the ops that
 // delete, move and tag a chat and manage the chat folders, or one of the
 // desktop app's settings ops in settings.go. It calls emit
@@ -192,7 +192,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, log *slog.Logger) 
 		_ = write(Event{Type: EventDone})
 		return
 	case OpAsk, OpIndex, OpIndexStatus, OpTools, OpLog, OpUsage, OpMemoryList, OpMemoryAdd, OpMemoryForget,
-		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload, OpMCPStatus, OpConnectors, OpSessions, OpSessionTurns,
+		OpSkills, OpSkillShow, OpSkillReset, OpMCPProbe, OpMCPReload, OpMCPStatus, OpMCPSignIn, OpConnectors, OpSessions, OpSessionTurns,
 		OpConnections, OpToolPolicy, OpMCPAdd, OpMCPRemove, OpSecretSet, OpFolders, OpFolderAdd,
 		OpFolderRemove, OpSaveFile, OpAttachFile, OpSkillEnable, OpSkillDisable, OpModels,
 		OpModelSet, OpModelUse, OpModelSave, OpSessionDelete, OpSessionMove, OpSessionTag, OpChatFolders,

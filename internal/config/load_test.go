@@ -467,8 +467,8 @@ func TestTemplateCommentedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load the samples: %v\n%s", err, sample.String())
 	}
-	if len(cfg.MCP.Servers) != 3 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 25 || len(cfg.Models.Sets) != 3 {
-		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 3, 1, 25 and 3",
+	if len(cfg.MCP.Servers) != 4 || len(cfg.A2A.Agents) != 1 || len(cfg.Commands) != 28 || len(cfg.Models.Sets) != 3 {
+		t.Errorf("samples hold %d servers, %d agents, %d commands and %d model sets, want 4, 1, 28 and 3",
 			len(cfg.MCP.Servers), len(cfg.A2A.Agents), len(cfg.Commands), len(cfg.Models.Sets))
 	}
 	if len(cfg.Connectors) != 4 {

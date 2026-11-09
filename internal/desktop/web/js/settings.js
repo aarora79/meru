@@ -14,6 +14,7 @@ import { icon } from "./icons.js";
 import { here } from "./machine.js";
 import { el, button, seconds } from "./turns.js";
 import { connectorCard } from "./connectors.js";
+import { signIn } from "./signin.js";
 
 // SECTIONS are the sections of Settings, in the order its tabs show them.
 const SECTIONS = [
@@ -37,7 +38,7 @@ const WEB_TOOLS = ["web_search", "web_fetch"];
 // current is the open Settings screen: its root element, the section on
 // show, the connection to bring into view, and what it calls back into
 // app.js.
-const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set(), connectors: [] };
+const current = { root: null, section: "connections", focus: "", pages: null, expanded: new Set(), connectors: [], signIns: new Map() };
 
 // openable returns a <dd> holding text as a link-styled button that runs
 // open on a click, or as plain text when open is null. className adds a
@@ -250,6 +251,7 @@ function connectionCard(body, c, title, key) {
   const up = c.state === "connected";
   let [look, words] = [up ? "ok" : "down", up ? "Connected" : "Not connected"];
   if (connectorManaged(c)) [look, words] = CONNECTOR_PILLS[c.connector] || ["down", c.connector];
+  if (c.sign_in) words = "Needs sign-in";
   head.append(el("span", "pill " + look, words));
   card.append(head);
 
@@ -273,6 +275,8 @@ function connectionCard(body, c, title, key) {
         },
       }));
     }
+  } else if (c.sign_in) {
+    card.append(signInRow(body, c.name));
   } else if (!up && c.err) {
     card.append(el("p", "card-error", c.err));
   }
@@ -304,6 +308,33 @@ function connectionCard(body, c, title, key) {
   // A connector merud runs has no [[mcp.servers]] entry to remove.
   if (c.kind === "mcp" && !connectorManaged(c)) card.append(removeButton(body, c.name));
   return card;
+}
+
+// signInRow offers the sign-in to name, a server with auth = "oauth" that
+// waits for one: a sentence and a Sign in button, which opens the server's
+// sign-in page in the browser. While the sign-in waits, the row says so in
+// place of the button; once the server connects, the section draws again.
+// current.signIns keeps each server's words across those redraws.
+function signInRow(body, name) {
+  const row = el("div", "signin-row");
+  const words = current.signIns.get(name);
+  if (!words || words.state === "failed") {
+    row.append(el("p", "card-note", "Sign in so Meru can use " + name + "'s tools."));
+    row.append(button("Sign in", {
+      className: "link-button",
+      onClick: () => signIn(name, (state, text) => {
+        current.signIns.set(name, { state, text });
+        if (state === "done") {
+          current.signIns.delete(name);
+          current.pages.notice(text);
+          current.pages.refreshStatus();
+        }
+        connections(body);
+      }),
+    }));
+  }
+  if (words) row.append(el("p", words.state === "failed" ? "card-error" : "card-note", words.text));
+  return row;
 }
 
 // toolRow draws one tool with its Off / Ask / Allow switch. A tool that

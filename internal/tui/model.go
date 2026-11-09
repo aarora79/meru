@@ -124,9 +124,13 @@ type exchange struct {
 	// line above the main model's answer by an "escalate" event; "" for
 	// none.
 	firstTry string
-	notice   string    // merud's warning about the answer, from a "notice" event; "" for none
-	err      string    // why the turn failed, for stateFailed
-	stats    rpc.Event // the closing "done" event and its stats; zero if none came
+	notice   string // merud's warning about the answer, from a "notice" event; "" for none
+	// signIn is the line that offers a sign-in, from a "sign_in_needed"
+	// event, and signInServers the servers it names (signin.go).
+	signIn        string
+	signInServers []string
+	err           string    // why the turn failed, for stateFailed
+	stats         rpc.Event // the closing "done" event and its stats; zero if none came
 
 	// code lists the answer's code blocks, found when the turn ends, and
 	// firstBlock is the number of the first one; the rest follow on. The
@@ -304,6 +308,8 @@ type Model struct {
 	// open opens a clicked link in the browser (open.go). Tests swap in a
 	// fake, so they never start a browser.
 	open openFunc
+	// signingIn is the /signin under way, or nil (signin.go).
+	signingIn *signingIn
 	// blockCount is how many code blocks the session's finished answers
 	// hold. The next block found gets number blockCount+1.
 	blockCount int
@@ -432,6 +438,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case replyMsg:
 		cmd := m.applyReply(msg)
 		return m, cmd
+	case signInTickMsg:
+		if m.signingIn == nil {
+			return m, nil
+		}
+		return m, m.signInCheck()
 	case connectorStepMsg:
 		m.applyConnectorStep(msg)
 		return m, nil
@@ -641,6 +652,12 @@ func (m *Model) handleEvent(msg eventMsg) {
 		cur.answer += ev.Text
 	case rpc.EventNotice:
 		cur.notice = ev.Text
+	case rpc.EventSignInNeeded:
+		cur.signIn = signInLine(ev)
+		cur.signInServers = nil
+		for _, s := range ev.Servers {
+			cur.signInServers = append(cur.signInServers, s.Name)
+		}
 	case rpc.EventEscalate:
 		// The fast model's answer ended early, and the main model answers
 		// afresh: fold what streamed into one line, and start again.

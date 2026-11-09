@@ -16,7 +16,7 @@ GitHub token.
    won't find `gh` in `/opt/homebrew/bin` or `~/.local/bin`, so use the full
    path as the first element of each `argv`.
 
-3. **Copy the commands.** `meru config template` prints six, commented out,
+3. **Copy the commands.** `meru config template` prints nine, commented out,
    under "GitHub with the gh CLI". Copy the ones you want into
    `~/.meru/config.toml` and delete the `# ` at the start of each line:
 
@@ -28,6 +28,9 @@ GitHub token.
    | `cmd.gh-issue` | one issue with its text and comments |
    | `cmd.gh-runs` | the 10 latest GitHub Actions runs and how each ended |
    | `cmd.gh-repos` | up to 30 repositories of one user or organization |
+   | `cmd.gh-repo-stats` | a repository's stars, forks, watchers and open issues |
+   | `cmd.gh-repo-traffic` | a repository's clones or views over the last 14 days, by day; needs push access |
+   | `cmd.gh-release-downloads` | how many times each file of each recent release was downloaded |
 
 4. **Restart `merud`** and check with `meru tools`.
 

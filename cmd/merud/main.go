@@ -467,6 +467,8 @@ func handler(svc services) rpc.Handler {
 			return tools.handleReload(ctx, emit)
 		case rpc.OpMCPStatus:
 			return tools.handleMCPStatus(emit)
+		case rpc.OpMCPSignIn:
+			return tools.handleSignIn(ctx, req, emit)
 		case rpc.OpConnectors:
 			return tools.handleConnectors(svc.ollama, emit)
 		case rpc.OpConnectorAdopt, rpc.OpConnectorUnadopt:

@@ -187,6 +187,9 @@ func fillPolicies(c *rpc.Connection, info rpc.ServerInfo, prefix string, allow, 
 	if info.Connected {
 		c.State, c.Offered, c.Err = rpc.MCPConnected, info.Offered, ""
 	}
+	// An auth = "oauth" server that waits for a sign-in gets the app's Sign
+	// in button, and the link while a sign-in waits for the browser.
+	c.SignIn, c.Link = info.SignIn, info.Link
 	desc := map[string]string{}
 	for _, t := range info.OfferedTools {
 		desc[strings.TrimPrefix(t.Name, prefix)] = t.Description

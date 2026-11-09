@@ -132,6 +132,11 @@ func TestViewGolden(t *testing.T) {
 		{name: "notice-narrow", width: 40, q: "Move the garden folder to ~/Projects", evs: []rpc.Event{session, search,
 			tok("Done. It's now at ~/Projects/garden/."),
 			{Type: rpc.EventNotice, Text: "Meru didn't run any tool for this answer, so nothing changed on your computer."}, stats}, done: true},
+		// A server that waits for a sign-in: the line before the answer.
+		{name: "sign-in", width: 80, q: "How many stars does garden-planner have?", evs: []rpc.Event{session, tools,
+			{Type: rpc.EventSignInNeeded, Text: "github needs you to sign in before Meru can use its tools.",
+				Servers: []rpc.ServerInfo{{Name: "github", Kind: "mcp"}}},
+			tok("I can't reach GitHub until you sign in."), stats}, done: true},
 		{name: "sources", width: 80, q: "When does the garden project sow tomatoes?", evs: []rpc.Event{session, search, sources, tok("The garden project sows tomatoes on 12 April [1]."), stats}, done: true},
 		{name: "narrow", width: 40, q: "How do I reverse a slice in Go?", evs: []rpc.Event{session, direct, tok(markdownAnswer), stats}, done: true},
 		// The header at three widths: everything; the usage dropped; then

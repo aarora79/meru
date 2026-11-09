@@ -108,13 +108,16 @@ export function createTurn(t, h) {
   const firstTry = el("details", "first-try");
   firstTry.hidden = true;
   const body = el("div", "body");
+  const signIn = el("div", "answer-signin");
+  signIn.setAttribute("role", "note");
+  signIn.hidden = true;
   const notice = el("p", "answer-notice");
   notice.setAttribute("role", "note");
   const sources = el("div", "sources-line");
   const footer = el("div", "answer-foot");
-  answer.append(strip, detail, approval, firstTry, body, notice, sources, footer);
+  answer.append(strip, detail, approval, firstTry, signIn, body, notice, sources, footer);
   root.append(q, answer);
-  t.el = { root, answer, strip, detail, approval, firstTry, body, notice, sources, footer };
+  t.el = { root, answer, strip, detail, approval, firstTry, signIn, body, notice, sources, footer };
   drawAll(t, h);
   return root;
 }
@@ -124,6 +127,7 @@ export function drawAll(t, h) {
   drawStrip(t, h);
   drawApproval(t, h);
   drawFirstTry(t);
+  drawSignIn(t, h);
   drawBody(t, h);
   drawNotice(t);
   drawSources(t, h);
@@ -416,6 +420,34 @@ export function drawFirstTry(t) {
   if (!t.firstTry) return;
   d.append(el("summary", "", "First try, folded: " + t.firstTry.why));
   if (t.firstTry.text) d.append(el("p", "first-try-text", t.firstTry.text));
+}
+
+// drawSignIn draws the box that offers a sign-in, above the answer, when
+// merud said a tool server waits for one (rpc.EventSignInNeeded): its
+// sentence, then a Sign in button per server, which h.onSignIn runs. A
+// server's row says how its sign-in goes in place of its button, and
+// offers the button again after one that failed.
+export function drawSignIn(t, h) {
+  const box = t.el.signIn;
+  box.replaceChildren();
+  box.hidden = !t.signIn;
+  if (!t.signIn) return;
+  box.append(el("p", "", t.signIn.text));
+  for (const s of t.signIn.servers) {
+    const row = el("div", "signin-row");
+    if (s.state === "" || s.state === "failed") {
+      row.append(button("Sign in to " + s.name, {
+        className: "link-button",
+        onClick: () => h.onSignIn(s.name, (state, words) => {
+          s.state = state;
+          s.words = words;
+          drawSignIn(t, h);
+        }),
+      }));
+    }
+    if (s.words) row.append(el("span", s.state === "failed" ? "card-error" : "card-note", s.words));
+    box.append(row);
+  }
 }
 
 export function drawNotice(t) {

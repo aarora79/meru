@@ -245,6 +245,9 @@ type ToolRunner interface {
 	// ended. Handle calls it once per turn that offers tools, before it
 	// lists them.
 	Refresh(ctx context.Context)
+	// Servers reports each tool source's state; Handle reads it for the
+	// servers that wait for the user to sign in (see signin.go).
+	Servers() []rpc.ServerInfo
 }
 
 // turn holds what the rounds need to know about the turn they run in.

@@ -307,6 +307,34 @@ func TestConnectionsNeverNull(t *testing.T) {
 	}
 }
 
+// TestSignIn checks Sign in: it asks merud to start the sign-in for the
+// server named, opens the link merud gives back, and passes on merud's
+// refusal without opening anything.
+func TestSignIn(t *testing.T) {
+	var got rpc.Request
+	sock := startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		got = req
+		if req.ID != "github" {
+			return errors.New("no server is named \"" + req.ID + "\"")
+		}
+		return emit(rpc.Event{Type: rpc.EventSignIn, Text: "https://github.com/login/oauth/authorize?client_id=x"})
+	})
+	var opened []string
+	b := New(Options{Socket: sock, Open: func(u string) error { opened = append(opened, u); return nil }})
+	if err := b.SignIn(context.Background(), "github"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Op != rpc.OpMCPSignIn || got.ID != "github" {
+		t.Errorf("request = %+v, want mcp_sign_in for github", got)
+	}
+	if len(opened) != 1 || !strings.HasPrefix(opened[0], "https://github.com/login/oauth/authorize") {
+		t.Errorf("opened %v, want the sign-in link", opened)
+	}
+	if err := b.SignIn(context.Background(), "nope"); err == nil || !strings.Contains(err.Error(), "no server is named") || len(opened) != 1 {
+		t.Errorf("unknown server: %v, opened %v", err, opened)
+	}
+}
+
 func TestStatusCounts(t *testing.T) {
 	f := &fakeMerud{}
 	b, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, a rpc.ApproveFunc) error {

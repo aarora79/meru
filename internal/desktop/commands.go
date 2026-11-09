@@ -39,6 +39,7 @@ var commandList = []Command{
 	{Name: "/usage", Description: "How much Meru has been used"},
 	{Name: "/me", Description: "What Meru knows about you"},
 	{Name: "/mcp", Description: "Your connections and their tools"},
+	{Name: "/signin", Description: "Sign in to a server that asks for it, such as /signin github"},
 	{Name: "/folders", Description: "The folders Meru searches"},
 	{Name: "/skills", Description: "Turn skills on or off"},
 	{Name: "/sites", Args: "[remove <website>]", Description: "The websites Meru reads without asking; take one off"},

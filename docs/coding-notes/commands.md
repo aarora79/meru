@@ -327,10 +327,16 @@ job through a real `Dispatcher`: it is declined without a prompt, and its row
 still holds the argv. `TestRenderPattern` checks that `owner/name` passes and
 that a bare name, a URL, an extra path part and `owner/name --web` don't, and
 that the schema carries the anchored pattern. `TestExampleCommands` loads the
-`[[commands]]` samples in `config.example.toml`, the six GitHub ones included,
+`[[commands]]` samples in `config.example.toml`, the nine GitHub ones included,
 checks that none of those asks first, renders `gh-prs` and `gh-pr` to the argv
 `gh` gets, and checks that `gh-prs` refuses a repository that isn't
-`owner/name` and `gh-repos` an owner with a slash. It also renders `csv-sum`
+`owner/name` and `gh-repos` an owner with a slash. The three `gh api` samples,
+`gh-repo-stats`, `gh-repo-traffic` and `gh-release-downloads`, put the
+repository inside an API path such as `repos/{repo}/traffic/{kind}`, so their
+pattern refuses a name that starts with a dot. The test checks that
+`gh-repo-traffic` renders to `gh api repos/dana-reyes/garden-planner/traffic/clones`
+and refuses `dana-reyes/..` and `../garden`, which would climb out of the
+path, and that `gh-repo-stats`'s `--jq` filter reaches `gh` with single braces. It also renders `csv-sum`
 and `file-lines` to check that `{{` and `}}` reach `awk` as single braces, and
 that a line number or a process name can't carry script text or a semicolon.
 

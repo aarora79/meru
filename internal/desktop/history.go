@@ -275,6 +275,8 @@ func changes(op rpc.Op) bool {
 	case rpc.OpToolPolicy, rpc.OpMCPAdd, rpc.OpMCPRemove, rpc.OpSecretSet, rpc.OpFolderAdd, rpc.OpFolderRemove,
 		rpc.OpSkillEnable, rpc.OpSkillDisable, rpc.OpMemoryAdd, rpc.OpMemoryForget, rpc.OpFolders, rpc.OpAttachFile,
 		rpc.OpModelSet, rpc.OpModelUse, rpc.OpModelSave, rpc.OpConnectorAdopt,
+		// A sign-in waits up to 30 seconds for the server's sign-in page.
+		rpc.OpMCPSignIn,
 		// Renaming or removing a chat folder rewrites every chat in it.
 		rpc.OpSessionDelete, rpc.OpSessionMove, rpc.OpSessionTag,
 		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove, rpc.OpTrustedSiteRemove:

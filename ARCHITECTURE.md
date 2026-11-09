@@ -812,7 +812,9 @@ between its `tool_call` and `tool_result`, with the call's ID, such as the line
 says when an answer stopped short, such as `cut_off`, so a script can tell a
 whole answer from part of one, and its `model` names the model that wrote it. An
 `escalate` event says the fast model's answer ended early and the main model
-answers again; a script drops the text it had. Every tool call still goes through `dispatch`; the
+answers again; a script drops the text it had. A `sign_in_needed` event names, in
+`servers`, the MCP servers that wait for the user to sign in, so their tools are
+missing from the answer; a script can run `meru mcp login <name>`. Every tool call still goes through `dispatch`; the
 mode adds no second path.
 
 ---
@@ -4026,6 +4028,56 @@ it (see [Adding an MCP server](#adding-an-mcp-server)). A probe needs no allow l
 since it calls no tool, and the model never sees what it finds. It is a user
 command, like the memory ops, so it doesn't go through `dispatch`.
 
+**Signing in with OAuth.** A remote server that wants a user's sign-in, such as
+GitHub's (`https://api.githubcopilot.com/mcp/`) or Slack's
+(`https://mcp.slack.com/mcp`), takes `auth = "oauth"` and, for a server with no
+dynamic client registration, an `[mcp.servers.oauth]` table:
+
+```toml
+[[mcp.servers]]
+name   = "github"
+url    = "https://api.githubcopilot.com/mcp/"
+remote = true                        # oauth needs a url and remote = true
+auth   = "oauth"
+allow  = ["get_me", "search_issues"]
+
+[mcp.servers.oauth]
+client_id     = "Ov23li..."                         # from the app you registered; not a secret
+client_secret = "secret:github_client_secret"       # the value lives in secrets.toml
+issuer        = "https://github.com/login/oauth"    # the one authorization server this client may use
+scopes        = ["repo", "read:user"]               # what Meru asks for; empty takes the server's list
+redirect      = ""                                  # a fixed callback, such as Slack's "http://localhost:3118/callback"
+```
+
+With no `client_id`, Meru registers itself with the server as a public client
+(RFC 7591). `merud` checks the entry when it loads: `auth` must be `""` or
+`"oauth"`, an `oauth` table needs `auth = "oauth"`, `client_secret` needs
+`client_id` and a `secret:` reference, `issuer` must be https, `redirect` must be
+http on `127.0.0.1`, `::1` or `localhost` with a port and a path, each scope must
+be one word, and the entry can't also set an `Authorization` header.
+
+A server with no saved sign-in shows the state `sign_in` and offers no tools. The
+user starts a sign-in from either client or with `meru mcp login <name>`; each
+sends the `mcp_sign_in` op. `merud` listens for the reply on loopback only (a
+port the system picks, or the one `redirect` fixes, on `127.0.0.1`, and `::1`
+too for `localhost`), runs PKCE with S256 through the MCP Go SDK, and answers with
+the sign-in link, which the client opens in the browser. The callback takes one
+GET and shows a fixed page; the SDK checks `state`. `merud` keeps the token in
+`~/.meru/oauth/<server>.json`, owner-only (0600), and never writes a token, code,
+state or link to a log, a span or an error. A refreshed token is saved again; a
+refresh the server refuses puts the server back to `sign_in`. The OAuth requests
+go over https only, with no redirects and no proxy, and reach a private address
+only when the server's own URL is private. Removing a server's entry deletes its
+saved sign-in at the next reload.
+
+On a turn that offers tools, `merud` sends a `sign_in_needed` event naming each
+server that waits for a sign-in, before the answer. The desktop app shows a
+**Sign in** button above the answer and on the server's Settings card, `meru
+chat` shows a line that names `/signin <name>`, and one question with `meru`
+prints `meru mcp login <name>` on stderr. While a sign-in waits for the
+browser, a client asks `mcp_status` every two seconds; `merud` gives up after
+ten minutes.
+
 **Status.** `meru mcp` (or `meru mcp status`) and `/mcp` in `meru chat` show one
 row per configured server:
 
@@ -4044,7 +4096,7 @@ obsidian   ok              Obsidian is ready. It starts when a question needs it
 | --- | --- |
 | `SERVER` | the `name` from config, or a connector's ID |
 | `TRANSPORT` | `stdio` or `http` |
-| `STATE` | `connected` or `not connected` for a server added by hand; config has no key that turns one off, so there is no third state. A connector shows its own state (see [The supervisor](#the-supervisor)) |
+| `STATE` | `connected` or `not connected` for a server added by hand, or `sign_in` for an `auth = "oauth"` server that waits for the user to sign in; config has no key that turns one off. A connector shows its own state (see [The supervisor](#the-supervisor)) |
 | `TOOLS` | how many tools the server offers, from its `tools/list`; `—` when not connected, since there is no list to count |
 | `ALLOWED` | how many tools config allows |
 | `CONFIRM` | how many allowed tools ask first, from `confirm` and `always_confirm` |
@@ -4857,12 +4909,14 @@ command's template. The `meru.dispatch` span carries `meru.command.exit_code` an
 question. The metrics use `kind = "command"`, `server = "meru"` and
 `tool = "cmd.<name>"`, all names from config, never the arguments.
 
-**GitHub through `gh`.** The config template carries six read-only commands
+**GitHub through `gh`.** The config template carries nine read-only commands
 for GitHub's `gh` CLI, all commented out: `gh-prs`, `gh-pr`, `gh-issues`,
-`gh-issue`, `gh-runs` and `gh-repos`. Each asks `gh` for `--json` with a fixed
-list of fields and a fixed `--limit`. A `repo` parameter must match
-`owner/name` and an `owner` one name, so the model can't pass a URL, a host or a
-flag. `gh` keeps the token that `gh auth login` stored in the system keychain,
+`gh-issue`, `gh-runs` and `gh-repos`, which ask `gh` for `--json` with a fixed
+list of fields and a fixed `--limit`, and `gh-repo-stats`, `gh-repo-traffic` and
+`gh-release-downloads`, which call `gh api` with a fixed path and a fixed `--jq`
+filter. A `repo` parameter must match `owner/name` and an `owner` one name, so
+the model can't pass a URL, a host or a flag; inside a `gh api` path, the
+repository can't start with a dot, so `..` can't climb to another endpoint. `gh` keeps the token that `gh auth login` stored in the system keychain,
 and finds it with `HOME` alone, so Meru never holds a GitHub token. A command
 that writes, such as `gh issue comment`, stays out of the template; a user who
 adds one sets `confirm = true`.
