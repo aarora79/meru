@@ -268,6 +268,34 @@ The line reads "You can't write files" when `write_file` is off, and drops
 not what the route offers, so it stays the same on every turn and Ollama keeps
 reusing its work on the prompt's opening.
 
+When `write_file` is on, `makePictureNote` follows the line, and when
+`view_image` is on as well, `seePictureNote` follows that: "You can look at a
+picture with view_image, such as a photo to choose for a card." A model with
+the photos saved had told the user it couldn't view images.
+
+`followsServerTurn` (toolnouns.go) keeps the tools on a reply to a turn that
+used a server's tools. It finds the latest assistant message in the history,
+looks for the tool notes after `toolNotesStart`, and reports true when a
+note's call is named `server.tool` (`toolKind` gives `KindMCP`). `respond`
+then sets `target` to `signFollowsServer`, and the usual `withTools` step
+widens the route. `TestReplyKeepsServerTools` runs two turns: the first
+downloads a photo through a mail tool, the second routes to `search` and
+still gets the mail tool.
+
+The text of `makePictureNote`:
+
+```text
+You can't create or edit a picture's pixels. To make a card, a poster or a
+collage, write an HTML page with write_file and name the user's photos in
+<img src="..."> by their paths in the output folder, such as a downloaded
+attachment's; write_file puts the photos into the page.
+```
+
+A real chat asked for a greeting card from a family photo. The model offered
+photo edits it can't make, then wrote a page with no photo in it. `canDoNote`
+adds the note when its line starts "You can write files", and
+`write_file` puts the photos in (see [builtin](builtin.md#inlinego)).
+
 When config allows `about_meru`, `selfNote` follows the line:
 
 ```text
@@ -1029,7 +1057,12 @@ what the turn tried, from `t.tried`:
 
 `plansOnly` reads a reply as a plan when it is under 280 characters, opens on
 "Let me", "I'll", "I'm going to", "Next, I" or "Now I", and holds no list or
-table; "Let me know…" and "I'll need…" don't count. `t.tried` gets one entry per
+table; "Let me know…" and "I'll need…" don't count. A short reply whose last
+sentence opens so counts too, whatever came before: "Perfect! Now I have all
+three photos. Let me view the third one and then judge:" and "Looking at this
+photo, beautiful family shot! Now let me check the other two photos." both
+ended real turns where the next step should have run. A last sentence that
+opens "Let me know" still closes an answer. `t.tried` gets one entry per
 call the model made, in call order, filled after a round's goroutines all end,
 so the list never depends on which call finished first. `tried` writes each
 tool once with a count and its failures, such as "grep ×2 (you said no)".
@@ -1191,6 +1224,45 @@ computer." `TestMissingFiles` covers links that are there, missing, bare,
 with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.
+
+A fourth check reads an answer that says Meru made or changed a file. The
+first check runs only when `t.succeeded` is 0, so a successful call that could
+change something silences it. A real turn downloaded a family photo, which succeeded, wrote nothing, and
+answered "I've downloaded your photo and rebuilt the card with it". So the
+`turn` struct has a field, `wroteFiles`, that `runCalls` adds one to for each
+successful `write_file` or `edit_file` call, and `Handle` runs:
+
+```go
+if !unbacked && t.wroteFiles == 0 && claimsFileWork(rep.text) {
+    unbacked = true
+    notice = strings.TrimSpace(notice + " " + fileClaimNotice)
+}
+```
+
+`!unbacked` keeps it quiet when the first check already warned, so one answer
+doesn't get two notes on the same claim. `claimsFileWork` splits the answer
+into sentences as `claimsAction` does, turns a curly `’` into `'`, and skips
+the same questions, offers and denials. A sentence counts when it matches one
+of two regular expressions and also `fileThing`, which names a file, a page, a
+card, a picture, a document or a `~/` path:
+
+| Pattern | Catches |
+| --- | --- |
+| `claimBuilt` | "I built the card", "I've rebuilt it", "I've downloaded your photo and rebuilt the card", but not "I found the photos you made" |
+| `claimThingNow` | "The card now uses your photo", "The card is ready" |
+
+`claimBuilt` has two halves joined by `|`, which means "or" in a regular
+expression. The first is "I", "I've" or "I have", one word allowed between,
+then a verb such as built, made, embedded or saved. The second lets other
+words come between "I" and an "and", then the same verbs, for the second verb
+of "I've downloaded your photo and rebuilt the card". The notice reads "The
+answer says Meru made or changed a file, but this turn wrote or edited no file.
+Ask again to have it saved."
+
+`TestClaimsFileWork` runs the sentences from the real chats and the ones that
+mustn't match, and `TestFileClaimAfterADownload` replays the turn with a fake
+model: one successful download, no write, and the claim, which must get the
+notice.
 
 ### Amounts the turn didn't read (amounts.go)
 

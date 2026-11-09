@@ -74,11 +74,33 @@ func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 		run = " other than " + strings.Join(cmds, ", ") + "."
 	}
 	line := write + " Meru's own tools can't move, rename or delete files, or run programs" + run
+	// A real chat asked for a greeting card from a family photo. The model
+	// offered "photo manipulation" it can't do, then wrote a page with no
+	// photo in it. With write_file on, the line says what it can do instead.
+	if strings.HasPrefix(write, "You can write files") {
+		line += " " + makePictureNote
+		// A model with the photos saved told the user "I cannot view
+		// images directly"; view_image was on the turn.
+		if slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.ViewImage }) {
+			line += " " + seePictureNote
+		}
+	}
 	if slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.AboutMeru }) {
 		line += " " + selfNote
 	}
 	return line
 }
+
+// makePictureNote follows canDoNote's line when write_file is on. It says the
+// model can't make or edit pictures, and how to make a card or a poster
+// anyway: a page whose <img> tags name the user's photos, which write_file
+// puts into the page (see internal/builtin/inline.go).
+const makePictureNote = "You can't create or edit a picture's pixels. To make a card, a poster or a collage, " +
+	"write an HTML page with write_file and name the user's photos in <img src=\"...\"> by their paths in the output folder, " +
+	"such as a downloaded attachment's; write_file puts the photos into the page."
+
+// seePictureNote follows makePictureNote when view_image is on.
+const seePictureNote = "You can look at a picture with view_image, such as a photo to choose for a card."
 
 // selfNote follows canDoNote's line when config allows about_meru. A real
 // turn showed why. Asked "which model are you using" and then "tell me the
@@ -212,6 +234,46 @@ func claimsAction(text string) bool {
 	}
 	return false
 }
+
+// The file-claim rules, for claimsFileWork. claimBuilt matches "I built the
+// card", "I've rebuilt it", "I embedded the photo", and a second verb after
+// "and", as in "I've downloaded your photo and rebuilt the card", but not
+// "I found the photos you made"; claimThingNow matches "The card now uses
+// your photo" and "The card is ready", which a real turn wrote with no file
+// written. fileThing names what such a claim is about: a file, a page, a
+// card or a picture.
+var (
+	claimBuilt    = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b|\bI(?:'ve|\s+have)?\s+\w+[^!?\n]*?\band\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b`)
+	claimThingNow = regexp.MustCompile(`(?i)\bthe\s+(?:card|page|file|html|image|picture|photo|document)\s+now\s+(?:uses|has|holds|includes|shows|contains)\b|\b(?:the|your)\s+(?:card|page|file|html|image|picture|poster|document)(?:'s|\s+is)\s+(?:ready|done|saved|finished|complete)\b`)
+	fileThing     = regexp.MustCompile(`(?i)\b(?:file|files|html|page|card|image|picture|photo|png|jpe?g|document|report|draft|dashboard)\b|~/`)
+)
+
+// claimsFileWork reports whether text says Meru made or changed a file: a
+// sentence matches claimBuilt or claimThingNow, names a file or a page with
+// fileThing, and isn't a question, an offer or a denial. Handle runs it on
+// a turn with no successful write_file or edit_file call.
+//
+// claimsAction runs only on a turn in which no call succeeded. A real turn
+// downloaded a photo, which succeeded, wrote nothing, and answered "I've
+// downloaded your photo and rebuilt the card with it"; an earlier turn had
+// said "I built the card with your family photo embedded" after only
+// searches. Neither was true, and the download let the first pass.
+func claimsFileWork(text string) bool {
+	text = strings.ReplaceAll(text, "’", "'")
+	for _, s := range sentences(withoutCode(text)) {
+		if strings.HasSuffix(s, "?") || notClaim.MatchString(s) {
+			continue
+		}
+		if (claimBuilt.MatchString(s) || claimThingNow.MatchString(s)) && fileThing.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileClaimNotice is the notice under an answer that says it made or
+// changed a file on a turn that wrote none.
+const fileClaimNotice = "The answer says Meru made or changed a file, but this turn wrote or edited no file. Ask again to have it saved."
 
 // sentences splits text into its sentences, trimmed, one per line of text
 // at most. Each keeps its closing mark, so a question still ends in "?".

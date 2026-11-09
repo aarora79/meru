@@ -1,9 +1,9 @@
 # builtin
 
 **Code:** `internal/builtin/` (`doc.go`, `builtin.go`, `datetime.go`,
-`about.go`, `remember.go`, `writefile.go`, `editfile.go`, `files.go`, `chats.go`, `search.go`,
+`about.go`, `remember.go`, `writefile.go`, `editfile.go`, `inline.go`, `files.go`, `chats.go`, `search.go`,
 `web.go`, `webguard.go`, `webdownload.go`, `upload.go`, `images.go`, `notes.go`,
-`table.go`, `tablequery.go`, and the tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `files_test.go`,
+`table.go`, `tablequery.go`, and the tests `builtin_test.go`, `about_test.go`, `writefile_test.go`, `inline_test.go`, `files_test.go`,
 `chats_test.go`, `search_test.go`, `web_test.go`, `webfetch_test.go`,
 `webrender_test.go`, `upload_test.go`, `notes_test.go`, `office_test.go`,
 `table_test.go`, `tablequery_test.go` and `images_test.go`, with the PDF in
@@ -355,7 +355,8 @@ can't mistake it for a success:
    `C:\x`) and any path with a `..` part. It splits at both `/` and `\`, so
    `a\..\..\x` can't slip a `..` past a check that only knows one separator.
 2. It refuses content over 1 MiB. A model that writes that much is most likely
-   stuck in a loop.
+   stuck in a loop. An HTML page may grow past that once its pictures go in
+   (see [inline.go](#inlinego)), up to 40 MB.
 3. `os.MkdirAll` creates the output folder, with mode `0700`, the first time.
 4. `os.OpenRoot` opens the folder as an `os.Root`, and every later step goes
    through it. An `os.Root` refuses any path that would leave its folder, even
@@ -384,6 +385,14 @@ passes the link on, and both clients open a `file://` link with a click. Before
 the link, a model asked for a clickable link wrote the path in backticks, which
 shows as plain text.
 
+For an `.html` or `.htm` file, `inlinePictures` runs on the content before
+`writeAtomic`, and its line joins the result after the path, such as "Put 1
+picture into the page, so it shows the pictures on its own, on a phone too:
+card-photo.jpg (2.4 MB)." The byte count then counts the page with its
+pictures in. The tool's description tells the model how to name a picture in a
+page, that it can't make or edit a picture's pixels, and to use only pictures
+the user gave or named, never ID cards, certificates or other documents.
+
 `write_file` asks before each call, because the shipped `[builtin] confirm` is
 `["write_file"]`. A file outlives the chat, so the default is to ask. Take it out
 of the list to let it write without asking.
@@ -396,14 +405,19 @@ a saved file was `write_file` with the whole file as content; asked to fix two
 names in a 14 KB page, a model said it couldn't, and another claimed it had.
 
 It shares `write_file`'s guards: `insideOutput` and `cleanRelPath` on the path,
-an `os.Root` on the output folder, no symbolic links, and the 1 MiB cap. Then:
+an `os.Root` on the output folder, no symbolic links, and the 1 MiB cap. An
+HTML page gets 40 MB instead (`maxPageBytes`), since a page with its pictures
+in passes 1 MiB with one phone photo. Then:
 
 1. It refuses a file that isn't there ("write_file makes a new file") and an
    empty `old`.
 2. `strings.Count` counts the matches. None fails with "isn't in", so the model
    reads the file and tries its exact text. More than one fails unless `all`
    is true, so an edit meant for one place can't change three.
-3. `writeAtomic` saves the file as it was to a hidden `.<name>.bak` beside it,
+3. For a page, `inlinePictures` puts in any picture the edit names. The
+   pictures already in the page are `data:` URLs, which it leaves alone, so
+   an edit doesn't read them again.
+4. `writeAtomic` saves the file as it was to a hidden `.<name>.bak` beside it,
    replacing the last one, then writes the edited text the same way.
 
 Every refusal ends "Nothing changed". The result reads "Replaced 2 places in
@@ -412,6 +426,72 @@ Every refusal ends "Nothing changed". The result reads "Replaced 2 places in
 the answer too. `edit_file` asks before each call, since the shipped `confirm`
 list names it, and it is on by default. `ReadOnly` leaves it out, so a
 successful edit backs a claim that the file changed.
+
+### inline.go
+
+`inline.go` puts pictures into an HTML page that `write_file` or `edit_file`
+saves. A model writes text, and a photo's bytes aren't text it has. In a real
+chat the model downloaded a family photo for a greeting card, wrote a page
+with no picture in it, and said the photo was "embedded (base64)". Now the
+model writes `<img src="card-photo.jpg">` and `merud` does the rest: each
+picture the page names inside the output folder becomes a `data:` URL that
+holds the picture, so the page shows it on its own, on a phone too.
+
+`isPage` says whether a path ends in `.html` or `.htm`; only those pages get
+pictures put in. Two regular expressions find the places a page names a
+picture. `srcAttr` matches `src="..."` or `src='...'`, and `cssURL` matches a
+CSS `url(...)`, with or without quotes. Each has a group per way of quoting,
+and the code takes whichever group matched.
+
+`localPicture` decides what a reference names. It returns a path relative to
+the output folder, or a reason it can't use the reference:
+
+- A web address (`http:`, `https:`, `//`), a `data:` URL, an anchor (`#`) and
+  a name that doesn't end in `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` or `.svg`
+  count as "not local". The page keeps them, and the result says nothing.
+- A `file://` URL becomes its path, and `%20` and the like decode, so
+  `my%20photo.jpg` names `my photo.jpg`. A `?` and what follows go.
+- A path that starts with `~`, or an absolute one, goes through `insideOutput`,
+  the same helper `write_file` uses. When it names the output folder it comes
+  back relative; otherwise the reason is "outside ~/meru-output".
+- Any other path is relative to the page, as a browser reads it, so
+  `cards/birthday.html` naming `photo.jpg` means `cards/photo.jpg`.
+- `cleanRelPath` then refuses a path that climbs out with `..`.
+
+`inlinePictures` runs both expressions over the page with
+`ReplaceAllStringFunc`, which calls a function once for each match and puts
+what the function returns in the match's place. The function given is a
+closure: a function written inside another one, which can read and change that
+function's variables. Here it adds to `placed` and `missing` and to the running
+`total`, so one pass both rewrites the page and collects the report. When a
+match isn't a local picture, the closure returns the match unchanged.
+
+For a local picture, `root.ReadFile` reads it through the `os.Root` on the
+output folder, so no path, symbolic link included, can read a file outside it.
+`base64.StdEncoding.EncodeToString` from `encoding/base64` turns the bytes into
+text: base64 writes every 3 bytes as 4 letters, digits or `+` and `/`, so the
+picture fits in an HTML attribute and grows by a third. The `data:` URL is
+`data:image/jpeg;base64,` followed by that text, with the media type looked up
+in `pictureTypes` by the file's ending.
+
+`cache` is a map from picture path to its `data:` URL. A page that names one
+photo twice, say in an `<img>` and in a CSS background, reads it once and
+counts it once. A map is Go's hash table: `cache[pic] = data` stores a value,
+and `data, ok := cache[pic]` reads one, with `ok` false when the key is
+missing.
+
+Two limits keep a page small enough to open and to send. A picture over
+`maxPictureBytes` (16 MB) stays out and goes on the `missing` list. When the
+page with its pictures would pass `maxPageBytes` (40 MB), the call fails and
+writes nothing, with a message that says to use fewer or smaller pictures. A
+phone photo runs 2 to 6 MB, so a card or a collage fits.
+
+The line `inlinePictures` returns names each picture it put in with its size,
+and each it left out with a reason: "no such file in ~/meru-output", "outside
+~/meru-output" or "over the 16 MB limit". The line for left-out pictures tells
+the model to pass the path inside the output folder, such as a downloaded
+attachment's. A page with no local picture gets an empty line, and its result
+reads as before.
 
 ### files.go
 
@@ -576,6 +656,15 @@ only after more than a thousand tool calls.
 In a real turn the model then failed to open it: it downloaded the same PDF four
 times, looked in `~/meru-output/downloads`, made up a tool and an attachment ID,
 found the file with `list_folder` in its last round and ran out of rounds.
+
+For a picture, `attachment` writes no text: the line after "Saved at" says
+"It's a picture: look at it with view_image, or put it in an HTML page with
+`<img src="…">`, which write_file puts into the page", and that the server
+deletes the file after an hour. The old line, "Meru can't read it: media
+file", led a real model to tell the user it couldn't look at pictures.
+`write_file` and `edit_file` also take `file_path` as another name for
+`path`, after a model's call with `file_path` failed and its turn ran out of
+time before it tried again.
 
 `AttachmentText` takes that step off the model. `dispatch` calls it, through
 `Options.Attachments`, for every MCP or A2A call that ends `ok`, with the
@@ -1233,6 +1322,15 @@ It returns the bytes, and the agent puts them on the question's message.
   `internal/memory` uses the same guard, and so does `index.ReadText`.
 - **Runes** — a `string` holds bytes; `[]rune(s)` holds characters. `read_file`
   counts in runes so an offset can't split a character.
+- **`ReplaceAllStringFunc` with a closure**: `inline.go` hands a function to
+  `regexp`, which calls it for each match and puts back what it returns. The
+  function is a closure, so it can add to the caller's lists as it goes. See
+  [inline.go](#inlinego).
+- **`encoding/base64`**: `EncodeToString` writes bytes as plain letters and
+  digits, so a photo fits in a `data:` URL inside an HTML page.
+- **A map as a cache**: `cache` in `inlinePictures` maps a picture's path to
+  its `data:` URL, so `merud` reads a picture named twice once; `v, ok := m[k]` says
+  whether the key was there.
 - **`regexp`** — Go's regular expressions (RE2). They run in time linear in the
   input, so no pattern the model writes can hang `merud`.
 

@@ -188,3 +188,51 @@ func TestCopiedNoteGetsThePlanNudge(t *testing.T) {
 		t.Errorf("answer = %q, want the real answer and no copied note", last.Text)
 	}
 }
+
+func TestClaimsFileWork(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"Good news — I built the card with your family photo embedded.", true},
+		{"I've downloaded your photo from Nidhi's email (IMG_0584.jpeg) and rebuilt the card with it.", true},
+		{"The card now uses your actual family photo.", true},
+		{"The card is ready — here's a clickable link: [Diwali Card 5x7](file:///x/card.html)", true},
+		{"Your card's done.", true},
+		{"Is the card ready for print?", false},
+		{"I saved the page to ~/meru-output/card.html.", true},
+		{"I can rebuild the card with the photo if you like.", false},
+		{"Want me to make the card now?", false},
+		{"I found three photos in the email.", false},
+		{"I found the photos you made last year in the email.", false},
+		{"I didn't change the file.", false},
+	}
+	for _, tt := range tests {
+		if got := claimsFileWork(tt.text); got != tt.want {
+			t.Errorf("claimsFileWork(%q) = %v, want %v", tt.text, got, tt.want)
+		}
+	}
+}
+
+// TestFileClaimAfterADownload: the turn's only call, an attachment
+// download, succeeds; the answer says it rebuilt the card; no file was
+// written, so the notice says so.
+func TestFileClaimAfterADownload(t *testing.T) {
+	cfg := testConfig(t)
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("google.get_gmail_attachment_content"), spec(builtin.WriteFile)},
+		results: map[string]fakeResult{"google.get_gmail_attachment_content": {text: "Attachment downloaded successfully!\n\nSaved at ~/meru-output/attachments/IMG_0584.jpeg."}}}
+	eng := &fakeEngine{rounds: []fakeRound{
+		{calls: []engine.ToolCall{call("google.get_gmail_attachment_content", `{"message_id":"m1","attachment_id":"a1"}`)}},
+		{pieces: []string{"I've downloaded your photo and rebuilt the card with it."}},
+	}}
+	router := &fakeRouter{dec: Decision{Route: "tools", Confidence: 0.9, Outcome: "ok"}}
+	a := New(cfg, eng, router, nil, tools, nil, nil, quietLog())
+	evs, err := run(context.Background(), a, rpc.Request{Text: "include the photo in the card"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	i := slices.IndexFunc(evs, func(ev rpc.Event) bool { return ev.Type == rpc.EventNotice })
+	if i < 0 || !strings.Contains(evs[i].Text, "wrote or edited no file") {
+		t.Errorf("events %v: want the file-claim notice", types(evs))
+	}
+}

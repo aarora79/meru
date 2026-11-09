@@ -566,6 +566,13 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				notice = strings.TrimSpace(notice + " " + callNotice(tool))
 			}
 		}
+		// An answer that says it built or changed a file needs a file the
+		// turn wrote or edited, whatever else succeeded. See
+		// claimsFileWork.
+		if !unbacked && t.wroteFiles == 0 && claimsFileWork(rep.text) {
+			unbacked = true
+			notice = strings.TrimSpace(notice + " " + fileClaimNotice)
+		}
 		// An answer that links a file with file:// needs the file to be
 		// there, whatever the turn called. See missingFiles.
 		if missing := missingFiles(rep.text); len(missing) > 0 {
@@ -777,6 +784,11 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	var target string
 	if a.tools != nil {
 		target = toolTarget(question, a.tools.Tools())
+	}
+	// A reply that carries on from a turn that used a server's tools keeps
+	// them; see followsServerTurn.
+	if target == "" && a.tools != nil && followsServerTurn(history) {
+		target = signFollowsServer
 	}
 	if r, ok := withTools(dec.Route); ok && target != "" {
 		a.log.DebugContext(ctx, "route changed: the question "+target,

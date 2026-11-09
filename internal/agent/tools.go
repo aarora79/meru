@@ -384,6 +384,10 @@ type turn struct {
 	readChars  int
 	readTools  int
 	sawPicture bool
+	// wroteFiles counts the turn's successful write_file and edit_file
+	// calls, for the check on answers that say they made a file (see
+	// claimsFileWork).
+	wroteFiles int
 	// sources holds every excerpt the turn has shown the model, numbered,
 	// for the "sources" event. runTools adds the ones tools return.
 	sources []rpc.Citation
@@ -1049,6 +1053,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 			t.succeeded++
 		}
 		if calls[i].Name == builtin.WriteFile || calls[i].Name == builtin.EditFile {
+			t.wroteFiles++
 			if name, link, ok := builtin.Written(out[i].Content); ok {
 				t.saved = append(t.saved, savedFile{name: name, link: link})
 			}

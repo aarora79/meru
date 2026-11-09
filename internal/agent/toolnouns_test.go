@@ -4,12 +4,14 @@
 package agent
 
 import (
+	"context"
 	"slices"
 	"testing"
 
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // googleAndNotes stands in for the owner's servers: workspace-mcp and an
@@ -183,5 +185,55 @@ func TestToolTarget(t *testing.T) {
 				t.Errorf("toolTarget = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestReplyKeepsServerTools: turn one reads mail; turn two, "yes, make the
+// card with the first photo", routes to search, and still gets the mail
+// tools because the turn before used them.
+func TestReplyKeepsServerTools(t *testing.T) {
+	cfg := testConfig(t)
+	tools := &fakeTools{specs: []engine.ToolSpec{spec("google.get_gmail_attachment_content"), spec("read_file")},
+		results: map[string]fakeResult{"google.get_gmail_attachment_content": {text: "Saved at ~/meru-output/attachments/IMG_0584.jpeg."}}}
+	eng := &fakeEngine{rounds: []fakeRound{
+		{calls: []engine.ToolCall{call("google.get_gmail_attachment_content", `{"message_id":"m1"}`)}},
+		{pieces: []string{"I downloaded the photo. Shall I make the card with it?"}},
+		{pieces: []string{"Making it now."}},
+	}}
+	router := &fakeRouter{dec: Decision{Route: "search", Confidence: 0.8, Outcome: "ok"}}
+	a := New(cfg, eng, router, nil, tools, nil, nil, quietLog())
+	evs, err := run(context.Background(), a, rpc.Request{Text: "get the photo from Nidhi's email"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(context.Background(), a, rpc.Request{Session: evs[0].Session, Text: "yes create the html with the first photo"}); err != nil {
+		t.Fatal(err)
+	}
+	last := eng.lastCall()
+	if !slices.ContainsFunc(last.tools, func(s engine.ToolSpec) bool { return s.Name == "google.get_gmail_attachment_content" }) {
+		t.Errorf("the reply's turn offered %v, want the mail tool kept", last.tools)
+	}
+}
+
+func TestFollowsServerTurn(t *testing.T) {
+	notes := func(lines string) []engine.Message {
+		return []engine.Message{{Role: engine.RoleUser, Content: "q"},
+			{Role: engine.RoleAssistant, Content: "An answer.\n\n" + toolNotesStart + " this turn ran, for later questions.)\n" + lines}}
+	}
+	tests := []struct {
+		name    string
+		history []engine.Message
+		want    bool
+	}{
+		{"a mail call", notes(`- google.get_gmail_message_content {"message_id":"m1"} ok: Subject: …`), true},
+		{"built-ins only", notes(`- read_file {"path":"~/a.md"} ok: …`), false},
+		{"a command", notes(`- cmd.du {"folder":"~"} ok: …`), false},
+		{"no notes", []engine.Message{{Role: engine.RoleAssistant, Content: "Hello."}}, false},
+		{"empty", nil, false},
+	}
+	for _, tt := range tests {
+		if got := followsServerTurn(tt.history); got != tt.want {
+			t.Errorf("%s: followsServerTurn = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

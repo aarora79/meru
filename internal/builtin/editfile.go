@@ -23,8 +23,10 @@ const EditFile = "edit_file"
 // editFileArgs is the JSON object the model sends to edit_file.
 type editFileArgs struct {
 	Path string `json:"path"`
-	Old  string `json:"old"`
-	New  string `json:"new"`
+	// FilePath is another name for Path, as in write_file.
+	FilePath string `json:"file_path"`
+	Old      string `json:"old"`
+	New      string `json:"new"`
 	// All replaces every match; without it, old must match once, so an
 	// edit meant for one place can't change three.
 	All bool `json:"all"`
@@ -57,6 +59,9 @@ func (t *Tools) editFile(raw json.RawMessage) (string, error) {
 	if err := dec.Decode(&a); err != nil {
 		return "", fmt.Errorf("edit_file: the arguments aren't a valid JSON object for this tool: %v. Nothing changed", err)
 	}
+	if a.Path == "" {
+		a.Path = a.FilePath
+	}
 	if a.Old == "" {
 		return "", errors.New("edit_file: old is empty; pass the exact text to replace. Nothing changed")
 	}
@@ -81,8 +86,11 @@ func (t *Tools) editFile(raw json.RawMessage) (string, error) {
 		return "", fmt.Errorf("edit_file: %s is a symbolic link, and edit_file never writes through one. Nothing changed", a.Path)
 	case !info.Mode().IsRegular():
 		return "", fmt.Errorf("edit_file: %s isn't a plain file. Nothing changed", a.Path)
-	case info.Size() > maxWriteBytes:
+	case info.Size() > maxWriteBytes && !isPage(rel):
 		return "", fmt.Errorf("edit_file: %s is over the 1 MiB limit. Nothing changed", a.Path)
+	case info.Size() > maxPageBytes:
+		// A page with its pictures in may pass 1 MiB; see inline.go.
+		return "", fmt.Errorf("edit_file: %s is over the %d MB limit for a page. Nothing changed", a.Path, maxPageBytes>>20)
 	}
 	old, err := root.ReadFile(rel)
 	if err != nil {
@@ -98,7 +106,14 @@ func (t *Tools) editFile(raw json.RawMessage) (string, error) {
 			"or pass more of the text around the one to change. Nothing changed", a.Old, a.Path, n)
 	}
 	edited := strings.ReplaceAll(text, a.Old, a.New)
-	if len(edited) > maxWriteBytes {
+	// An HTML page gets any picture the edit names put in, as write_file
+	// does; the pictures already in it are data: URLs and stay as they are.
+	note := ""
+	if isPage(rel) {
+		if edited, note, err = t.inlinePictures(root, rel, edited); err != nil {
+			return "", fmt.Errorf("edit_file: %s: %w. Nothing changed", a.Path, err)
+		}
+	} else if len(edited) > maxWriteBytes {
 		return "", fmt.Errorf("edit_file: the edited file would be over the 1 MiB limit. Nothing changed")
 	}
 	backup := filepath.Join(filepath.Dir(rel), "."+filepath.Base(rel)+".bak")
@@ -113,7 +128,10 @@ func (t *Tools) editFile(raw json.RawMessage) (string, error) {
 	if n > 1 {
 		places = fmt.Sprintf("%d places", n)
 	}
-	return fmt.Sprintf("Replaced %s in %s.\n%s[%s](%s)", places, abs, linkLead, filepath.Base(abs), FileURL(abs)), nil
+	if note != "" {
+		note = " " + note
+	}
+	return fmt.Sprintf("Replaced %s in %s.%s\n%s[%s](%s)", places, abs, note, linkLead, filepath.Base(abs), FileURL(abs)), nil
 }
 
 // editFileSchema returns the JSON Schema for edit_file's arguments.

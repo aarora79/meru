@@ -145,3 +145,13 @@ func sessionWith(t *testing.T, incognito bool, lines []Line) *Session {
 	}
 	return s
 }
+
+func TestResultExcerptKeepsSavedPath(t *testing.T) {
+	result := "Attachment downloaded successfully!\nMessage ID: 1a1bbafda9ba28d1\nFilename: IMG_0584.jpeg\n" +
+		"Download URL: http://localhost:8000/attachments/" + strings.Repeat("x", 400) + "\n\n" +
+		"Saved at ~/meru-output/attachments/IMG_0584_b14ae49e.jpeg."
+	got := resultExcerpt(result)
+	if !strings.HasPrefix(got, "Saved at ~/meru-output/attachments/IMG_0584_b14ae49e.jpeg.") {
+		t.Errorf("excerpt = %q, want it to start with the saved path", got)
+	}
+}

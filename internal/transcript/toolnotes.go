@@ -142,19 +142,35 @@ func compactArgs(raw json.RawMessage) string {
 // resultExcerpt returns the start of a tool's result on one line, cut to
 // maxNoteTextChars. Lines that start "Cite " go: a result's "Cite this
 // table as [11]." names a number from its own turn, and the next turn
-// numbers its sources afresh.
+// numbers its sources afresh. A "Saved at …" line moves to the front (see
+// savedLead).
 func resultExcerpt(result string) string {
-	var kept []string
+	var kept, saved []string
 	for _, line := range strings.Split(result, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Cite ") {
+		switch {
+		case line == "" || strings.HasPrefix(line, "Cite "):
+			continue
+		case strings.HasPrefix(line, savedLead):
+			// The path of a file the call saved, such as a downloaded
+			// attachment, comes first, so the cut never drops it.
+			saved = append(saved, line)
 			continue
 		}
 		kept = append(kept, line)
 	}
+	kept = append(saved, kept...)
 	text := strings.Join(strings.Fields(strings.Join(kept, " ")), " ")
 	return cutRunes(text, maxNoteTextChars)
 }
+
+// savedLead starts the line a tool's result ends with when Meru saved a
+// file for it, such as an email attachment: "Saved at ~/meru-output/…". A
+// real chat downloaded a photo for a greeting card, and two turns later,
+// asked to put the photo in, the model searched the user's folders for one:
+// the cut to maxNoteTextChars had kept the attachment's long ID and dropped
+// the path. resultExcerpt puts this line first.
+const savedLead = "Saved at "
 
 // cutRunes returns s cut to at most n characters, with "…" in place of the
 // last one when it cut.

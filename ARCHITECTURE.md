@@ -930,8 +930,9 @@ and arguments and offers the choices `merud` sends, from these:
   memory without asking unless you list it in `confirm`; `write_file`, which asks
   before each file it saves because the shipped list names it; `edit_file`, which
   replaces exact text in a file in the output folder, such as a name in a page
-  Meru saved, keeps the file as it was in a hidden `.<name>.bak` beside it, and
-  asks before each edit for the same reason; the two web
+  Meru saved, keeps the file as it was in a hidden `.<name>.bak` beside it, puts
+  in the pictures an edit to an HTML page names, as `write_file` does (see
+  [Built-in skills](#built-in-skills)), and asks before each edit for the same reason; the two web
   tools, `web_search` and `web_fetch` (see [Web search](#web-search)); the
   clock tool, `datetime`; `about_meru`, which reports this setup; seven
   read-only file tools; and three read-only Apple Notes tools. `web_search`, `datetime`, `about_meru` and the file
@@ -1775,7 +1776,10 @@ order.
    URL, asks about the user's own records while a server is connected ("trip",
    "hotel", "receipt", "spent", "booked" and the like, so "what did I spend on
    my last trip" gets mail as well as the files), or names what a connected
-   server's tools act on ("email" for Gmail's tools). The
+   server's tools act on ("email" for Gmail's tools). A reply to a turn that
+   used a server's tools keeps them too, whatever its words: "yes, make the
+   card with the first photo" after a turn that read mail once routed to the
+   file search alone, and the model said it couldn't fetch the attachment. The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
@@ -2174,6 +2178,16 @@ stays the same from turn to turn and Ollama reuses its work on it. It speaks onl
 of Meru's own tools: an MCP tool such as a mail server's send tool says what it
 changes in its own description.
 
+When `write_file` is on, the line goes on:
+
+> You can't create or edit a picture's pixels. To make a card, a poster or a
+> collage, write an HTML page with write_file and name the user's photos in
+> <img src="..."> by their paths in the output folder, such as a downloaded
+> attachment's; write_file puts the photos into the page.
+
+A real chat asked for a greeting card from a family photo. The model offered
+photo edits it can't make, then wrote a page with no photo in it.
+
 A model can also make up who it is. Right after the honesty rule, every turn
 names Meru and the answer model:
 
@@ -2300,6 +2314,26 @@ aren't" for more than one, naming up to five and then "and 3 more". The check
 makes no model call and keeps at most 2 MiB of what the turn read. It misses
 an amount written in words, such as "ninety dollars", and passes a made-up
 amount that happens to equal any number the turn read, such as a room number.
+
+A fifth check looks for an answer that says Meru made or changed a file. The
+first check stays quiet once a call that could change something succeeded, and
+a real turn showed the gap: it downloaded a family photo, which succeeded, wrote
+nothing, and answered "I've downloaded your photo and rebuilt the card with it".
+So on a turn with no
+successful `write_file` or `edit_file` call, whatever else succeeded, `merud`
+reads the answer's sentences, leaving out code blocks, for one of two shapes. The
+first is "I", "I've" or "I have", with one word allowed between, and built,
+rebuilt, created, made, generated, designed, updated, wrote, embedded, included,
+added, put, saved, replaced, edited, changed or fixed, here or after an "and"
+later in the sentence. The second is "the card, page, file, image, picture, photo
+or document now uses, has, holds, includes, shows or contains". The sentence must
+also name a file, a page, a card, a picture, a document or a `~/` path. The same
+questions, offers and denials don't count. A match sends the `notice` "The answer
+says Meru made or changed a file, but this turn wrote or edited no file. Ask again
+to have it saved.", unless the first check already warned. The span and log line
+mark it as `unbacked_claim`. It misses a claim in words neither shape lists, such
+as "your card is ready", and flags "I made a list of the files in that folder" on
+a turn that only searched.
 
 ### Routing
 
@@ -2558,7 +2592,10 @@ and `tool_result` lines, pairing them by `call_id`, so nothing new is stored and
 an incognito chat reads them from memory. A web tool's line names the tool and
 how it ended, since the web notes hold what it found; a call `merud` made
 itself before the first round is left out. Lines that start "Cite " come out of
-the result, since the next turn numbers its sources afresh:
+the result, since the next turn numbers its sources afresh. A line that starts
+"Saved at ", which Meru adds when it saves a file for a call, such as a mail
+attachment, moves to the front of the excerpt, so the 300-character cut keeps
+the path:
 
 ```text
 (Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above; never copy it into an answer. Use it to say how you got that answer; run a tool again for anything it leaves out.)
@@ -2568,13 +2605,19 @@ the result, since the next turn numbers its sources afresh:
 Before the notes, a model asked how it had added up a sheet listed six rows
 that don't exist, and asked which tools it had used, four steps that never ran.
 
+Before the move, a model downloaded a family photo for a greeting card, and two
+turns later, asked to put the photo in, searched the user's folders for one and
+picked ID documents: the cut had kept the attachment's long ID and dropped its
+path.
+
 A user line gets an `images` field, the full paths of the copies in the uploads
 folder, only when the question carried images; the bytes stay in the files. An
 assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off`, `window_full`, `capped`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when a check on
 the answer warned, such as a claimed action with no successful tool call, a
-link to a file that isn't there, or a money amount the turn didn't read (see
+link to a file that isn't there, a money amount the turn didn't read, or a file
+the answer says Meru made on a turn that wrote none (see
 [Claims no tool backs](#claims-no-tool-backs)).
 
 A tool call's lines share a `call_id`, because the calls of one round run at the
@@ -3418,6 +3461,27 @@ word test with no model call.
   "Saved: [report.html](file://…)", under the answer, and the transcript keeps
   it, so a later question sees the true path. A clicked file link to nothing
   says the file isn't on this computer.
+- **A page can hold the user's photos.** When `write_file` saves an `.html` or
+  `.htm` file, it reads each `<img src="…">` and CSS `url(…)` that names a picture
+  (`.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` or `.svg`) inside the output folder,
+  and puts the picture itself into the page as a `data:` URL, so the page shows it
+  on its own, on a phone too. The path may be relative to the page, start with
+  `~/`, be absolute or be a `file://` URL. A web address, a `data:` URL and a path
+  outside the folder, or one that climbs out with `..`, stay as they are. `merud`
+  reads each picture through the `os.Root` on the output folder, and reads a
+  picture the page names twice only once. A picture over 16 MB stays out, and a
+  page that its pictures would take past 40 MB fails the call, which then writes
+  nothing. The result says "Put 2 pictures into the page, so it shows the pictures
+  on its own, on a phone too:", names each with its size, and lists any it left
+  out with the reason, such as no such file or outside the folder. `edit_file`
+  does the same for the pictures an edit names, and edits a page up to 40 MB,
+  where other files keep the 1 MiB limit. The tool's description tells the model
+  that it can't make or edit a picture's pixels, and to use only pictures the user
+  gave or named, never ID cards, certificates or other documents. A real chat
+  showed the need: it downloaded a family photo for a greeting card, wrote a page
+  with no picture in it, and said the photo was "embedded (base64)". A model
+  writes text and has no way to write a photo's bytes; now it writes the photo's
+  path and `merud` does the rest.
 - **These skills want the `full` profile.** The `lite` model can run them, but a 2B
   model writes weaker explainers and reads pages less well.
 
