@@ -1057,10 +1057,12 @@ what the turn tried, from `t.tried`:
 
 `plansOnly` reads a reply as a plan when it is under 280 characters, opens on
 "Let me", "I'll", "I'm going to", "Next, I" or "Now I", and holds no list or
-table; "Let me know…" and "I'll need…" don't count. A short reply that ends
-on a colon after a sentence that opens so counts too: "Perfect! Now I have all
-three photos. Let me view the third one and then judge:" ended a real turn
-where the next step should have run. `t.tried` gets one entry per
+table; "Let me know…" and "I'll need…" don't count. A short reply whose last
+sentence opens so counts too, whatever came before: "Perfect! Now I have all
+three photos. Let me view the third one and then judge:" and "Looking at this
+photo, beautiful family shot! Now let me check the other two photos." both
+ended real turns where the next step should have run. A last sentence that
+opens "Let me know" still closes an answer. `t.tried` gets one entry per
 call the model made, in call order, filled after a round's goroutines all end,
 so the list never depends on which call finished first. `tried` writes each
 tool once with a count and its failures, such as "grep ×2 (you said no)".
@@ -1247,7 +1249,7 @@ card, a picture, a document or a `~/` path:
 | Pattern | Catches |
 | --- | --- |
 | `claimBuilt` | "I built the card", "I've rebuilt it", "I've downloaded your photo and rebuilt the card", but not "I found the photos you made" |
-| `claimThingNow` | "The card now uses your photo" |
+| `claimThingNow` | "The card now uses your photo", "The card is ready" |
 
 `claimBuilt` has two halves joined by `|`, which means "or" in a regular
 expression. The first is "I", "I've" or "I have", one word allowed between,

@@ -238,12 +238,13 @@ func claimsAction(text string) bool {
 // The file-claim rules, for claimsFileWork. claimBuilt matches "I built the
 // card", "I've rebuilt it", "I embedded the photo", and a second verb after
 // "and", as in "I've downloaded your photo and rebuilt the card", but not
-// "I found the photos you made"; claimThingNow
-// matches "The card now uses your photo". fileThing names what such a
-// claim is about: a file, a page, a card or a picture.
+// "I found the photos you made"; claimThingNow matches "The card now uses
+// your photo" and "The card is ready", which a real turn wrote with no file
+// written. fileThing names what such a claim is about: a file, a page, a
+// card or a picture.
 var (
 	claimBuilt    = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b|\bI(?:'ve|\s+have)?\s+\w+[^!?\n]*?\band\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b`)
-	claimThingNow = regexp.MustCompile(`(?i)\bthe\s+(?:card|page|file|html|image|picture|photo|document)\s+now\s+(?:uses|has|holds|includes|shows|contains)\b`)
+	claimThingNow = regexp.MustCompile(`(?i)\bthe\s+(?:card|page|file|html|image|picture|photo|document)\s+now\s+(?:uses|has|holds|includes|shows|contains)\b|\b(?:the|your)\s+(?:card|page|file|html|image|picture|poster|document)(?:'s|\s+is)\s+(?:ready|done|saved|finished|complete)\b`)
 	fileThing     = regexp.MustCompile(`(?i)\b(?:file|files|html|page|card|image|picture|photo|png|jpe?g|document|report|draft|dashboard)\b|~/`)
 )
 

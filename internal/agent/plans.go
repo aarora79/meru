@@ -45,15 +45,21 @@ func plansOnly(text string) bool {
 	if planOpening.MatchString(text) {
 		return true
 	}
-	// A reply that ends on a colon after a plan, as in "Perfect! Now I have
-	// all three photos. Let me view the third one and then judge:", stops
-	// where its next step should start. A real turn ended there, and the
-	// user had to ask "done?".
-	if !strings.HasSuffix(text, ":") {
+	// A reply whose last sentence announces the next step stops where that
+	// step should start: "Perfect! Now I have all three photos. Let me view
+	// the third one and then judge:" and "Looking at this photo, beautiful
+	// family shot! Now let me check the other two photos." both ended real
+	// turns, and the user had to ask again. "…Let me know if you need more."
+	// still closes an answer.
+	ss := sentences(text)
+	if len(ss) < 2 {
 		return false
 	}
-	ss := sentences(text)
-	return len(ss) > 0 && planOpening.MatchString(ss[len(ss)-1])
+	last := strings.ToLower(ss[len(ss)-1])
+	if strings.HasPrefix(last, "let me know") || strings.HasPrefix(last, "now let me know") {
+		return false
+	}
+	return planOpening.MatchString(last) || strings.HasPrefix(last, "now let me")
 }
 
 // planNudge is the message a turn adds, once, after a round that only
