@@ -110,7 +110,15 @@ func (t *Tools) attachment(p string, limit int) string {
 	shown := t.show(p)
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n\nSaved at %s.", shown)
-
+	// A picture has no text to read, but "Meru can't read it" told a real
+	// model it couldn't look at pictures at all, and it said so to the
+	// user. Say what to do with one instead.
+	if _, ok := pictureTypes[strings.ToLower(filepath.Ext(p))]; ok {
+		fmt.Fprintf(&b, " It's a picture: look at it with view_image, or put it in an HTML page with "+
+			"<img src=\"%s\">, which write_file puts into the page. The server deletes it after an hour; "+
+			"download it again after that.\n", shown)
+		return b.String()
+	}
 	c, err := t.files.Check(p)
 	if err == nil && c.Reason != "" {
 		fmt.Fprintf(&b, " Meru can't read it: %s.\n", why(c.Reason))

@@ -657,6 +657,15 @@ In a real turn the model then failed to open it: it downloaded the same PDF four
 times, looked in `~/meru-output/downloads`, made up a tool and an attachment ID,
 found the file with `list_folder` in its last round and ran out of rounds.
 
+For a picture, `attachment` writes no text: the line after "Saved at" says
+"It's a picture: look at it with view_image, or put it in an HTML page with
+`<img src="…">`, which write_file puts into the page", and that the server
+deletes the file after an hour. The old line, "Meru can't read it: media
+file", led a real model to tell the user it couldn't look at pictures.
+`write_file` and `edit_file` also take `file_path` as another name for
+`path`, after a model's call with `file_path` failed and its turn ran out of
+time before it tried again.
+
 `AttachmentText` takes that step off the model. `dispatch` calls it, through
 `Options.Attachments`, for every MCP or A2A call that ends `ok`, with the
 result's text and the time the call began. It lists `<output_dir>/attachments/`

@@ -27,7 +27,8 @@ var planOpening = regexp.MustCompile(`(?i)^(let me|let's|i'll|i will|i'm going t
 
 // plansOnly reports whether text only announces the model's next step,
 // with no answer in it: short, opening on a phrase such as "Let me" or
-// "I'll", and holding no list or table. "Let me know…" and "I'll need…",
+// "I'll", or ending on a colon after a sentence that opens so, and holding
+// no list or table. "Let me know…" and "I'll need…",
 // a question back to the user, don't count.
 func plansOnly(text string) bool {
 	text = strings.TrimSpace(text)
@@ -41,7 +42,18 @@ func plansOnly(text string) bool {
 	if strings.HasPrefix(lower, "let me know") || strings.HasPrefix(lower, "i'll need") || strings.HasPrefix(lower, "i will need") {
 		return false
 	}
-	return planOpening.MatchString(text)
+	if planOpening.MatchString(text) {
+		return true
+	}
+	// A reply that ends on a colon after a plan, as in "Perfect! Now I have
+	// all three photos. Let me view the third one and then judge:", stops
+	// where its next step should start. A real turn ended there, and the
+	// user had to ask "done?".
+	if !strings.HasSuffix(text, ":") {
+		return false
+	}
+	ss := sentences(text)
+	return len(ss) > 0 && planOpening.MatchString(ss[len(ss)-1])
 }
 
 // planNudge is the message a turn adds, once, after a round that only
@@ -148,9 +160,13 @@ func failedWord(outcome string) string {
 // history carries after an answer. A model must never write them itself.
 var meruNoteStarts = []string{
 	"[Meru stopped here:",
-	"(Meru's record of the tools",
+	toolNotesStart,
 	"(Meru's notes on the pages",
 }
+
+// toolNotesStart opens the tool notes the history carries after an answer
+// (transcript's toolNotesHead). followsServerTurn reads the notes after it.
+const toolNotesStart = "(Meru's record of the tools"
 
 // withoutMeruNotes returns text with any of Meru's own notes the model
 // copied into it cut out, and the rest trimmed. A cap note ends at its

@@ -350,3 +350,43 @@ func sharedSuffix(a, b string) int {
 	}
 	return n
 }
+
+// signFollowsServer is the words for the log line when a turn keeps the
+// tools because it follows a turn that used a server's (followsServerTurn).
+const signFollowsServer = "follows a turn that used a server's tools"
+
+// followsServerTurn reports whether the latest answer in history used a
+// tool from an MCP server, such as the google server's mail tools: its tool
+// notes (the "(Meru's record of the tools…" block the history adds after an
+// answer) name a call as server.tool. The next turn then keeps the tools,
+// whatever the router makes of its words.
+//
+// A real chat showed why. Meru read an email and offered to make a card
+// from its attached photo; the user answered "yes create the html by
+// embedding the photo and ok use the first one", the router sent that to
+// search, which offers the file tools alone, and the model, with no mail
+// tool, said it couldn't download attachments and asked the user to.
+func followsServerTurn(history []engine.Message) bool {
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
+		if m.Role != engine.RoleAssistant {
+			continue
+		}
+		at := strings.Index(m.Content, toolNotesStart)
+		if at < 0 {
+			return false
+		}
+		for _, line := range strings.Split(m.Content[at:], "\n") {
+			name, ok := strings.CutPrefix(line, "- ")
+			if !ok {
+				continue
+			}
+			name, _, _ = strings.Cut(name, " ")
+			if toolKind(name) == dispatch.KindMCP {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}

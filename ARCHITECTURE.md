@@ -1776,7 +1776,10 @@ order.
    URL, asks about the user's own records while a server is connected ("trip",
    "hotel", "receipt", "spent", "booked" and the like, so "what did I spend on
    my last trip" gets mail as well as the files), or names what a connected
-   server's tools act on ("email" for Gmail's tools). The
+   server's tools act on ("email" for Gmail's tools). A reply to a turn that
+   used a server's tools keeps them too, whatever its words: "yes, make the
+   card with the first photo" after a turn that read mail once routed to the
+   file search alone, and the model said it couldn't fetch the attachment. The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate

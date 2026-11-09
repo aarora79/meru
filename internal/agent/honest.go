@@ -79,6 +79,11 @@ func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 	// photo in it. With write_file on, the line says what it can do instead.
 	if strings.HasPrefix(write, "You can write files") {
 		line += " " + makePictureNote
+		// A model with the photos saved told the user "I cannot view
+		// images directly"; view_image was on the turn.
+		if slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.ViewImage }) {
+			line += " " + seePictureNote
+		}
 	}
 	if slices.ContainsFunc(tools, func(s engine.ToolSpec) bool { return s.Name == builtin.AboutMeru }) {
 		line += " " + selfNote
@@ -93,6 +98,9 @@ func canDoNote(tools []engine.ToolSpec, outputDir string) string {
 const makePictureNote = "You can't create or edit a picture's pixels. To make a card, a poster or a collage, " +
 	"write an HTML page with write_file and name the user's photos in <img src=\"...\"> by their paths in the output folder, " +
 	"such as a downloaded attachment's; write_file puts the photos into the page."
+
+// seePictureNote follows makePictureNote when view_image is on.
+const seePictureNote = "You can look at a picture with view_image, such as a photo to choose for a card."
 
 // selfNote follows canDoNote's line when config allows about_meru. A real
 // turn showed why. Asked "which model are you using" and then "tell me the

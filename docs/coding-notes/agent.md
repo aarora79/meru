@@ -268,7 +268,21 @@ The line reads "You can't write files" when `write_file` is off, and drops
 not what the route offers, so it stays the same on every turn and Ollama keeps
 reusing its work on the prompt's opening.
 
-When `write_file` is on, `makePictureNote` follows the line:
+When `write_file` is on, `makePictureNote` follows the line, and when
+`view_image` is on as well, `seePictureNote` follows that: "You can look at a
+picture with view_image, such as a photo to choose for a card." A model with
+the photos saved had told the user it couldn't view images.
+
+`followsServerTurn` (toolnouns.go) keeps the tools on a reply to a turn that
+used a server's tools. It finds the latest assistant message in the history,
+looks for the tool notes after `toolNotesStart`, and reports true when a
+note's call is named `server.tool` (`toolKind` gives `KindMCP`). `respond`
+then sets `target` to `signFollowsServer`, and the usual `withTools` step
+widens the route. `TestReplyKeepsServerTools` runs two turns: the first
+downloads a photo through a mail tool, the second routes to `search` and
+still gets the mail tool.
+
+The text of `makePictureNote`:
 
 ```text
 You can't create or edit a picture's pixels. To make a card, a poster or a
@@ -1043,7 +1057,10 @@ what the turn tried, from `t.tried`:
 
 `plansOnly` reads a reply as a plan when it is under 280 characters, opens on
 "Let me", "I'll", "I'm going to", "Next, I" or "Now I", and holds no list or
-table; "Let me know…" and "I'll need…" don't count. `t.tried` gets one entry per
+table; "Let me know…" and "I'll need…" don't count. A short reply that ends
+on a colon after a sentence that opens so counts too: "Perfect! Now I have all
+three photos. Let me view the third one and then judge:" ended a real turn
+where the next step should have run. `t.tried` gets one entry per
 call the model made, in call order, filled after a round's goroutines all end,
 so the list never depends on which call finished first. `tried` writes each
 tool once with a count and its failures, such as "grep ×2 (you said no)".

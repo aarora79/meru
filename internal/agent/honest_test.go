@@ -89,6 +89,8 @@ func TestCanDoNote(t *testing.T) {
 			"You can't write files. Meru's own tools can't move, rename or delete files, or run programs."},
 		{"commands, sorted", []string{"cmd.git-log", builtin.WriteFile, "cmd.du", "google.send_gmail_message"}, "~/meru-output",
 			"You can write files only inside ~/meru-output, with write_file. Meru's own tools can't move, rename or delete files, or run programs other than cmd.du, cmd.git-log." + " " + makePictureNote},
+		{"write_file and view_image", []string{builtin.WriteFile, builtin.ViewImage}, "~/meru-output",
+			"You can write files only inside ~/meru-output, with write_file. Meru's own tools can't move, rename or delete files, or run programs. " + makePictureNote + " " + seePictureNote},
 		{"about_meru", []string{builtin.AboutMeru, builtin.DateTime}, "~/meru-output",
 			"You can't write files. Meru's own tools can't move, rename or delete files, or run programs. " + selfNote},
 	}

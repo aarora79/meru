@@ -785,6 +785,11 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	if a.tools != nil {
 		target = toolTarget(question, a.tools.Tools())
 	}
+	// A reply that carries on from a turn that used a server's tools keeps
+	// them; see followsServerTurn.
+	if target == "" && a.tools != nil && followsServerTurn(history) {
+		target = signFollowsServer
+	}
 	if r, ok := withTools(dec.Route); ok && target != "" {
 		a.log.DebugContext(ctx, "route changed: the question "+target,
 			"from", dec.Route, "to", r, "confidence", dec.Confidence)

@@ -87,6 +87,8 @@ func TestAttachmentText(t *testing.T) {
 		{name: "a name not in the folder", files: map[string]string{folio: string(pdf)}, text: result("Dana_Reyes_receipt.pdf"), none: true},
 		{name: "a symlink", link: "folio_link.md", text: result("folio_link.md"),
 			want: []string{"/attachments/folio_link.md. Meru can't read it: symbolic link."}},
+		{name: "a picture", files: map[string]string{"IMG_0584_d4d0.jpeg": "\xff\xd8\xff"}, text: result("IMG_0584_d4d0.jpeg"),
+			want: []string{"/attachments/IMG_0584_d4d0.jpeg. It's a picture: look at it with view_image", `<img src="`}},
 		{name: "a file type Meru doesn't read", files: map[string]string{"folio.zip": "PK"}, text: result("folio.zip"),
 			want: []string{"/attachments/folio.zip. Meru can't read it: "}},
 		{name: "a long file is cut", files: map[string]string{"folio.md": longText()}, text: result("folio.md"),
@@ -174,7 +176,7 @@ func TestAttachmentText(t *testing.T) {
 
 			// A built-in's result is left alone, even when it names a
 			// fresh attachment: read_file returns the page it was asked for.
-			if len(tt.files) != 1 || strings.Contains(added, "can't read it") {
+			if len(tt.files) != 1 || strings.Contains(added, "can't read it") || strings.Contains(added, "It's a picture") {
 				return
 			}
 			for name := range tt.files {

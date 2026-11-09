@@ -111,3 +111,11 @@ func TestEditPagePutsPicturesIn(t *testing.T) {
 		t.Errorf("second edit didn't land: %.120s", got)
 	}
 }
+
+func TestWriteFileTakesFilePath(t *testing.T) {
+	tools, out := writeTools(t)
+	res := callWrite(t, tools, `{"file_path":"card.html","content":"<h1>Happy Diwali</h1>"}`)
+	if _, err := os.Stat(filepath.Join(out, "card.html")); err != nil {
+		t.Fatalf("file_path didn't write the file: %v (result %q)", err, res.Text)
+	}
+}

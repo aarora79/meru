@@ -23,8 +23,10 @@ const EditFile = "edit_file"
 // editFileArgs is the JSON object the model sends to edit_file.
 type editFileArgs struct {
 	Path string `json:"path"`
-	Old  string `json:"old"`
-	New  string `json:"new"`
+	// FilePath is another name for Path, as in write_file.
+	FilePath string `json:"file_path"`
+	Old      string `json:"old"`
+	New      string `json:"new"`
 	// All replaces every match; without it, old must match once, so an
 	// edit meant for one place can't change three.
 	All bool `json:"all"`
@@ -56,6 +58,9 @@ func (t *Tools) editFile(raw json.RawMessage) (string, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
 		return "", fmt.Errorf("edit_file: the arguments aren't a valid JSON object for this tool: %v. Nothing changed", err)
+	}
+	if a.Path == "" {
+		a.Path = a.FilePath
 	}
 	if a.Old == "" {
 		return "", errors.New("edit_file: old is empty; pass the exact text to replace. Nothing changed")

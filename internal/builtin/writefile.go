@@ -27,7 +27,11 @@ const maxWriteBytes = 1 << 20
 
 // writeFileArgs is the JSON object the model sends to write_file.
 type writeFileArgs struct {
-	Path      string `json:"path"`
+	Path string `json:"path"`
+	// FilePath is another name for Path. A real model called write_file
+	// with "file_path", the call failed, and the turn ran out of time
+	// before it tried again; the page it had written was lost.
+	FilePath  string `json:"file_path"`
 	Content   string `json:"content"`
 	Overwrite bool   `json:"overwrite"`
 }
@@ -61,6 +65,9 @@ func (t *Tools) writeFile(raw json.RawMessage) (string, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
 		return "", fmt.Errorf("write_file: the arguments aren't a valid JSON object for this tool: %v. Nothing was written", err)
+	}
+	if a.Path == "" {
+		a.Path = a.FilePath
 	}
 	rel, err := cleanRelPath(t.insideOutput(a.Path))
 	if err != nil {
