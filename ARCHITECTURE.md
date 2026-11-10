@@ -2337,6 +2337,22 @@ mark it as `unbacked_claim`. It misses a claim in words neither shape lists, suc
 as "your card is ready", and flags "I made a list of the files in that folder" on
 a turn that only searched.
 
+A sixth check looks for a tool call that failed and that the answer goes
+without. A real turn called a server's list tool without the account ID the tool
+needs, got the server's refusal, never called again, and answered "nothing
+today" from a file three weeks old. Two things now help. `dispatch` ends a failed
+call's text, when the server says arguments are missing (`missing properties:
+["account_number"]`), with "Call it again with account_number. If you don't know
+the value, another of your tools may give it first", so the model can fix the
+call on its next round. And after a whole answer, `merud` looks for a call that
+ended `error` or `timeout` with no later successful call to the same tool. Unless
+the answer says something didn't work, with a word such as "failed", "couldn't"
+or "unable" outside its code blocks, the `notice` event says "<tool> failed, so
+this answer goes without what it would have read. Check the answer before you
+rely on it.", or names each tool when more than one failed. A call the user
+declined, or one the allow lists refused, doesn't count. It misses an answer that
+owns up in other words, such as "I have no data on that".
+
 ### Routing
 
 A small model asked to write its route as JSON (JavaScript Object Notation) fails in

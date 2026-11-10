@@ -592,6 +592,11 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 				notice = strings.TrimSpace(notice + " " + n)
 			}
 		}
+		// A tool call that failed and was never redone, which the answer
+		// doesn't own up to. See failedCallsNotice.
+		if n := failedCallsNotice(t.tried, rep.text); n != "" {
+			notice = strings.TrimSpace(notice + " " + n)
+		}
 	}
 	if t.noTools != "" {
 		notice = strings.TrimSpace(noToolsText(t.noTools) + " " + notice)
