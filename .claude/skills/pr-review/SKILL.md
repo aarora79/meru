@@ -210,6 +210,8 @@ description argues for the exception and the Chief Architect accepts it.
       `gh pr view {number} --json commits,body`.
 - [ ] No cloud vendor named in docs, tests or examples; examples use the catalog
       servers (`google`, `obsidian`) and `web_search`, with no trading or finance.
+      A setup page in `docs/faq/` for a finance MCP server is the one exception, and
+      it allows only tools that read.
 
 ### Step 4: Run the checks
 

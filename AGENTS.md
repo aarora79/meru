@@ -160,7 +160,9 @@ read by eye.
 
 Examples come from the catalog servers (`google` for mail and calendar, `obsidian`
 for notes) and the built-in `web_search`, and the repository carries no trading or
-personal-finance examples.
+personal-finance examples. One exception: a page in `docs/faq/` may give the setup
+steps for a finance MCP server, such as Robinhood's or Yahoo Finance's, and it
+allows only tools that read, never one that places, changes or cancels an order.
 
 The skills `writing`, `explainer` and `poster-making` come from the owner's
 `my-ai-assets` repo; don't rewrite them here. Meru also ships copies of `writing` and
