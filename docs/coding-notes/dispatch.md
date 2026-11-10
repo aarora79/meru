@@ -1,7 +1,7 @@
 # dispatch
 
 **Code:** `internal/dispatch/` (`doc.go`, `dispatch.go`, `dispatcher.go`,
-`dispatcher_test.go`, `base64.go`, `base64_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
+`dispatcher_test.go`, `base64.go`, `base64_test.go`, `retry.go`, `retry_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
 commands backend lives in [commands](commands.md).
 **Milestone:** v0.3
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
@@ -377,6 +377,21 @@ itself before the model's first round, such as the web search for a question
 that asks for the web, and `""` for a call the model asked for. `Dispatch`
 copies it to the `tool_call` line and the row, and changes nothing else: the
 call takes the same path, with the same allowlist, approval and audit.
+
+### retry.go: a hint after missing arguments
+
+A server that checks a call's arguments against the tool's schema refuses a
+call that leaves one out, with an error such as `required: missing
+properties: ["account_number"]`. A model that reads only that often gives up.
+So when a call fails, by an error from the backend or a result the tool marks
+as an error, `Dispatch` adds `retryHint`'s sentence to the text: "Call it
+again with account_number. If you don't know the value, another of your tools
+may give it first, such as one that lists the accounts or items it belongs
+to." `missingArgs` is a regular expression with one group, the text between
+the brackets; `FindStringSubmatch` returns the whole match and then that
+group, or nil when there's no match. Any other error gets no sentence.
+`TestRetryHint` and the "missing argument gets the retry hint" case in
+`TestDispatchOutcomes` cover it.
 
 ### Incognito calls
 

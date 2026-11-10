@@ -518,6 +518,42 @@ func missingNotice(paths []string) string {
 	return "The answer links files that don't exist on this computer: " + strings.Join(paths, ", ") + "."
 }
 
+// failureWords matches an answer that says something didn't work, such as
+// "the call failed" or "I couldn't reach the server", so the failed-call
+// notice doesn't repeat what the answer already says.
+var failureWords = regexp.MustCompile(`(?i)\b(fail(s|ed|ure)?|couldn't|could not|can't|cannot|unable|error|didn't work|wasn't able|not able)\b`)
+
+// failedCallsNotice returns the warning a client shows under an answer
+// when a tool call this turn failed or timed out and no later call to the
+// same tool succeeded, so the answer went without what that tool would
+// have read. It returns "" when every call worked, or when the answer
+// itself says something didn't work. In a real turn a lookup failed for a
+// missing argument, and the answer said "nothing today" from an old file.
+func failedCallsNotice(tried []triedCall, answer string) string {
+	var failed []string
+	for i, c := range tried {
+		if c.outcome != dispatch.OutcomeError && c.outcome != dispatch.OutcomeTimeout {
+			continue
+		}
+		// slices.ContainsFunc reports whether any later call to the same
+		// tool succeeded: then the model fixed the call.
+		redone := slices.ContainsFunc(tried[i+1:], func(l triedCall) bool {
+			return l.name == c.name && l.outcome == dispatch.OutcomeOK
+		})
+		if !redone && !slices.Contains(failed, c.name) {
+			failed = append(failed, c.name)
+		}
+	}
+	if len(failed) == 0 || failureWords.MatchString(withoutCode(answer)) {
+		return ""
+	}
+	if len(failed) == 1 {
+		return failed[0] + " failed, so this answer goes without what it would have read. Check the answer before you rely on it."
+	}
+	return "These tool calls failed, so this answer goes without what they would have read: " +
+		strings.Join(failed, ", ") + ". Check the answer before you rely on it."
+}
+
 // shortTool returns the last dot-separated part of a tool name, in lower
 // case, with a closing stop or comma cut: "notes.search" and "Search." both
 // give "search". The model sees "notes.search", the transcript records

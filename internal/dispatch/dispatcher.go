@@ -390,6 +390,9 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 	ran = time.Since(callStart)
 	switch {
 	case err == nil && res.IsError:
+		// A tool that reports its own error may say an argument is
+		// missing too; see retryHint.
+		res.Text += retryHint(res.Text)
 		return res, OutcomeError, approval, ran
 	case err == nil:
 		return res, OutcomeOK, approval, ran
@@ -401,7 +404,7 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 	case errors.Is(err, context.DeadlineExceeded):
 		return Result{IsError: true, Text: "The tool didn't answer in time, so the call stopped."}, OutcomeTimeout, approval, ran
 	default:
-		return Result{IsError: true, Text: "The tool call failed: " + err.Error()}, OutcomeError, approval, ran
+		return Result{IsError: true, Text: "The tool call failed: " + err.Error() + retryHint(err.Error())}, OutcomeError, approval, ran
 	}
 }
 

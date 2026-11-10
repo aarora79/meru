@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`, `failed_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1266,6 +1266,31 @@ Ask again to have it saved."
 mustn't match, and `TestFileClaimAfterADownload` replays the turn with a fake
 model: one successful download, no write, and the claim, which must get the
 notice.
+
+### A failed call the answer goes without (honest.go)
+
+A real turn called a server's list tool without the account ID it needs. The
+server refused, the model never called again, and it answered "nothing today"
+from a file three weeks old. So `Handle`, after the amounts check, runs:
+
+```go
+if n := failedCallsNotice(t.tried, rep.text); n != "" {
+    notice = strings.TrimSpace(notice + " " + n)
+}
+```
+
+`t.tried` holds each call the model made this turn, with its outcome.
+`failedCallsNotice` keeps each tool whose call ended `error` or `timeout` and
+that no later call to the same tool fixed. `slices.ContainsFunc` answers
+"does any later call match?" with a small function, so the loop reads as the
+rule it checks. A call the user declined, or one the allow lists refused,
+doesn't count: the user knows about those. The notice stays quiet when the
+answer itself says something didn't work, which `failureWords` matches with
+words such as "failed", "couldn't" and "unable", outside code blocks.
+
+`TestFailedCallsNotice` covers a fixed call, an answer that owns up, a timeout,
+a declined call and two failed tools; `TestFailedCallNoticeInATurn` replays the
+real turn with a fake model and a tool that fails for a missing argument.
 
 ### Amounts the turn didn't read (amounts.go)
 

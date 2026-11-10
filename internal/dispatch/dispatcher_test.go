@@ -248,6 +248,11 @@ func TestDispatchOutcomes(t *testing.T) {
 		{name: "cancelled mid-call", tool: "web.search", cancel: true,
 			call:        func(ctx context.Context) (Result, error) { return Result{}, ctx.Err() },
 			wantOutcome: OutcomeCancelled, wantRan: true, wantLines: []string{"tool_call", "tool_result"}},
+		{name: "missing argument gets the retry hint", tool: "web.search",
+			call: func(context.Context) (Result, error) {
+				return Result{}, errors.New(`invalid params: validating root: required: missing properties: ["project_id"]`)
+			},
+			wantOutcome: OutcomeError, wantRan: true, wantLines: []string{"tool_call", "tool_result"}, wantText: "Call it again with project_id."},
 		{name: "transcript write fails", tool: "web.search", edit: func(c *Call) {
 			c.Append = func(transcript.Line) error { return errors.New("disk full") }
 		}, wantOutcome: OutcomeError, wantText: "couldn't record"},
