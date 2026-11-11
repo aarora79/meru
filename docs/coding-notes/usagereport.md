@@ -152,7 +152,10 @@ client takes effect at the next check without a restart. `handle` answers the
 `usage_report` op. For "on" and "off" it writes `send` through
 `catalog.SetTableString` under the config lock, then adds the `dismissed` line.
 That order is on purpose: if `merud` stops between the two, the notice shows
-again, which is the safe way to fail.
+again, which is the safe way to fail. "On" adds a `seen` line before the
+`dismissed` one. Without it, `meru report on` typed before any app ran would
+hide the banner for good, and the report would wait forever for a client to
+show it.
 
 ## Go ideas used here
 

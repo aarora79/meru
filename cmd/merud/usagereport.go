@@ -40,12 +40,17 @@ func (s *reportService) settings() (usagereport.Settings, error) {
 
 // handle answers OpUsageReport. Every action replies with the status after
 // it, so a client redraws from one answer. "send" sends today's report now,
-// if the rules allow it; otherwise the client gets the reason as an error. "on" and "off" write the choice
-// to config.toml first and add the "dismissed" line second: if merud stops
-// between the two, the notice shows again, which is the safe way to fail.
+// if the rules allow it; otherwise the client gets the reason as an error.
+// "on" and "off" write the choice to config.toml first and add the
+// "dismissed" line second: if merud stops between the two, the notice shows
+// again, which is the safe way to fail. "on" also marks the notice seen,
+// since the user who turns the report on knows of it; otherwise "on" before
+// any client showed the banner would hide the banner for good, and merud,
+// which waits for "seen", would never send.
 func (s *reportService) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
 	switch req.Kind {
 	case "", rpc.UsageReportStatusKind:
+		// A status check changes nothing; the reply below is the status.
 	case rpc.UsageReportSeen:
 		if err := s.reporter.Mark(usagereport.EntrySeen, string(req.Source)); err != nil {
 			return err
@@ -66,6 +71,11 @@ func (s *reportService) handle(ctx context.Context, req rpc.Request, emit func(r
 	case rpc.UsageReportOn, rpc.UsageReportOff:
 		if err := s.setSend(req.Kind); err != nil {
 			return err
+		}
+		if req.Kind == rpc.UsageReportOn {
+			if err := s.reporter.Mark(usagereport.EntrySeen, string(req.Source)); err != nil {
+				return err
+			}
 		}
 		if err := s.reporter.Mark(usagereport.EntryDismissed, string(req.Source)); err != nil {
 			return err

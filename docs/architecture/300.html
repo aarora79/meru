@@ -3519,6 +3519,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 <ul>
   <li><b>A new install</b> asks during setup. <code>meru setup</code> and the Mac installer's last step show the fields and an example body, with the answer on, and write <code>send = "on"</code> or <code>"off"</code>. With <code>DO_NOT_TRACK</code> set, they write <code>"off"</code> without asking.</li>
   <li><b>An upgrade</b> from a release without the report has no <code>send</code> line, which reads as <code>""</code>, not chosen. Both clients ask, and <code>merud</code> sends nothing until the user says yes. An install script with no terminal writes the template's <code>send = ""</code>, so it behaves the same way.</li>
+  <li><b>Turning it on counts as seeing the notice.</b> "On" from any client, even <code>meru report on</code> before an app ran, marks the notice seen, since the user who chose it knows of it. "Off" marks nothing.</li>
   <li><b>The model never chooses.</b> No built-in tool names <code>[usage_report]</code>, and a policy test keeps it that way.</li>
 </ul>
 

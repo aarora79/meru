@@ -6016,6 +6016,9 @@ refused send says why.
   reads as `""`, not chosen. Both clients ask, and `merud` sends nothing until the
   user says yes. An install script with no terminal writes the template's
   `send = ""`, so it behaves the same way.
+- **Turning it on counts as seeing the notice.** "On" from any client, even
+  `meru report on` before an app ran, marks the notice seen, since the user who
+  chose it knows of it. "Off" marks nothing.
 - **The model never chooses.** No built-in tool names `[usage_report]`, and a
   policy test keeps it that way.
 

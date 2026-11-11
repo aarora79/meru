@@ -116,3 +116,32 @@ func TestAboutMeruNamesReport(t *testing.T) {
 		}
 	}
 }
+
+// TestOnBeforeNoticeCanSend checks "on" before any client showed the
+// banner, as `meru report on` in a terminal does: the choice also marks the
+// notice seen, so the report isn't left waiting for a banner that the
+// choice itself hid. The first report then waits a day, as usual, and Send
+// today's now can go at once.
+func TestOnBeforeNoticeCanSend(t *testing.T) {
+	s := newReportTest(t)
+	st := ask(t, s, rpc.UsageReportOn)
+	if strings.Contains(st.Blocked, "Waiting for meru chat") {
+		t.Errorf("after on: Blocked = %q; the report would wait for a notice that never shows", st.Blocked)
+	}
+	if !strings.Contains(st.Blocked, "tomorrow") || !st.CanSend || st.Banner != "" {
+		t.Errorf("after on: blocked %q, can send %v, banner %q; want the first-day wait, a live button and no banner",
+			st.Blocked, st.CanSend, st.Banner)
+	}
+	b, _ := os.ReadFile(filepath.Join(filepath.Dir(s.configPath), usagereport.FileName))
+	if strings.Count(string(b), `"type":"seen"`) != 1 {
+		t.Errorf("record holds\n%s\nwant one seen line", b)
+	}
+
+	// "off" alone marks nothing seen: a user who says no gave no consent.
+	off := newReportTest(t)
+	ask(t, off, rpc.UsageReportOff)
+	b, _ = os.ReadFile(filepath.Join(filepath.Dir(off.configPath), usagereport.FileName))
+	if strings.Contains(string(b), `"type":"seen"`) {
+		t.Errorf("off wrote a seen line:\n%s", b)
+	}
+}
