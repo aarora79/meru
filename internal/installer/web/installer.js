@@ -503,8 +503,9 @@ const FORMS = {
     body.append(el("p", "", "The step writes ~/Library/LaunchAgents/com.meru.merud.plist, loads it with launchctl, and waits for merud to answer. Then it hands merud the connectors you turned on, web search, Obsidian and Google, and shows each line merud reports while it downloads, installs and checks them. merud then scans your folders by itself; this screen follows the scan for two minutes and leaves the rest to merud."));
     const r = screen.report;
     if (!r) return;
-    // The box starts as the Bridge says, ticked unless DO_NOT_TRACK is
-    // set, and keeps the user's choice when the screen draws again.
+    // The box starts as the Bridge says: ticked on a new install unless
+    // DO_NOT_TRACK is set, and from the earlier choice on an update. It
+    // keeps the user's choice when the screen draws again.
     if (state.report === null) state.report = r.send;
     body.append(el("div", "options", null,
       el("label", "option", null,
@@ -513,9 +514,19 @@ const FORMS = {
           el("strong", "", "Send one anonymous count a day"),
           el("p", "", r.fields),
           el("code", "", r.example),
-          r.doNotTrack ? el("p", "dim", "DO_NOT_TRACK is set, so the box starts unticked.") : null))));
+          earlierNote(r)))));
   },
 };
+
+// earlierNote says why the box starts where it does, or returns null on a
+// new install with DO_NOT_TRACK unset.
+function earlierNote(r) {
+  if (r.hadConfig && r.earlier === "on") return el("p", "dim", "You turned it on before. The box keeps that.");
+  if (r.hadConfig && r.earlier === "off") return el("p", "dim", "You turned it off before. The box keeps that.");
+  if (r.hadConfig) return el("p", "dim", "You haven't chosen yet. Leave the box unticked and Meru.app or meru chat will ask.");
+  if (r.doNotTrack) return el("p", "dim", "DO_NOT_TRACK is set, so the box starts unticked.");
+  return null;
+}
 
 function fact(label, value) {
   return el("div", "fact", null, el("h2", "", label), el("p", "", value));

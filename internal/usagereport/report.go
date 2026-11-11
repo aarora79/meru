@@ -22,7 +22,7 @@ const Version = 1
 // encoding/json the key to write for that field.
 type Report struct {
 	V         int    `json:"v"`         // always Version
-	Meru      string `json:"meru"`      // the release, such as "0.7.3"
+	Meru      string `json:"meru"`      // the release, such as "0.7.5"
 	OS        string `json:"os"`        // "darwin", "linux" or "windows"
 	Arch      string `json:"arch"`      // "arm64" or "amd64"
 	Profile   string `json:"profile"`   // "lite" or "full"
@@ -31,12 +31,12 @@ type Report struct {
 }
 
 // releasePattern matches a release version as `make release` stamps it,
-// such as "v0.7.3", and captures the number without the "v".
+// such as "v0.7.5", and captures the number without the "v".
 var releasePattern = regexp.MustCompile(`^v(\d+\.\d+\.\d+)$`)
 
-// releaseNumber returns "0.7.3" for the release version "v0.7.3". For any
+// releaseNumber returns "0.7.5" for the release version "v0.7.5". For any
 // other version, such as a development build's "(devel) 5325b3e" or a
-// fork's "v0.7.3-acme", it returns false, and merud never sends.
+// fork's "v0.7.5-acme", it returns false, and merud never sends.
 func releaseNumber(version string) (string, bool) {
 	m := releasePattern.FindStringSubmatch(version)
 	if m == nil {

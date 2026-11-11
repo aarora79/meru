@@ -105,12 +105,21 @@ type Bridge struct {
 	// signIn is the sign-in link merud gave for Google after the hand-off,
 	// which OpenSignIn opens; the page never sees it.
 	signIn string
+	// earlier is the usage-report choice config.toml held when the
+	// installer opened, read before any step writes config.toml, so the
+	// Start Meru step can keep it (see report.go). New sets it and nothing
+	// changes it after, so it needs no lock.
+	earlier EarlierChoice
 }
 
 // New returns a Bridge for o.
 func New(o Options) *Bridge {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Bridge{o: o, paths: Paths{Home: o.Home}, flow: NewFlow(), ctx: ctx, cancel: cancel, choice: -1, hands: map[string]HandOff{}}
+	p := Paths{Home: o.Home}
+	return &Bridge{
+		o: o, paths: p, flow: NewFlow(), ctx: ctx, cancel: cancel, choice: -1, hands: map[string]HandOff{},
+		earlier: ReadEarlierChoice(p.Config()),
+	}
 }
 
 // ServiceShutdown stops a running step. Wails calls it when the window
@@ -280,7 +289,7 @@ func (b *Bridge) Screen(id string) (Screen, error) {
 		}
 		return Screen{Profile: &prof, EmailRequired: b.flow.Is(StepGoogle, StatusDone)}, nil
 	case StepStart:
-		offer := OfferReport(b.chosen().Profile, os.Getenv("DO_NOT_TRACK"))
+		offer := OfferReport(b.chosen().Profile, b.earlier, os.Getenv("DO_NOT_TRACK"))
 		return Screen{Report: &offer}, nil
 	}
 	return Screen{}, nil
@@ -470,7 +479,8 @@ func (b *Bridge) run(ctx context.Context, id string, in Input, say func(string))
 		}
 		// The choice goes into config.toml before merud starts, so merud
 		// reads it on its first start.
-		report, err := SaveReport(p, in.Report)
+		dnt := os.Getenv("DO_NOT_TRACK")
+		report, err := SaveReport(p, in.Report, b.earlier, dnt != "" && dnt != "0")
 		if err != nil {
 			return "", err
 		}

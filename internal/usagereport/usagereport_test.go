@@ -78,7 +78,7 @@ func TestBlocked(t *testing.T) {
 		{name: "do not track", s: on, env: "1", lines: []Entry{seenAt(yesterday)}, want: reasonDoNotTrack},
 		{name: "do not track 0 sends", s: on, env: "0", lines: []Entry{seenAt(yesterday)}, want: ""},
 		{name: "dev build", s: on, version: "(devel) 5325b3e", lines: []Entry{seenAt(yesterday)}, want: reasonDevBuild},
-		{name: "fork version", s: on, version: "v0.7.3-acme", lines: []Entry{seenAt(yesterday)}, want: reasonDevBuild},
+		{name: "fork version", s: on, version: "v0.7.5-acme", lines: []Entry{seenAt(yesterday)}, want: reasonDevBuild},
 		{name: "never seen", s: on, want: reasonNotSeen},
 		{name: "seen an older version only", s: on, lines: []Entry{{Type: EntrySeen, At: yesterday, Report: Version - 1}}, want: reasonNotSeen},
 		{name: "first day", s: on, lines: []Entry{seenAt(day.Add(-time.Hour))}, want: reasonFirstDay},
@@ -91,7 +91,7 @@ func TestBlocked(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.version == "" {
-				tc.version = "v0.7.3"
+				tc.version = "v0.7.5"
 			}
 			if tc.now.IsZero() {
 				tc.now = day
@@ -116,7 +116,7 @@ func TestBlocked(t *testing.T) {
 // again before anything sends.
 func TestReportGolden(t *testing.T) {
 	got, err := json.Marshal(Report{
-		V: Version, Meru: "0.7.3", OS: "darwin", Arch: "arm64", Profile: "lite", Age: "month", Questions: "1-5",
+		V: Version, Meru: "0.7.5", OS: "darwin", Arch: "arm64", Profile: "lite", Age: "month", Questions: "1-5",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,8 +152,8 @@ func TestBuckets(t *testing.T) {
 
 func TestReleaseNumber(t *testing.T) {
 	for v, want := range map[string]string{
-		"v0.7.3": "0.7.3", "v10.20.30": "10.20.30",
-		"0.7.3": "", "v0.7.3-acme": "", "v0.4.2-0.20260927021103-5325b3ef94cb": "", "(devel) 5325b3e": "", "": "",
+		"v0.7.5": "0.7.5", "v10.20.30": "10.20.30",
+		"0.7.5": "", "v0.7.5-acme": "", "v0.4.2-0.20260927021103-5325b3ef94cb": "", "(devel) 5325b3e": "", "": "",
 	} {
 		got, ok := releaseNumber(v)
 		if got != want || ok != (want != "") {
@@ -180,7 +180,7 @@ func TestTickSends(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	writeLines(t, r, seenAt(day.Add(-20*24*time.Hour)))
 	s := func() (Settings, error) { return Settings{Send: "on", URL: srv.URL, Profile: "full"}, nil }
 	r.tick(context.Background(), s, day)
@@ -189,7 +189,7 @@ func TestTickSends(t *testing.T) {
 	if len(bodies) != 1 {
 		t.Fatalf("collector got %d reports, want 1", len(bodies))
 	}
-	want := `{"v":1,"meru":"0.7.3","os":"` + osArch()[0] + `","arch":"` + osArch()[1] + `","profile":"full","age":"month","questions":"1-5"}`
+	want := `{"v":1,"meru":"0.7.5","os":"` + osArch()[0] + `","arch":"` + osArch()[1] + `","profile":"full","age":"month","questions":"1-5"}`
 	if bodies[0] != want {
 		t.Errorf("body\n got %s\nwant %s", bodies[0], want)
 	}
@@ -236,7 +236,7 @@ func TestPost(t *testing.T) {
 				w.WriteHeader(tc.status)
 			}))
 			defer srv.Close()
-			r := newTest(t, "v0.7.3", day, 0)
+			r := newTest(t, "v0.7.5", day, 0)
 			err := r.post(context.Background(), srv.URL, []byte(`{}`))
 			if (err == nil) != tc.ok {
 				t.Errorf("post error = %v, want ok %v", err, tc.ok)
@@ -252,7 +252,7 @@ func TestPost(t *testing.T) {
 	// Go never sends a loopback request through a proxy, so the servers
 	// above can't show the rule for a real collector. Check the client's
 	// setting itself: nil means no proxy, whatever the environment says.
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	if tr, ok := r.client.Transport.(*http.Transport); !ok || tr.Proxy != nil {
 		t.Error("the client's transport reads a proxy; the report must go direct")
 	}
@@ -267,7 +267,7 @@ func TestTickRecordsFailure(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	writeLines(t, r, seenAt(day.Add(-48*time.Hour)))
 	s := func() (Settings, error) { return Settings{Send: "on", URL: srv.URL, Profile: "lite"}, nil }
 	r.tick(context.Background(), s, day)
@@ -303,7 +303,7 @@ func TestAppendEntryMode(t *testing.T) {
 // TestAppendEntryConcurrent appends from several goroutines at once, as the
 // loop and an op could, and checks every line still parses. Run with -race.
 func TestAppendEntryConcurrent(t *testing.T) {
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	var wg sync.WaitGroup
 	for i := range 20 {
 		wg.Add(1)
@@ -338,7 +338,7 @@ func TestAppendEntryConcurrent(t *testing.T) {
 // TestReadStateSkipsBadLines checks that a damaged line is skipped and that
 // a file with no readable "seen" line holds the report back.
 func TestReadStateSkipsBadLines(t *testing.T) {
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	if err := os.WriteFile(r.path, []byte("not json\n{\"type\":\"seen\",\"at\":\"2026-11-01T00:00:00Z\",\"report\":1}\n{\"type\":\"sent\",\"at\":"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestReadStateSkipsBadLines(t *testing.T) {
 
 // TestMarkOnce checks that marking the same thing twice writes one line.
 func TestMarkOnce(t *testing.T) {
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	for range 3 {
 		if err := r.Mark(EntrySeen, "desktop"); err != nil {
 			t.Fatal(err)
@@ -399,7 +399,7 @@ func TestStatus(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newTest(t, "v0.7.3", day, 0)
+			r := newTest(t, "v0.7.5", day, 0)
 			r.env = func(string) string { return tc.env }
 			writeLines(t, r, tc.lines...)
 			tc.s.Profile = "lite"
@@ -412,7 +412,7 @@ func TestStatus(t *testing.T) {
 					got.Banner, got.NextAt, got.Sent, tc.wantBanner, tc.wantNextAt, tc.wantSent)
 			}
 			var rep Report
-			if err := json.Unmarshal([]byte(got.Next), &rep); err != nil || rep.Meru != "0.7.3" || rep.Questions != "1-5" {
+			if err := json.Unmarshal([]byte(got.Next), &rep); err != nil || rep.Meru != "0.7.5" || rep.Questions != "1-5" {
 				t.Errorf("Next = %s, %v; want the report merud would send", got.Next, err)
 			}
 			if len(got.Recent) != len(tc.lines) {
@@ -425,7 +425,7 @@ func TestStatus(t *testing.T) {
 // TestStatusShowsURL checks that a collector other than Meru's own is named,
 // so a changed destination is in plain view.
 func TestStatusShowsURL(t *testing.T) {
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	got, err := r.Status(context.Background(), Settings{Send: "on", URL: "https://collector.example.org"})
 	if err != nil {
 		t.Fatal(err)
@@ -454,7 +454,7 @@ func TestStatusDevBuildPreview(t *testing.T) {
 
 // TestLoopStops checks that Loop returns when its context ends.
 func TestLoopStops(t *testing.T) {
-	r := newTest(t, "v0.7.3", day, 0)
+	r := newTest(t, "v0.7.5", day, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -504,7 +504,7 @@ func TestSendNow(t *testing.T) {
 				w.WriteHeader(tc.status)
 			}))
 			defer srv.Close()
-			r := newTest(t, "v0.7.3", tc.now, 119)
+			r := newTest(t, "v0.7.5", tc.now, 119)
 			writeLines(t, r, tc.lines...)
 			tc.s.URL, tc.s.Profile = srv.URL, "lite"
 			err := r.SendNow(context.Background(), tc.s)
@@ -541,7 +541,7 @@ func TestStatusCanSend(t *testing.T) {
 		{"never seen", Settings{Send: "on"}, nil, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newTest(t, "v0.7.3", day, 0)
+			r := newTest(t, "v0.7.5", day, 0)
 			writeLines(t, r, tc.lines...)
 			got, err := r.Status(context.Background(), tc.s)
 			if err != nil {
@@ -551,5 +551,46 @@ func TestStatusCanSend(t *testing.T) {
 				t.Errorf("CanSend = %v, want %v", got.CanSend, tc.want)
 			}
 		})
+	}
+}
+
+// TestRecordWriteFailsSendsOnce checks the promise of one report a day when
+// the record can't be written: after the collector takes a report and the
+// "sent" line fails to land, neither the next tick nor the button sends
+// again that day.
+func TestRecordWriteFailsSendsOnce(t *testing.T) {
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	r := newTest(t, "v0.7.5", day, 0)
+	writeLines(t, r, seenAt(day.Add(-48*time.Hour)))
+	// A read-only record: readState still reads it, appendEntry can't add.
+	if err := os.Chmod(r.path, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(r.path, 0o600) })
+	s := Settings{Send: "on", URL: srv.URL, Profile: "lite"}
+	settings := func() (Settings, error) { return s, nil }
+	r.tick(context.Background(), settings, day)
+	if hits.Load() != 1 {
+		t.Fatalf("first tick: collector got %d, want 1", hits.Load())
+	}
+	st, _ := readState(r.path, day)
+	if st.sentEver {
+		t.Skip("the record took the line anyway; this system ignores 0400 for its owner")
+	}
+	r.tick(context.Background(), settings, day.Add(30*time.Minute))
+	if err := r.SendNow(context.Background(), s); err == nil || !strings.Contains(err.Error(), reasonSentToday) {
+		t.Errorf("SendNow after a lost record = %v, want it refused as sent today", err)
+	}
+	if hits.Load() != 1 {
+		t.Errorf("collector got %d reports in one day, want 1", hits.Load())
+	}
+	r.tick(context.Background(), settings, day.Add(24*time.Hour))
+	if hits.Load() != 2 {
+		t.Errorf("next day: collector got %d in all, want 2", hits.Load())
 	}
 }

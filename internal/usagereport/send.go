@@ -81,7 +81,7 @@ type Questions interface {
 // handler.
 type Reporter struct {
 	path    string // usage-report.jsonl in the Meru home
-	version string // about.Version(), such as "v0.7.3"
+	version string // about.Version(), such as "v0.7.5"
 	store   Questions
 	log     *slog.Logger
 	client  *http.Client
@@ -94,10 +94,12 @@ type Reporter struct {
 	// lines never interleave.
 	fileMu sync.Mutex
 
-	// dayMu guards day and minute, today's send minute.
-	dayMu  sync.Mutex
-	day    time.Time
-	minute int
+	// dayMu guards day and minute, today's send minute, and sentDay, the
+	// UTC day of the last report the collector took in this run.
+	dayMu   sync.Mutex
+	day     time.Time
+	minute  int
+	sentDay time.Time
 }
 
 // New returns a Reporter that keeps its record in dir. version is the
@@ -207,6 +209,11 @@ func (r *Reporter) send(ctx context.Context, s Settings, st state, now time.Time
 	}
 	e := Entry{Type: EntrySent, At: now.UTC(), Body: string(body)}
 	postErr := r.post(ctx, s.URL, body)
+	if postErr == nil {
+		// Remember the day in memory too, so a "sent" line that fails to
+		// write below can't lead the next tick to send again.
+		r.markSent(startOfDay(now))
+	}
 	if postErr != nil {
 		e.Type, e.Error = EntryFailed, postErr.Error()
 		// One info line a day is enough on a computer with no network;
@@ -222,9 +229,27 @@ func (r *Reporter) send(ctx context.Context, s Settings, st state, now time.Time
 		obs.RecordUsageReport(ctx, "sent")
 	}
 	if err := appendEntry(r.path, e); err != nil {
-		r.log.Warn("usage report: record", "err", err)
+		// The record is the user's view of what left the machine, so a
+		// failed write is worth an error line; markSent keeps it to one
+		// report today all the same.
+		r.log.Error("usage report: record", "err", err)
 	}
 	return postErr
+}
+
+// markSent records that the collector took today's report.
+func (r *Reporter) markSent(today time.Time) {
+	r.dayMu.Lock()
+	defer r.dayMu.Unlock()
+	r.sentDay = today
+}
+
+// sentToday reports whether the collector took a report on today's UTC
+// day in this run, whatever the file says.
+func (r *Reporter) sentToday(today time.Time) bool {
+	r.dayMu.Lock()
+	defer r.dayMu.Unlock()
+	return r.sentDay.Equal(today)
 }
 
 // blocked returns the reason a tick can't send today's report at now, or ""
@@ -258,7 +283,7 @@ func (r *Reporter) check(s Settings, st state, now time.Time, byHand bool) strin
 	switch {
 	case st.firstSeen.IsZero():
 		return reasonNotSeen
-	case !st.lastSent.Before(today):
+	case !st.lastSent.Before(today) || r.sentToday(today):
 		return reasonSentToday
 	case byHand:
 		return ""

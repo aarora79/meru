@@ -22,6 +22,6 @@
 // the choice from [usage_report] in as Settings on each tick and changes the
 // choice itself. It sends no ID, no text and no paths. It retries a failed
 // send on the next tick and keeps no queue, so a missed day stays missed.
-// Development builds, whose version isn't a release such as v0.7.3, never
+// Development builds, whose version isn't a release such as v0.7.5, never
 // send.
 package usagereport
