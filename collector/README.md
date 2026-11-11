@@ -8,7 +8,7 @@ at `https://meru-report.meru-workers.workers.dev` and answers three routes:
 |-------|--------------|
 | `POST /v1/report` | stores one report, if the body is exactly what `merud` sends |
 | `GET /totals` | the last 90 days of counts, as JSON |
-| `GET /` | the same counts as an HTML table |
+| `GET /` | the same counts as a page: headline numbers, a line chart of installs per day, a column chart per week, and a bar list per field, each with its table |
 
 ARCHITECTURE.md, "Anonymous usage report", is the contract for every field. The
 Worker stores no IP address. It reads the sender's address only as the
