@@ -37,6 +37,10 @@ numbers (`internal/store/usagedetail.go`) and `docs/observability.md`.
 - No prompt or response text in spans unless `capture_content = true`, and none for an
   incognito call even then.
 - `merud.log` never holds question or answer text at any level.
+- The anonymous daily usage report is the one thing that leaves the machine about
+  Meru itself. It keeps its seven fields, goes only from `internal/usagereport`,
+  and logs each try in `~/.meru/usage-report.jsonl`; a new field needs a new
+  report version.
 
 ### Latency
 - Nothing new on the path before the first token without a reason: no disk scan,

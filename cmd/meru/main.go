@@ -14,6 +14,7 @@
 //	meru [-socket path] tools            list the tools the model may use
 //	meru [-socket path] log [-n N] [-v]  show the latest tool calls
 //	meru [-socket path] usage            show how much you use Meru
+//	meru [-socket path] report           the anonymous daily count; also report on, report off
 //	meru [-socket path] model            the model sets; also model use <name>, model save
 //	meru [-socket path] setup            first-run setup: Ollama, models, config, tools
 //	meru [-socket path] setup user       tell Meru who you are
@@ -29,8 +30,9 @@
 //
 // A question whose first word is ping, chat, index, tools, log, usage, model,
 // setup, memory, skills, mcp, check or transcribe needs quotes, so meru reads it as a question and not
-// as a command. So does the question "config template", and a question that
-// starts with "run --json".
+// as a command. So does the question "config template", a question that
+// starts with "run --json", and the questions "report", "report on" and
+// "report off".
 //
 // Exit status: 0 on success, 1 on any error (including bad usage), 130 when
 // interrupted with Ctrl-C.
@@ -93,6 +95,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru tools            list the tools the model may use
   meru log [-n N] [-v]  show the latest tool calls, newest first
   meru usage            show how much you use Meru
+  meru report [on|off|send]
+                        show the anonymous daily count and the next one,
+                        turn it on or off, or send today's now
   meru model            show the model sets and which one is in use
   meru model use <name> [--rebuild]
                         switch to a model set until merud stops
@@ -186,6 +191,8 @@ flags:`)
 		err = logCmd(ctx, *socket, flags.Args()[1:], stdout, stderr)
 	case flags.NArg() == 1 && flags.Arg(0) == "usage":
 		err = usageCmd(ctx, *socket, stdout)
+	case flags.Arg(0) == "report" && isReportArgs(flags.Args()[1:]):
+		err = reportCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.Arg(0) == "model":
 		err = modelCmd(ctx, *socket, flags.Args()[1:], stdout)
 	case flags.NArg() == 1 && flags.Arg(0) == "setup":

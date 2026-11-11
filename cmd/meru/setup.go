@@ -67,6 +67,9 @@ type console struct {
 	// machine reads this computer's memory and GPU, so setup can suggest
 	// an answer model that fits. nil skips the suggestion.
 	machine func(ctx context.Context) platform.Machine
+	// getenv reads an environment variable, such as DO_NOT_TRACK. nil
+	// reads none, as in tests.
+	getenv func(key string) string
 }
 
 // terminal returns a console on standard input and out. When standard input
@@ -81,6 +84,7 @@ func terminal(out io.Writer) *console {
 		answers:       urlAnswers,
 		searxng:       catalog.CheckSearXNG,
 		machine:       platform.Describe,
+		getenv:        os.Getenv,
 	}
 	c.readSecret = c.line
 	fd := int(os.Stdin.Fd()) // #nosec G115 -- a file descriptor fits in an int
@@ -359,7 +363,8 @@ func (c *console) showHow(configPath string, e catalog.Entry) {
 // setupCmd runs `meru setup`: check Ollama, download the models, write
 // config.toml if there is none, check SearXNG for web search and offer to
 // have merud run it, offer the Obsidian and Google connectors, offer `meru
-// setup user`, and ask merud a test question when it runs. merud sets up
+// setup user`, ask about the anonymous daily count for a new config.toml,
+// and ask merud a test question when it runs. merud sets up
 // every connector (connector_set); setup only asks the questions.
 //
 // main, when not "", is the answer model for a new config.toml, in place of
@@ -450,7 +455,12 @@ func setupCmd(ctx context.Context, socket string, c *console, main string) error
 		return err
 	}
 
-	fmt.Fprintln(c.out, "\n7. A test question")
+	fmt.Fprintln(c.out, "\n7. Anonymous daily count")
+	if err := c.offerReport(configPath, !haveConfig, profile); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(c.out, "\n8. A test question")
 	if !merudUp {
 		fmt.Fprintln(c.out, "merud isn't running. Start it with `merud &`, then ask it something: meru \"hello\"")
 		return nil
@@ -573,6 +583,52 @@ func (c *console) offerProfile(ctx context.Context, socket string, merudUp bool)
 		return err
 	}
 	return setupUserCmd(ctx, socket, c)
+}
+
+// offerReport asks whether merud may send the anonymous daily count, and
+// writes the answer as [usage_report] send in the config.toml setup wrote
+// in this run (wroteConfig). It shows what the count holds and an example
+// for this machine and profile first. When DO_NOT_TRACK is set to
+// anything but "" or "0", it writes "off" without asking and says why.
+// An existing config.toml stays as it is: the step only says how to
+// choose with `meru report`. It fails when the input ends or config.toml
+// can't be written.
+//
+// The question comes near the end, after the steps that hand merud the
+// config, so setup changes its own new file here through catalog, the
+// way merud and the Mac installer set the same key. A setup stopped
+// before this step leaves send = "", which the clients ask about later.
+func (c *console) offerReport(configPath string, wroteConfig bool, profile string) error {
+	if !wroteConfig {
+		fmt.Fprintln(c.out, "Setup leaves config.toml as it is. meru report shows the count; meru report on or meru report off sets it.")
+		return nil
+	}
+	choice := config.ReportOff
+	if c.getenv != nil && doNotTrack(c.getenv("DO_NOT_TRACK")) {
+		fmt.Fprintln(c.out, "DO_NOT_TRACK is set, so setup turns the anonymous daily count off.")
+	} else {
+		fmt.Fprintln(c.out, reportFields)
+		fmt.Fprintln(c.out, "For example: "+reportExample(profile))
+		ok, err := c.yes("Send it?", true)
+		if err != nil {
+			return err
+		}
+		if ok {
+			choice = config.ReportOn
+		}
+	}
+	if err := catalog.SetTableString(configPath, "usage_report", "send", choice, nil); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.out, "Wrote send = %s under [usage_report]. meru report shows the count; meru report on or meru report off changes it.\n", tomlString(choice))
+	return nil
+}
+
+// doNotTrack reports whether v, the value of DO_NOT_TRACK, asks for no
+// reports: any value but "" and "0" does, as the DO_NOT_TRACK
+// convention reads it.
+func doNotTrack(v string) bool {
+	return v != "" && v != "0"
 }
 
 // waitForOllama checks that Ollama answers at baseURL and is

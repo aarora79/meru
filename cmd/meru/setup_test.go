@@ -171,7 +171,8 @@ func TestMCPAddAlreadyThere(t *testing.T) {
 func TestSetupWithMain(t *testing.T) {
 	dir := t.TempDir()
 	input := "\n" + // download: yes, the default
-		"\n" // no folders; with merud down, the tools step asks nothing
+		"\n" + // no folders; with merud down, the tools step asks nothing
+		"\n" // the daily count: yes, the default
 	c, out, ran := scripted(input)
 	c.ollamaVersion = func(context.Context, string) (string, error) { return "0.40.5", nil }
 
@@ -195,6 +196,14 @@ func TestSetupWithMain(t *testing.T) {
 	if strings.Contains(out.String(), "Profile: lite") {
 		t.Errorf("setup asked for a profile:\n%s", out)
 	}
+	if cfg.UsageReport.Send != config.ReportOn {
+		t.Errorf("[usage_report] send = %q after a yes, want on", cfg.UsageReport.Send)
+	}
+	for _, want := range []string{"7. Anonymous daily count", "No ID, no questions, no files.", `"profile":"lite"`, "Send it? [Y/n]", "8. A test question"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
 }
 
 // TestSetupFirstRun walks setup with no config and no merud: Ollama is down
@@ -206,7 +215,8 @@ func TestSetupFirstRun(t *testing.T) {
 		"full\n" + // profile
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
-		"~/notes, /srv/papers\n"
+		"~/notes, /srv/papers\n" +
+		"n\n" // the daily count: no
 	c, out, ran := scripted(input)
 	checks := 0
 	c.ollamaVersion = func(context.Context, string) (string, error) {
@@ -232,6 +242,9 @@ func TestSetupFirstRun(t *testing.T) {
 	}
 	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", "/srv/papers"}) {
 		t.Errorf("config = profile %q, folders %q", cfg.Profile, cfg.Index.Folders)
+	}
+	if cfg.UsageReport.Send != config.ReportOff {
+		t.Errorf("[usage_report] send = %q after a no, want off", cfg.UsageReport.Send)
 	}
 	// The empty [models] lines in the template leave the tiers to the
 	// profile, so picking full gives full's models.
@@ -277,10 +290,65 @@ func TestSetupExistingConfig(t *testing.T) {
 	if got, _ := os.ReadFile(configPath); string(got) != orig {
 		t.Errorf("config.toml changed to:\n%s", got)
 	}
-	for _, want := range []string{"Setup leaves", "I answer questions."} {
+	for _, want := range []string{"Setup leaves", "meru report on or meru report off sets it", "I answer questions."} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestSetupReportDoNotTrack checks the daily count step with DO_NOT_TRACK
+// set: "1" writes off without a question, and "0", which asks for
+// nothing, still asks. Each run starts from a new config.toml, as setup
+// writes it.
+func TestSetupReportDoNotTrack(t *testing.T) {
+	tests := []struct {
+		name, value, input, want string
+		asked                    bool
+	}{
+		{"set", "1", "", config.ReportOff, false},
+		{"zero", "0", "y\n", config.ReportOn, true},
+		{"empty", "", "n\n", config.ReportOff, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			text, err := firstConfig("lite", "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writeNewConfig(path, text); err != nil {
+				t.Fatal(err)
+			}
+			c, out, _ := scripted(tt.input)
+			c.getenv = func(key string) string {
+				if key == "DO_NOT_TRACK" {
+					return tt.value
+				}
+				return ""
+			}
+			if err := c.offerReport(path, true, "lite"); err != nil {
+				t.Fatalf("offerReport: %v\n%s", err, out)
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.UsageReport.Send != tt.want {
+				t.Errorf("send = %q, want %q", cfg.UsageReport.Send, tt.want)
+			}
+			if asked := strings.Contains(out.String(), "Send it?"); asked != tt.asked {
+				t.Errorf("asked = %v, want %v:\n%s", asked, tt.asked, out)
+			}
+			if said := strings.Contains(out.String(), "DO_NOT_TRACK is set"); said == tt.asked {
+				t.Errorf("DO_NOT_TRACK line shown = %v, want %v:\n%s", said, !tt.asked, out)
+			}
+			// Only the send line changes: every comment stays.
+			got, _ := os.ReadFile(path)
+			if want := strings.Replace(text, "\nsend = \"\"\n", "\nsend = "+tomlString(tt.want)+"\n", 1); string(got) != want {
+				t.Errorf("config.toml changed more than the send line:\n%s", got)
+			}
+		})
 	}
 }
 

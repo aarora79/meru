@@ -1,7 +1,8 @@
 // This file holds what the chat screen shows of merud's usage numbers: the
 // /usage box that opens over the conversation, with the windows table and
 // the dashboard under it, its `/usage by model` form with a row per answer
-// model, and the last hour's summary for the header.
+// model, and the last hour's summary for the header. The section on the
+// anonymous daily count under the dashboard lives in report.go.
 
 package tui
 
@@ -154,6 +155,7 @@ func (m *Model) usageBoxView(width, height int) string {
 	default:
 		body = m.usageTableLines(rpc.UsageTable(b.windows), avail)
 		body = append(body, m.usageDetailLines(b, avail)...)
+		body = append(body, m.reportUsageLines(avail)...)
 	}
 	title, note := "Usage", rpc.UsageNote
 	if b.byModel {

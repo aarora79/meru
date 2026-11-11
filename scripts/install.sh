@@ -11,7 +11,10 @@
 # MERU_VERSION=v0.4.1 installs a given release instead of the latest.
 #
 # Meru never runs this script itself and never checks for updates; you run
-# it again to update. MERU_APP_DIR puts Meru.app somewhere other than
+# it again to update. The script sends nothing. `meru setup` asks whether
+# merud may send one anonymous count a day; a config.toml this script
+# writes without a terminal leaves that unchosen, and meru chat or the app
+# asks later. MERU_APP_DIR puts Meru.app somewhere other than
 # /Applications, such as a test folder.
 
 # set -e stops at the first failed command, -u at an unset variable, and
@@ -95,10 +98,11 @@ echo "    - the lite models, about 2.3 GB: MiniCPM5-2B and embeddinggemma-2:440m
 if [ -n "$answer_model" ]; then
   echo "    - $answer_model, $answer_size, a stronger answer model for this Mac's $mem_gb GB"
 fi
-echo "    - meru setup, which asks its own questions: your folders and about you"
+echo "    - meru setup, which asks its own questions: your folders, about you, and the anonymous daily count"
 echo "    - merud, started now and at every login"
 echo
-echo "  Nothing goes anywhere but the downloads from GitHub, Homebrew and Ollama."
+echo "  This script only downloads, from GitHub, Homebrew and Ollama."
+echo "  meru setup asks whether Meru may send one anonymous count a day."
 echo
 
 if [ "$all" != 1 ] && { : </dev/tty; } 2>/dev/null; then
@@ -234,6 +238,9 @@ else
 fi
 # Without meru setup there is no config.toml yet. Write one from the
 # template with the answer model filled in, so merud still starts with it.
+# The template's send = "" under [usage_report] stays: no one chose, so
+# merud sends no count until meru chat or the app asks and the user says
+# yes.
 if [ "$pulled_answer" = 1 ] && [ ! -f "$config" ]; then
   mkdir -p "$HOME/.meru"
   "$bin_dir/meru" config template |

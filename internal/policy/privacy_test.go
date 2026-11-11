@@ -87,6 +87,45 @@ func TestNoNonLoopbackURLLiterals(t *testing.T) {
 	}
 }
 
+// collectorHost is the host of the usage-report collector. The test builds
+// it from pieces, so this file holds no URL literal of its own.
+var collectorHost = strings.Join([]string{"meru-report", "meru-workers", "workers", "dev"}, ".")
+
+// TestCollectorOnlyInUsageReport fails when a shipped Go file outside
+// internal/usagereport holds the usage-report collector's host, so the one
+// report has one sender (AGENTS.md, non-negotiable 2).
+func TestCollectorOnlyInUsageReport(t *testing.T) {
+	root := moduleRoot(t)
+	for _, f := range moduleFiles(t, root) {
+		if f.isTest || strings.HasPrefix(filepath.ToSlash(f.rel), "internal/usagereport/") {
+			continue
+		}
+		for _, lit := range stringLiterals(f) {
+			if strings.Contains(lit.value, collectorHost) {
+				t.Errorf("%s: holds the usage-report collector's address; only internal/usagereport sends the report", f.fset.Position(lit.pos))
+			}
+		}
+	}
+}
+
+// TestModelCantSetUsageReport fails when a built-in tool, which the model
+// can call, names the [usage_report] table. Only the user turns the report
+// on or off: through setup, a client's switch, `meru report` or a hand
+// edit, never through a tool such as configure.
+func TestModelCantSetUsageReport(t *testing.T) {
+	root := moduleRoot(t)
+	for _, f := range moduleFiles(t, root) {
+		if f.isTest || !strings.HasPrefix(filepath.ToSlash(f.rel), "internal/builtin/") {
+			continue
+		}
+		for _, lit := range stringLiterals(f) {
+			if strings.Contains(lit.value, "usage_report") {
+				t.Errorf("%s: a built-in tool names [usage_report]; the model must never change the usage report", f.fset.Position(lit.pos))
+			}
+		}
+	}
+}
+
 // TestChecksCatchViolations feeds each check a small made-up source and
 // counts the findings. Without it, a bug that made a check see nothing would
 // pass silently.

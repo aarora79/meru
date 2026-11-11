@@ -1,0 +1,37 @@
+# Deploy settings for Meru's usage-report collector. With this name and the
+# account's subdomain, the Worker answers at
+# https://meru-report.meru-workers.workers.dev
+# Every Meru release has that address compiled in, so don't rename the Worker.
+
+name = "meru-report"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# One fixed address: no per-version preview addresses for reports to drift to.
+workers_dev = true
+preview_urls = false
+
+# Workers Logs are on by default and record each request's headers, which
+# carry the sender's IP address. Off, so the project never logs one.
+[observability]
+enabled = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "meru-reports"
+database_id = "df09b9b3-6c50-463f-8a74-584716d5ecf4"
+
+# At most 5 reports a minute from one sender. An honest install sends one a
+# day; this keeps one sender from using up the free tier's daily writes.
+# Needs Wrangler 4.36.0 or later.
+[[ratelimits]]
+name = "LIMIT"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60
+
+# Once a day at 03:17 UTC, delete rows older than 400 days.
+[triggers]
+crons = ["17 3 * * *"]

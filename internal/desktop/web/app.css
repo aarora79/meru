@@ -726,6 +726,87 @@ pre {
   font-size: 13px;
 }
 
+/* The anonymous daily count's banner, under the header. It sits in the
+   chat's column, so it pushes the conversation down rather than covering
+   it, and its report scrolls inside a short box. */
+.report-banner {
+  flex: none;
+  padding: 10px 32px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.report-text {
+  margin: 0 0 8px;
+  max-width: 60em;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-error:empty {
+  display: none;
+}
+
+.report-error {
+  margin: 6px 0 0;
+}
+
+.report-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 14em;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The same count's section on the Usage screen. */
+.report-section .button {
+  margin: 10px 0 4px;
+}
+
+.report-choice {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.report-next {
+  margin: 8px 0;
+}
+
+.report-log {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-log li + li {
+  margin-top: 10px;
+}
+
+.report-entry-head {
+  margin: 0;
+  color: var(--caption);
+  font-size: 13px;
+}
+
+.report-type {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .chat-head h1 {
   margin: 0;
   font-family: var(--display);

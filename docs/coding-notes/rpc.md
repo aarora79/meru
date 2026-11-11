@@ -612,6 +612,32 @@ the asks `merud`'s scheduler makes for itself; the server refuses either from a
 client, before the handler sees the request, so no client can make an ask that
 passes as a job.
 
+### The usage report
+
+`usage_report` (`OpUsageReport`) reads or changes the anonymous daily usage
+report (see [usagereport](usagereport.md)). `Request.Kind` picks the action:
+`UsageReportStatusKind` (`"status"`, or `""`) only asks; `UsageReportSeen` says
+the client showed the notice; `UsageReportDismiss` closes it; and
+`UsageReportOn` and `UsageReportOff` set `[usage_report] send`; and
+`UsageReportSend` sends today's report now, if none went today. A send the rules
+hold back, or the collector refuses, answers with an error event that says why,
+such as `not sent: Today's has gone.`. `CanSend` in the status says whether a
+send would go, so the clients grey the button out. `Request.Source`
+names the client, and `merud` writes it on the record's line. Every action
+replies with one `usage_report` event, so a client redraws from one answer.
+
+The event's `UsageReport` field holds a `UsageReportStatus`. `Choice` is
+`"on"`, `"off"` or `""`; `Blocked` is `merud`'s reason, in words a client shows
+as they are, that no report will go now; `Banner` is `BannerAsk` (after an
+upgrade: choose, and nothing goes until you say yes) or `BannerNew` (setup
+turned it on: here is how to turn it off), or `""`. `Next` holds the exact JSON
+`merud` would send, `NextAt` the earliest time it can go, and `URL` the
+collector when config names one other than Meru's own. `Recent` lists the last
+lines of `usage-report.jsonl` as `UsageReportEntry` values, newest first: the
+type, the time, the client, and the exact body sent or the error. `meru report`
+sends no `"seen"`, so only `meru chat` and the desktop app count as showing the
+notice.
+
 ## Go ideas used here
 
 - **Goroutines and `sync.WaitGroup`** — one goroutine per connection, all

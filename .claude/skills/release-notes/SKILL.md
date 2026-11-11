@@ -111,6 +111,10 @@ git diff {base}..{head} -- go.mod                            # dependency change
 
 ### Step 4: Sort the changes
 
+First look for a change to what leaves the machine: a diff in
+`internal/usagereport`, `internal/policy/allowed_urls.txt` or ARCHITECTURE.md's
+"Privacy boundary". The Rules below say where it goes.
+
 1. **Major features**: new things a user can do or see. Each gets its own
    section with a short description and its pull request.
 2. **Breaking changes**: anything that needs the user to act when they
@@ -296,6 +300,11 @@ Once the user confirms:
 - **Always confirm the base version** with the user (Step 2).
 - **Never tag, move a tag or publish** from this skill. `make release` owns
   tags and releases, and a published tag stays where it is.
+- **A change to what leaves the machine goes first**, before any other news:
+  in its own section, `## What leaves your machine`, right after the opening
+  sentences. That covers a new or changed field in the usage report, a new
+  collector address, and any new outbound connection. Say what goes, where it
+  goes, and how to turn it off.
 - **Breaking changes come first** in the upgrade section. When none, say so.
 - **Check `template.toml`** for every release: a removed or renamed key stops
   `merud` from starting on an old config.

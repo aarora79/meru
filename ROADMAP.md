@@ -157,6 +157,10 @@ No milestone names these, and each is on `main`:
 - Apple Notes, read live and read-only from the Notes app's database through the
   built-in `search_notes`, `list_notes` and `read_note`, on a Mac with Full Disk
   Access for `merud`
+- An anonymous daily usage report of seven coarse fields, which `merud` sends
+  only after the user says yes and a client has shown the notice, with every
+  report kept in `~/.meru/usage-report.jsonl`, `meru report`, and a switch on
+  the Usage screen in both clients (#251)
 
 ## Headless mode
 

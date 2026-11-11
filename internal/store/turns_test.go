@@ -376,3 +376,31 @@ func BenchmarkUsage(b *testing.B) {
 		}
 	}
 }
+
+// TestQuestionsBetween checks the count the usage report sends as a bucket:
+// turns inside the window count, the window's end doesn't, and scheduled
+// job runs never do.
+func TestQuestionsBetween(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	from := time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
+	to := from.Add(24 * time.Hour)
+	for _, turn := range []Turn{
+		{Session: "a", Time: from, Source: "tui"},
+		{Session: "a", Time: from.Add(12 * time.Hour), Source: "desktop"},
+		{Session: "b", Time: from.Add(13 * time.Hour), Source: "job"},
+		{Session: "c", Time: to, Source: "cli"},
+		{Session: "c", Time: from.Add(-time.Second), Source: "cli"},
+	} {
+		if err := s.InsertTurn(ctx, turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.QuestionsBetween(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("QuestionsBetween = %d, want 2", n)
+	}
+}

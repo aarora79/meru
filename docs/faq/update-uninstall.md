@@ -1,6 +1,9 @@
 # How do I update or uninstall Meru?
 
-Meru never checks for updates on its own.
+Meru never checks for updates on its own. After you update from a release that
+had no usage report, Meru.app and `meru chat` ask whether to send the anonymous
+daily count, and `merud` sends nothing until you say yes
+([usage-report.md](usage-report.md)).
 
 ## Update
 

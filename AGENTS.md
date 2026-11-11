@@ -192,14 +192,23 @@ copies live in `internal/skills/builtin/`.
    describes as remote. The owner chose this on 1 November 2026, in place of
    "no cloud-model code path", and narrowed it to near-edge on 2 November 2026
    (#78, [the design](docs/design/model-router.md)).
-2. **No telemetry leaves the machine, and no update checks or crash reports, ever.**
-   Meru measures itself with OpenTelemetry, but exports only to a loopback endpoint
-   the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
+2. **No telemetry leaves the machine except the anonymous daily usage report, and
+   no update checks or crash reports, ever.** The report is one fixed set of seven
+   coarse fields, listed in ARCHITECTURE.md, "Anonymous usage report", with no ID
+   and no text. `merud` sends it at most once a day, and only after `meru chat` or
+   Meru.app has shown the notice on an earlier day. It is off for anyone who says
+   no, sets `DO_NOT_TRACK`, or upgraded from a release without it and hasn't said
+   yes; the model can never turn it on. A new field needs a new report version,
+   and a new version shows the notice again. Only `internal/usagereport` sends it.
+   The owner chose this on 11 November 2026 (#251), in place of "no telemetry
+   leaves the machine, ever". Meru measures itself with OpenTelemetry, but exports
+   only to a loopback endpoint the user runs. `merud` must refuse a non-loopback OTLP endpoint, and prompt and
    response text stay out of spans unless `capture_content = true`.
 3. **Deny-by-default for tools and agents.** New MCP servers and A2A agents contribute
    nothing until config allowlists them. `merud` itself connects only to loopback,
    except to A2A agents and Streamable HTTP MCP servers marked `remote = true`, to
-   the answer endpoints in `[[endpoints]]` on the user's own network, and
+   the answer endpoints in `[[endpoints]]` on the user's own network, to the
+   usage-report collector (non-negotiable 2), and
    to public web pages through `web_fetch`, which is on by default and fetches only
    when the model asks; taking it out of `[builtin] tools` turns it off. That tool refuses
    loopback and private addresses at connect time, and asks the user before it
@@ -268,14 +277,15 @@ cmd/
                      through the agent and answers the job ops; window.go sizes the
                      answer model's context window; endpoints.go builds the
                      engines for [[endpoints]]; metrics.go serves
-                     /metrics; speech.go answers the transcribe op
+                     /metrics; speech.go answers the transcribe op; usagereport.go answers
+                     the usage_report op
   meru/              the thin client, one file per subcommand: one question and `chat`
                      (main.go), `ping`, `index [-status]`, `tools`, `log`, `usage`, `setup`,
                      `setup user` (user.go), `config template`, `memory list|add|forget`,
                      `skills list|show|reset`, `mcp list|status|add|remove|login` (mcp.go, probe.go),
                      `mcp adopt|unadopt` (adopt.go),
                      `check` and `check report` (check.go, checkfile.go, checkreport.go), `run --json`
-                     (run.go), `transcribe` (transcribe.go), the approval prompt (approve.go) and
+                     (run.go), `transcribe` (transcribe.go), `report` (report.go), the approval prompt (approve.go) and
                      the terminal styles (look.go)
   meru-desktop/      the desktop app's window (Wails v3, build tag `desktop`, needs cgo), with
                      Info.plist and Meru.icns for Meru.app
@@ -319,6 +329,9 @@ internal/
   jobs/              scheduled jobs (v0.5): five-field cron schedules with every_weeks, the
                      next run and the words for it, catch-up after sleep, and the loop that
                      runs each job one at a time and stops one on request
+  usagereport/       the anonymous daily usage report: its seven fields, the rule for when it
+                     goes, the record in ~/.meru/usage-report.jsonl, and the one HTTP client
+                     that sends it
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs
                      JavaScript, driven over two pipes (cdp.go), behind a proxy that applies
                      web_fetch's address check (proxy.go)
@@ -367,6 +380,8 @@ internal/
   policy/            tests that enforce the non-negotiables and the thin client; deny-lists in
                      testdata/, allowed URLs in allowed_urls.txt
   testutil/fakeollama/  the fake Ollama used by unit and e2e tests
+collector/           the usage-report collector: a Cloudflare Worker (worker.js), its D1 table,
+                     its deploy settings and check.sh; JavaScript, outside the Go module
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
 deploy/              launchd/ and systemd/ service files, and linux/meru.desktop for the app menu
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
@@ -413,7 +428,7 @@ docs/
 `about`, `loopback` and `platform`, plus `catalog` and `secrets`, which `meru setup` and `meru mcp add`
 use to write `config.toml` and `secrets.toml`. It never imports `engine`,
 `transcript`, `agent`, `store`, `retrieve`, `index`, `memory`, `summarize`, `mcp`,
-`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes`, `speech` or anything else that talks to a model, stores data
+`dispatch`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes`, `speech`, `usagereport` or anything else that talks to a model, stores data
 or runs a program.
 The desktop app (`cmd/meru-desktop` and `internal/desktop`) is thinner still: it
 may import `rpc`, `config`, `loopback`, `opener`, `about` and `platform`, plus Wails in the command,
@@ -421,7 +436,7 @@ and neither `catalog`, `secrets` nor `tui`; it never touches Wails' updater.
 The Mac installer (`cmd/meru-installer` and `internal/installer`) runs before
 `merud` exists, so it may write config through `catalog`, the profile through
 `memory` and ask `merud` over `rpc`; it never imports `engine`, `agent`, `store`,
-`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes` or `speech`. It starts programs
+`index`, `dispatch`, `mcp`, `a2a`, `builtin`, `commands`, `connectors`, `render`, `applenotes`, `speech` or `usagereport`. It starts programs
 only in `internal/installer/run.go`, from a fixed allowlist of absolute paths,
 with no shell.
 `internal/policy` fails the build if any of this changes, directly or through

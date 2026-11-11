@@ -176,6 +176,19 @@ reader starts Chrome only through `connectors.StartPiped`, so
 `internal/render` out of both clients and the Mac installer, as it does
 `internal/connectors`.
 
+The anonymous daily usage report is the one request `merud` makes off the
+machine on its own timer, so four checks hold it in place. `allowed_urls.txt` lists the collector with the reason `SENT TO by
+merud`, the only entry of that kind. `TestCollectorOnlyInUsageReport` in
+`privacy_test.go` fails when a shipped Go file outside `internal/usagereport`
+holds the collector's host in a string literal, so the report has one sender;
+the test builds the host from pieces with `strings.Join`, so the test file holds
+no URL literal of its own. `TestModelCantSetUsageReport` fails when a file in
+`internal/builtin`, where the tools the model calls live, names `usage_report`:
+only the user turns the report on or off. `layout_test.go` keeps
+`internal/usagereport` out of both clients and the Mac installer, which reach
+the report only through the `usage_report` op or by writing the choice to
+config.
+
 `pins_test.go` checks that every program Meru installs, or tells you to install,
 names one exact version. It reads the connector manifests, the string literals in
 `internal/installer`, `internal/catalog` and `cmd/meru`, every file in `scripts/`

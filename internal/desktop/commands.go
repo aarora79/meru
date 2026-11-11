@@ -37,6 +37,7 @@ var commandList = []Command{
 	{Name: "/used", Description: "What the newest answer used"},
 	{Name: "/copy", Args: "[N | answer]", Description: "Copy code block N, the newest answer's last block, or the whole answer"},
 	{Name: "/usage", Description: "How much Meru has been used"},
+	{Name: "/report", Description: "The anonymous daily count: see it, turn it on or off"},
 	{Name: "/me", Description: "What Meru knows about you"},
 	{Name: "/mcp", Description: "Your connections and their tools"},
 	{Name: "/signin", Description: "Sign in to a server that asks for it, such as /signin github"},

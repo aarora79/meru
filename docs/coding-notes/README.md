@@ -53,6 +53,7 @@ Read them in this order; each builds on the ones before it.
 32. [speech](speech.md): speech to text, a WAV recording to whisper-server and back, for the `transcribe` op
 33. [jobs](jobs.md): the time rules for scheduled jobs: cron schedules as bitmasks, the next run, and catch-up after sleep
 34. [platform](platform.md): what differs between macOS, Linux and Windows, in one table, and reading this machine, GPU included
+35. [usagereport](usagereport.md): the anonymous daily usage report, when `merud` sends it, and the record in `usage-report.jsonl`
 
 ### Go basics
 
@@ -87,6 +88,7 @@ Read them in this order; each builds on the ones before it.
 - [Server-sent events](go-basics/server-sent-events.md)
 - [Generics](go-basics/generics.md)
 - [oauth2.TokenSource](go-basics/oauth2-tokensource.md)
+- [Wall-clock ticks](go-basics/wall-clock-ticks.md)
 
 ## Rules for writing a note
 

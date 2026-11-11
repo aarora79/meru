@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -320,6 +321,15 @@ func validate(cfg Config) error {
 		add("observability.metrics_interval %q must be a positive duration such as \"10s\"", o.MetricsInterval)
 	}
 
+	if r := cfg.UsageReport.Send; r != "" && r != ReportOn && r != ReportOff {
+		add("usage_report.send %q is unknown; use \"on\" or \"off\", or \"\" to be asked", r)
+	}
+	if u := cfg.UsageReport.URL; u != "" {
+		if err := checkReportURL(u); err != nil {
+			add("usage_report.url %q: %w", u, err)
+		}
+	}
+
 	if _, ok := LogLevel(cfg.Log.Level); !ok {
 		add("log.level %q is unknown; use \"debug\", \"info\", \"warn\" or \"error\"", cfg.Log.Level)
 	}
@@ -590,6 +600,21 @@ func ProfileModels(name string) (Models, bool) {
 func renamedNetwork(k toml.Key) bool {
 	return len(k) == 3 && k[2] == "network" &&
 		((k[0] == "mcp" && k[1] == "servers") || (k[0] == "a2a" && k[1] == "agents"))
+}
+
+// checkReportURL fails unless u is an https:// address with a host, or an
+// address on this machine, as loopback.CheckURL decides. The report holds
+// only coarse fields, but it still goes nowhere over plain http on a
+// network.
+func checkReportURL(u string) error {
+	if loopback.CheckURL(u) == nil {
+		return nil
+	}
+	p, err := url.Parse(u)
+	if err != nil || p.Scheme != "https" || p.Host == "" {
+		return errors.New("use an https:// address, or an http:// address on this machine")
+	}
+	return nil
 }
 
 // checkPrometheus fails unless addr is host:port with a loopback host and a

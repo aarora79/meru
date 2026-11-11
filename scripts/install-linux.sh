@@ -13,7 +13,10 @@
 # instead of the latest.
 #
 # Tested on Ubuntu 24.04. Meru never runs this script itself and never
-# checks for updates; you run it again to update. scripts/install.sh is the
+# checks for updates; you run it again to update. The script sends
+# nothing. `meru setup` asks whether merud may send one anonymous count a
+# day; a config.toml this script writes without a terminal leaves that
+# unchosen, and meru chat or the app asks later. scripts/install.sh is the
 # Mac's.
 
 # set -e stops at the first failed command, -u at an unset variable, and
@@ -99,6 +102,7 @@ fi
 [ "$has_systemd" = 1 ] && echo "    - merud, as a systemd user service started now and at each login"
 echo
 echo "  It connects only to GitHub, Ollama and your apt mirror, to download."
+echo "  meru setup asks whether Meru may send one anonymous count a day."
 echo
 
 if [ "$all" != 1 ] && has_tty; then
@@ -228,7 +232,9 @@ if has_tty && command -v ollama >/dev/null 2>&1 && ollama_up && ask "Run meru se
 elif command -v ollama >/dev/null 2>&1 && [ ! -f "$HOME/.meru/config.toml" ] && ask "Download the lite models and write a default config?"; then
   # No terminal, as over a pipe with MERU_YES=1: the lite profile's two
   # models and the config template, which merud starts with. A failed
-  # download leaves the rest of the install to run.
+  # download leaves the rest of the install to run. The template's
+  # send = "" under [usage_report] stays: no one chose, so merud sends no
+  # count until meru chat or the app asks and the user says yes.
   if ollama_up && ollama pull hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M && ollama pull embeddinggemma-2:440m; then
     mkdir -p "$HOME/.meru"
     "$bin_dir/meru" config template >"$HOME/.meru/config.toml"

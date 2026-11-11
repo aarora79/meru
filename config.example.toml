@@ -199,6 +199,22 @@ metrics_interval = "10s"   # how often merud pushes metrics over OTLP
 traces           = true    # push traces too, when an endpoint is set
 capture_content  = false   # put question and answer text into spans
 
+[usage_report]
+# Meru can send one anonymous count a day: its version, your system and
+# chip, the model set, and rough install age and question count. It holds
+# no ID, no questions and no file names. docs/faq/usage-report.md shows a
+# report, and ~/.meru/usage-report.jsonl holds every one sent, as sent.
+# merud sends nothing until meru chat or the app has shown you the notice,
+# and nothing while DO_NOT_TRACK is set in merud's environment.
+#   send = "on"    send it; setup writes this for a new install you leave on
+#   send = "off"   never send it
+#   send = ""      not chosen yet: Meru asks in meru chat or the app, and
+#                  sends nothing until you say yes
+send = ""
+# The collector. Empty means Meru's own; an address off this machine must
+# use https.
+url  = ""
+
 [builtin]
 # The tools built into merud. Take a name out to turn that tool off: the
 # model never sees it, and `meru tools` doesn't list it.

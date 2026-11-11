@@ -84,6 +84,11 @@ export const bridge = {
   activity: () => call("Activity"),
   usage: () => call("Usage"),
   usageDetail: () => call("UsageDetail"),
+  // The anonymous daily count (report.go).
+  usageReport: () => call("UsageReport"),
+  usageReportMark: (kind) => call("UsageReportMark", kind),
+  usageReportSet: (choice) => call("UsageReportSet", choice),
+  usageReportSend: () => call("UsageReportSend"),
   // A preview of an image source, or "" (thumbs.go).
   sourceThumb: (path) => call("SourceThumb", path),
   // The About section of Settings (about.go).

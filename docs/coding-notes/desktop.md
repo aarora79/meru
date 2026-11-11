@@ -1,6 +1,6 @@
 # desktop
 
-**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `connectors.go`, `about.go`, `files.go`, `thumbs.go`, `speech.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
+**Code:** `internal/desktop/` (`doc.go`, `bridge.go`, `views.go`, `history.go`, `status.go`, `settings.go`, `connectors.go`, `about.go`, `files.go`, `thumbs.go`, `speech.go`, `report.go`, `commands.go`, `options.go`, `assets.go`, and the page in `web/`; tests include `attach_test.go` and `thumbs_test.go`), plus `cmd/meru-desktop/main.go`
 **Milestone:** the desktop app, asked for ahead of v0.5
 **Architecture:** [Desktop app](../../ARCHITECTURE.md#desktop-app)
 
@@ -805,6 +805,44 @@ check is dropped. A job that runs a command keeps its command and arguments,
 which the form shows and doesn't edit. The chat list shows the
 Jobs folder first, with a clock icon, and `/jobs` in the composer opens the
 section.
+
+### report.go and web/js/report.js: the anonymous daily count
+
+`merud` sends one anonymous count a day, once the user has seen the notice
+and not turned it off (ARCHITECTURE.md, "Anonymous usage report"). The app
+only shows what `merud` says and passes on the user's choice. `UsageReport`
+asks how the count stands, `UsageReportMark` sends `"seen"` or `"dismiss"`,
+`UsageReportSet` sends `"on"` or `"off"`, and `UsageReportSend` sends today's
+report now, for the Usage section's "Send today's now" button, which stays
+greyed out while the view's `can_send` is false. Each sends the `usage_report`
+op with the desktop as its source and returns a `UsageReportView`, which
+copies `merud`'s status and turns a missing list into an empty one. A
+`merud` older than the op answers `unknown op "usage_report"`; the view then
+comes back with `Available` false and no error, and the page shows neither
+the banner nor the section. That error reaches the Bridge only as text, so
+`oldMerud` reads the text, the one place this package compares an error by
+its words.
+
+`report.js` draws a banner under the chat's header, in the page's flow, so
+it pushes the conversation down and covers nothing. `index.html` holds it
+as a `<section role="region">`, hidden until `merud` names a banner: `"new"`
+for a new install, which sends unless the user turns it off, or `"ask"`
+after an upgrade, which stays off until the user says yes. Its buttons are
+real `<button>`s, so Tab, Enter and Space work, and nothing in the file
+calls `focus()`, so a user typing in the composer when the banner appears
+loses no keys. `app.js` calls `loadReport` from `loadStatus`, at start and
+on the status poll. The banner redraws only when what it shows changes, so
+a user tabbing through it keeps their place. The first time it shows on the
+chat screen, it sends `"seen"` once, behind a flag that lasts the app run;
+`merud` won't send a count until it has heard that. "See the report" opens
+the exact report the next send would post.
+
+The Usage screen ends with an "Anonymous daily count" section: the choice,
+the sentence that says why nothing will go, when the next one goes, where it
+goes when config names another collector, the recent entries with each body
+or error, and one switch. `/report` in the composer opens the Usage screen,
+as `meru chat`'s `/report` opens its box. Settings' About section now says
+Meru sends one anonymous count a day that the user can turn off.
 
 ## Go ideas used here
 

@@ -285,6 +285,7 @@
     <li><a href="#a2a">Other agents over A2A</a></li>
     <li><a href="#scheduler">Scheduled jobs</a></li>
     <li><a href="#observability">Seeing where the time went</a></li>
+    <li><a href="#usage-report">The anonymous usage report</a></li>
     <li><a href="#privacy">The privacy boundary</a></li>
     <li><a href="#limits">What Meru won't do, and what is still open</a></li>
     <li><a href="#resolved">Decisions already made</a></li>
@@ -302,7 +303,7 @@
 <p>Six principles shape every choice below:</p>
 
 <ol>
-  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, to the answer endpoints you name, and to the public web pages the model fetches with <code>web_fetch</code>, which you turn off by taking it out of <code>[builtin] tools</code>. A page URL that no search result or question of yours gave asks you first, so the model can't send your data out in a URL. Meru measures itself, but no telemetry leaves the machine. No prompt goes to the internet: the fast and embedding models always run here, an answer model runs here or on a computer on your own network, and a turn goes to one on your network only after you answer "this time" or "this chat" (see <a href="#answer-endpoints">Answer endpoints</a>). Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
+  <li><b>Nothing leaves the machine by accident.</b> Meru connects only to loopback, except to A2A agents and MCP servers you mark as remote in config, to the answer endpoints you name, and to the public web pages the model fetches with <code>web_fetch</code>, which you turn off by taking it out of <code>[builtin] tools</code>. A page URL that no search result or question of yours gave asks you first, so the model can't send your data out in a URL. Meru measures itself, and the one thing it sends about itself is an anonymous daily count that you choose (see <a href="#usage-report">The anonymous usage report</a>). No prompt goes to the internet: the fast and embedding models always run here, an answer model runs here or on a computer on your own network, and a turn goes to one on your network only after you answer "this time" or "this chat" (see <a href="#answer-endpoints">Answer endpoints</a>). Other programs Meru talks to on loopback can reach the network on their own: an MCP server you add, such as Gmail, and SearXNG, which web search sends its search words through (see <a href="#mcp">Tools over MCP</a> and <a href="#web-search">Web search</a>).</li>
   <li><b>Files are the source of truth; SQLite is a projection.</b> Meru can rebuild everything in the database from your files and config. Delete <code>meru.db</code> and it re-indexes. The one exception is the tool log of an incognito or deleted chat, which has no file behind it on purpose (see <a href="#organizing">Organizing past chats</a> and <a href="#incognito">Incognito chats</a>).</li>
   <li><b>You can inspect everything.</b> Memories and skills are Markdown files, and answers cite the files they drew on. Meru traces and times every turn, so you can find out why it said something and why it took so long.</li>
   <li><b>Few, narrow abstractions.</b> One engine interface, one store, one agent loop we own, and two wire protocols: <b>MCP</b> (Model Context Protocol) for tools and <b>A2A</b> (Agent2Agent) for other agents. Broad frameworks for large language models change their APIs every few releases, and we don't want to chase them.</li>
@@ -520,6 +521,7 @@
     <tr><td><code>/copy [N|answer]</code></td><td>copy code block N, the newest answer's last block, or the whole answer</td><td>—</td></tr>
 
     <tr><td><code>/usage [by model]</code></td><td>the usage box</td><td><code>usage</code></td></tr>
+    <tr><td><code>/report</code></td><td>the anonymous daily usage report: what goes, the next one, on or off, and <code>t</code> to send today's now</td><td><code>usage_report</code></td></tr>
 
     <tr><td><code>/me [add|prefer &lt;text&gt;]</code></td><td>the profile memories; <code>add</code> saves one to <code>me</code> and <code>prefer</code> one to <code>preferences</code></td><td><code>memory_list</code>, <code>memory_add</code>, <code>memory_forget</code></td></tr>
 
@@ -678,6 +680,7 @@
     <tr><td><code>model_save</code></td><td>writes the models in use to <code>[models]</code></td></tr>
     <tr><td><code>model_set</code></td><td>switches to a model on that list that Ollama has, the same way, then writes <code>[models] main</code></td></tr>
     <tr><td><code>jobs</code>, <code>job_set</code>, <code>job_remove</code>, <code>job_run</code>, <code>job_cancel</code></td><td>(v0.5) list, add or change, remove, run now and stop scheduled jobs (see <a href="#scheduler">Scheduled jobs</a>)</td></tr>
+    <tr><td><code>usage_report</code></td><td>reads the anonymous daily usage report's state, marks its notice seen or closed, writes <code>[usage_report] send</code>, and sends today's report now on request (see <a href="#usage-report">The anonymous usage report</a>)</td></tr>
 
   </tbody>
 
@@ -2715,6 +2718,7 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
   <li><b>Web search.</b> Meru checks that SearXNG answers JSON at <code>[web] searxng_url</code>. When nothing answers at Meru's own address and <code>merud</code> runs, it offers to have <code>merud</code> run SearXNG and sends <code>connector_set</code> (see <a href="#connector-setup">Setting up a connector</a>), printing each step <code>merud</code> reports; with <code>merud</code> down it names <code>meru mcp set searxng enabled=true</code>. When SearXNG answers HTML, it names the <code>search.formats</code> setting to change. Then it waits: Enter checks again, <code>s</code> skips. Meru works without web search (see <a href="#web-search">Web search</a>).</li>
   <li><b>Tools.</b> With <code>merud</code> running, Meru offers the Obsidian and Google connectors, one at a time. For one that is off it asks the connector's fields, a secret without showing it, and <code>merud</code> turns it on with them; for one set up by hand it offers Adopt, which shows <code>merud</code>'s plan and asks again. With <code>merud</code> down it names <code>meru mcp fix &lt;id&gt;</code> for later. Setup prints no docker or <code>uvx</code> command: <code>merud</code> installs each connector. <code>meru mcp add</code> still adds any server by hand (see below).</li>
   <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your email, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
+  <li><b>Anonymous daily count.</b> For a config this run wrote, Meru shows the seven fields of the anonymous usage report with an example body and asks <code>Send it? [Y/n]</code>, then writes <code>[usage_report] send</code>. With <code>DO_NOT_TRACK</code> set it writes <code>"off"</code> without asking. A config that was there before setup keeps its own choice (see <a href="#usage-report">The anonymous usage report</a>).</li>
   <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new <code>config.toml</code> takes a restart of <code>merud</code>; a new server doesn't (see <a href="#mcp">MCP</a>).</li>
 </ol>
 
@@ -2817,7 +2821,7 @@ meru mcp add http &lt;name&gt; &lt;url&gt; [--remote]          # a Streamable HT
   <li>It starts programs only in <code>internal/installer/run.go</code>, which holds a fixed map from each program's name to the absolute paths it may live at. No other installer file imports <code>os/exec</code> or <code>syscall</code>, and the map holds no shell, interpreter or downloader. The code builds each argument as its own string, so no argument can grow into a second command. It never searches <code>PATH</code>: an app opened from Finder gets a short one, and with fixed paths no file dropped on <code>PATH</code> can stand in for a program.</li>
   <li>It never imports the engine, the agent loop, the store, <code>index</code>, <code>dispatch</code>, the MCP or A2A clients or <code>commands</code>, and never talks to a model. It pulls models through Ollama's HTTP API on loopback, which carries no prompt.</li>
   <li>It changes <code>config.toml</code> only through <code>catalog</code>: <code>SetTableLists</code>, <code>SetTableString</code> and <code>AppendCommand</code>. Each edits lines of text, keeps every comment, and replaces the file only after the result loads. A missing <code>config.toml</code> starts as the template. The profile goes into memory files through <code>memory</code>, the same files <code>merud</code> reads, and the installer talks to <code>merud</code> only over the socket.</li>
-  <li>It reaches the internet only after you press Continue on a step that says what it downloads: through Homebrew for Ollama, and, on a Mac with no Homebrew, straight to <code>https://ollama.com/download/Ollama-darwin.zip</code>, whose address the screen shows first. <code>codesign --verify</code> then checks Ollama.app's signature, and the installer deletes the app when the check fails. It sends no telemetry and never checks for updates.</li>
+  <li>It reaches the internet only after you press Continue on a step that says what it downloads: through Homebrew for Ollama, and, on a Mac with no Homebrew, straight to <code>https://ollama.com/download/Ollama-darwin.zip</code>, whose address the screen shows first. <code>codesign --verify</code> then checks Ollama.app's signature, and the installer deletes the app when the check fails. It sends no telemetry and never checks for updates. Its last step shows the anonymous daily usage report, ticked on, and writes the answer to <code>config.toml</code>; <code>merud</code> sends nothing until a client has shown the notice (see <a href="#usage-report">The anonymous usage report</a>).</li>
   <li>Each link on its screens is a name that the Bridge maps to a fixed <code>https</code> address. The page can't open an address of its own. The Apple Notes step's two buttons have a Bridge method each: one opens the fixed System Settings address of the Full Disk Access list, the other shows <code>~/.local/bin/merud</code> in Finder with <code>open -R</code>.</li>
 </ul>
 
@@ -3239,7 +3243,7 @@ command  = "backup-notes"              # a [[commands]] entry; no model runs</co
 
 <h3>Local only</h3>
 
-<p>Meru collects this data about itself, and none of it leaves your machine. It goes only to an endpoint you run on this machine:</p>
+<p>Meru collects this data about itself, and none of it leaves your machine. The anonymous daily usage report is a separate, much smaller thing, with rules of its own (see <a href="#usage-report">The anonymous usage report</a>). The data here goes only to an endpoint you run on this machine:</p>
 
 <ul>
   <li>The <b>OTLP</b> (OpenTelemetry Protocol) exporter stays <b>off until you set <code>observability.otlp_endpoint</code>.</b> With neither <code>otlp_endpoint</code> nor <code>prometheus</code> set, metrics go to a no-op provider and spans record nothing. Each span still gets a trace ID, so the log and the transcript can name the turn. Instrumentation then costs almost nothing.</li>
@@ -3469,6 +3473,79 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 <p>Every line of a turn carries its <code>trace_id</code>, the same ID the trace and the transcript lines hold. No level writes question or answer text. With <code>capture_content = true</code>, the debug lines add the first 200 characters of each.</p>
 
 <!-- ============================================================ -->
+<h2 id="usage-report">The anonymous usage report</h2>
+
+<p>Once a day, <code>merud</code> can send one anonymous report to a collector the project runs, so the project can count how many installs run Meru, on which systems, and which releases they keep. It is the only thing Meru sends about itself. The owner chose it on 11 November 2026, in place of "no telemetry leaves the machine, ever" (<a href="https://github.com/aarora79/meru/issues/251">#251</a>).</p>
+
+<h3>What goes</h3>
+
+<p>The body is seven fields of JSON, about 100 bytes:</p>
+
+<pre><code>{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}</code></pre>
+
+<div class="tbl"><table>
+  <thead><tr><th>Field</th><th>What it holds</th><th>Values</th></tr></thead>
+  <tbody>
+    <tr><td><code>v</code></td><td>the report's format</td><td><code>1</code></td></tr>
+    <tr><td><code>meru</code></td><td>the release</td><td>such as <code>0.7.5</code></td></tr>
+    <tr><td><code>os</code></td><td>the system</td><td><code>darwin</code>, <code>linux</code>, <code>windows</code></td></tr>
+    <tr><td><code>arch</code></td><td>the chip</td><td><code>arm64</code>, <code>amd64</code></td></tr>
+    <tr><td><code>profile</code></td><td>the model set</td><td><code>lite</code>, <code>full</code></td></tr>
+    <tr><td><code>age</code></td><td>how long ago a client first showed the notice</td><td><code>week</code> (under 7 days), <code>month</code> (under 31), <code>year</code> (under 366), <code>older</code></td></tr>
+    <tr><td><code>questions</code></td><td>the questions answered the day before, in UTC, leaving out scheduled jobs</td><td><code>0</code>, <code>1-5</code>, <code>6-20</code>, <code>21+</code></td></tr>
+  </tbody>
+</table></div>
+
+<p>It holds no ID, no question, no answer, no file name, no setting and no time of day. Each install sends at most one report a UTC day, so the collector counts the installs that reported each day without an ID. A new field or value needs a new <code>v</code>, and a new <code>v</code> shows the notice again before anything sends under it. A golden test in <code>internal/usagereport</code> pins the fields.</p>
+
+<h3>When it goes</h3>
+
+<p><code>merud</code> checks every 30 minutes, comparing dates, so a computer that slept past midnight sends within half an hour of waking. It sends only when all of these hold:</p>
+
+<ul>
+  <li><code>[usage_report] send = "on"</code>.</li>
+  <li><code>DO_NOT_TRACK</code> is unset, or <code>0</code>, in <code>merud</code>'s environment.</li>
+  <li>The build is a release, such as <code>v0.7.5</code>. A development build never sends.</li>
+  <li><code>meru chat</code> or Meru.app showed the notice for this <code>v</code> on an earlier UTC day. The first report waits a day, so a user who sees the notice and turns it off that day sends nothing.</li>
+  <li>No report went today, and today's send minute has come. <code>merud</code> picks a random minute up to two hours after midnight UTC each day, so the time a report arrives says nothing about the user's day.</li>
+</ul>
+
+<p>A failed send tries again at the next check. Nothing queues, so a missed day stays missed.</p>
+
+<p><b>Send today's now.</b> The Usage screen's <b>Send today's now</b>, <code>t</code> in <code>/report</code> and <code>meru report send</code> send today's report at once. They skip the two waits, the day after the notice and the send minute, and keep every other rule, so a click never sends a second report in one day and the daily counts still count installs. The button stays greyed out while a click wouldn't send, and a refused send says why.</p>
+
+<h3>Who chooses</h3>
+
+<ul>
+  <li><b>A new install</b> asks during setup. <code>meru setup</code> and the Mac installer's last step show the fields and an example body, with the answer on, and write <code>send = "on"</code> or <code>"off"</code>. With <code>DO_NOT_TRACK</code> set, they write <code>"off"</code> without asking.</li>
+  <li><b>An upgrade</b> from a release without the report has no <code>send</code> line, which reads as <code>""</code>, not chosen. Both clients ask, and <code>merud</code> sends nothing until the user says yes. An install script with no terminal writes the template's <code>send = ""</code>, so it behaves the same way.</li>
+  <li><b>Turning it on counts as seeing the notice.</b> "On" from any client, even <code>meru report on</code> before an app ran, marks the notice seen, since the user who chose it knows of it. "Off" marks nothing.</li>
+  <li><b>The model never chooses.</b> No built-in tool names <code>[usage_report]</code>, and a policy test keeps it that way.</li>
+</ul>
+
+<p>One-shot <code>meru</code> and <code>meru run --json</code> never count as showing the notice, so an install that never opens <code>meru chat</code> or the app never sends.</p>
+
+<h3>What the user sees</h3>
+
+<p>Both clients show a banner above the chat until the user acts on it. For a new install it says the report is on and offers <b>See the report</b>, <b>Turn off</b> and <b>Got it</b>; after an upgrade it asks, with <b>See the report</b>, <b>Share</b> and <b>Don't share</b>. <b>See the report</b> shows the exact next body. The Usage screen has an "Anonymous daily count" section with the choice, why nothing will go if something holds it back, when the next one goes, the recent entries, each with the body sent, and <b>Send today's now</b>. <code>meru chat</code> has <code>/report</code>, and <code>meru report [on|off|send]</code> does the same from a terminal. Every client reaches it through one op, <code>usage_report</code>.</p>
+
+<h3>The record</h3>
+
+<p><code>~/.meru/usage-report.jsonl</code>, mode 0600, holds one line for each event: <code>seen</code> when a client showed the notice, <code>dismissed</code> when the user closed it or chose, and <code>sent</code> or <code>failed</code> for each try, with the exact body. Nothing about the report lives in <code>meru.db</code>. Deleting the file means no client has shown the notice, so nothing sends until one does.</p>
+
+<h3>The connection</h3>
+
+<p><code>merud</code> posts the body to <code>https://meru-report.meru-workers.workers.dev/v1/report</code> over HTTPS, with no proxy, no redirects and a 10-second limit, and only a 204 answer counts as sent. <code>[usage_report] url</code> names another collector, such as one a company runs; it takes an <code>https</code> address, or one on this machine, which the end-to-end tests use. The clients show the address whenever config changes it. Only <code>internal/usagereport</code> holds Meru's collector's address, and a policy test keeps it there.</p>
+
+<h3>The collector</h3>
+
+<p>The collector is a Cloudflare Worker with one D1 table; its code is in <code>collector/</code>. It stores a report only when the body has exactly the seven fields, each with a value from its list, and answers 400 to anything else. It keeps the UTC date and the seven fields, with no column for an IP address or a time. It reads the sender's address only as the key for a rate limit of five reports a minute, and Workers Logs stay off, because they would record it. Cloudflare's network still sees each sender's address, as any host does. The Worker publishes the counts of the last 90 days at <code>/</code> and <code>/totals</code>, and deletes rows older than 400 days.</p>
+
+<h3>Turning it off</h3>
+
+<p>The Usage screen's switch, <code>/report</code>, <code>meru report off</code> and <code>send = "off"</code> each stop it at the next check. <code>DO_NOT_TRACK=1</code> stops it too, but only in <code>merud</code>'s own environment: launchd and systemd don't pass a shell's variables on, so set it in the service file or use one of the others.</p>
+
+<!-- ============================================================ -->
 <h2 id="privacy">The privacy boundary</h2>
 
 <ul>
@@ -3480,7 +3557,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <li><code>web_fetch</code> makes <code>merud</code> fetch public pages off this machine, by default, when the model asks; taking it out of <code>[builtin] tools</code> turns it off. It refuses any address on this machine or your network. It runs without asking only for a URL that a search result or your own question gave in the same session, so the model can't carry your data out in a URL it made up; any other URL, and every download, asks you first, and a scheduled job declines them (see <a href="#web-search">Web search</a>).</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
   <li>A local command runs with your permissions too, and reaches the network if you declare one that does, such as <code>curl</code> or <code>ssh</code>. You chose it, and the <code>tool_calls</code> row records each run with its argv.</li>
-  <li>No telemetry leaves the machine. Meru's own metrics and traces are off by default, go only to loopback when on, and leave out prompt text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
+  <li>Meru sends one anonymous usage report a day, and nothing else about itself. The report holds the Meru version, the system, the chip, the model set (<code>lite</code> or <code>full</code>), how long ago a client first showed the notice (a week, a month, a year or longer) and how many questions Meru answered the day before (0, 1 to 5, 6 to 20, or more). It holds no ID, no question, no answer, no file name and no setting. <code>merud</code> sends it only after a client has shown the notice, writes each report to <code>~/.meru/usage-report.jsonl</code> as sent, and stops when you turn it off or set <code>DO_NOT_TRACK</code>. A new field needs a new report version, and a new version shows the notice again before anything sends. Meru's own metrics and traces still go only to loopback, Meru sends no crash reports, and it never checks for updates (see <a href="#usage-report">The anonymous usage report</a>).</li>
   <li>Any program on this machine can read the <code>/metrics</code> page while it's on. It holds counts, durations and names from small fixed sets: models, routes, servers, tools and outcomes, never a question, a path or a session ID.</li>
   <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
   <li>Deleting a chat removes its transcript and its content in <code>meru.db</code>; its <code>tool_calls</code> rows stay without arguments or results. An incognito chat writes no transcript, no session rows and no summary, and saves no memory; <code>tool_calls</code> records each of its calls without arguments or results (see <a href="#incognito">Incognito chats</a>).</li>

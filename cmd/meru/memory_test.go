@@ -240,9 +240,9 @@ func TestSetupOffersProfile(t *testing.T) {
 		t.Errorf("memories = %q, want the name", got)
 	}
 	about := strings.Index(out.String(), "6. About you")
-	test := strings.Index(out.String(), "7. A test question")
+	test := strings.Index(out.String(), "8. A test question")
 	if about < 0 || test < about || !strings.Contains(out.String(), "I answer questions.") {
-		t.Errorf("want step 6 about you before step 7 and its answer:\n%s", out)
+		t.Errorf("want step 6 about you before step 8 and its answer:\n%s", out)
 	}
 }
 

@@ -281,6 +281,7 @@
         <li>Search words, through the search engine on your machine</li>
         <li>Calls to services you connect, such as Gmail, or GitHub after you sign in; the token stays on your machine</li>
         <li>Public web pages Meru reads; it asks before any address no search or question of yours gave</li>
+        <li>One anonymous count a day, with no ID and no text, which you can turn off</li>
         <li>Every tool call is logged: <code>meru log</code> shows them all</li>
       </ul>
     </div>
@@ -313,7 +314,7 @@
       <tr><td>Tools</td><td>Each tool is on, asks first, or off, in one config file. Sending, deleting or changing asks the user every time.</td></tr>
       <tr><td>Network</td><td>The assistant connects only to its own machine, except to servers marked remote and to public pages it reads, never to private addresses.</td></tr>
       <tr><td>Secrets</td><td>API keys and sign-in tokens live in files only the user can read. Meru hides every key from the model, its log, its traces and server errors.</td></tr>
-      <tr><td>Telemetry</td><td>None leaves the machine, and Meru never checks for updates. Metrics go to a Prometheus you run, on the same machine.</td></tr>
+      <tr><td>Telemetry</td><td>One anonymous count a day, with no ID and no text, which a setting turns off. No crash reports, and Meru never checks for updates. Metrics go to a Prometheus you run, on the same machine.</td></tr>
       <tr><td>Supply chain</td><td>Every program Meru installs is pinned by version and SHA-256 or image digest; CI signs a record of how Meru's speech server was built.</td></tr>
       <tr><td>Enforcement</td><td>Policy tests in CI fail the build if code adds a provider's SDK or address, a second path to a tool, or a forbidden import.</td></tr>
     </tbody>

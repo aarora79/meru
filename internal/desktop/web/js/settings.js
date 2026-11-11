@@ -1,5 +1,6 @@
 // Settings: the settings screen, with a back link and seven sections, and
-// the Usage screen, which the rail opens beside Settings.
+// the Usage screen, which the rail opens beside Settings and which ends
+// with the anonymous daily count from report.js.
 // Connections, Folders, About you, Skills, Models and Activity each
 // ask the Bridge for their data when they open, and every change goes to
 // merud, which writes config.toml or the memory folder and reloads.
@@ -15,6 +16,7 @@ import { here } from "./machine.js";
 import { el, button, seconds } from "./turns.js";
 import { connectorCard } from "./connectors.js";
 import { signIn } from "./signin.js";
+import { reportSection } from "./report.js";
 
 // SECTIONS are the sections of Settings, in the order its tabs show them.
 const SECTIONS = [
@@ -1513,7 +1515,9 @@ const USAGE_TABS = [
 // charts, then the usage windows as totals, the slowest tasks, tool calls
 // by outcome and use by model: a chart reads at a glance, where the
 // windows table takes a scan along its rows. Prometheus queries says how
-// to read the same numbers in a Prometheus you run. The windows arrive
+// to read the same numbers in a Prometheus you run. Under the tabs, the
+// "Anonymous daily count" section from report.js says whether Meru sends
+// its one count a day and shows what went. The windows arrive
 // first and alone, so an older merud, which can't send the rest, still
 // fills the table; once the charts draw, the table moves under them.
 function usage(body) {
@@ -1529,6 +1533,7 @@ function usage(body) {
       more.append(el("p", "panel-note", "Loading the charts…"));
       charts.append(more);
       prometheusSection(panels.prometheus, "");
+      body.append(reportSection());
       bridge.usageDetail().then(
         (d) => {
           drawDetail(more, d);
@@ -1904,7 +1909,7 @@ const DOES = [
 // your own machine".
 const WHY = [
   "Your files, mail and questions stay on your computer, so none of it ends up in anyone's training set.",
-  "Meru needs no account and sends no usage reports, and no question leaves your computer unless you name a model elsewhere and say yes.",
+  "Meru needs no account, sends one anonymous count a day that you can turn off, and no question leaves your computer unless you name a model elsewhere and say yes.",
   "You can read every setting in one file, and each memory and skill is a Markdown file you can edit or delete.",
 ];
 
@@ -1978,7 +1983,8 @@ function list(lines) {
 // ---- The side panel: On this Mac, or On this computer ----
 
 // settingsPanel fills the side panel while Settings shows: the models,
-// the search index, and the line that says nothing leaves the machine.
+// the search index, and the line that says no question leaves without
+// the user's yes.
 export function settingsPanel(body, status) {
   const s = status || {};
   const dl = el("dl", "facts");

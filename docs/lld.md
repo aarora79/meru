@@ -53,6 +53,7 @@ allows only code inside this repo to import.
 | `internal/builtin` | tools that live inside `merud`: `configure`, `datetime` and `about_meru`, and from v0.4 `remember`, `write_file`, the read-only `read_file`, `list_folder`, `grep`, `search_files`, `search_images` and `view_image`, the web tools `web_search` and `web_fetch`, the Apple Notes tools `search_notes`, `list_notes` and `read_note`, from v0.5 `schedule_job`, and from v0.7 `analyze_table` | `builtin.go`: `Confirm`, `Call`; then `files.go`, `inline.go`, `web.go`, `webguard.go`: `ConfirmCall`, `webdownload.go`, `notes.go` and `schedulejob.go`: `AuditArgs` |
 | `internal/speech` | speech to text for the `transcribe` op: reads a WAV header for the length, posts the file to the whisper connector's server, cleans Whisper's markers (see [Speech to text](../ARCHITECTURE.md#speech-to-text)) | `speech.go`: `CheckWAV`, `Transcribe`, `Clean` |
 | `internal/jobs` | the time rules for scheduled jobs (v0.5): parses a five-field cron schedule with `every_weeks` and `from`, finds the next run, says it in words, and decides whether a job runs now or was missed too long ago (see [Scheduler](../ARCHITECTURE.md#scheduler)) | `schedule.go`: `Parse`, `Next`, `Describe`; `due.go`: `Due`, `CatchUp`; `scheduler.go`: `New`, `Set`, `Loop`, `RunNow`, `Cancel`, `Status` |
+| `internal/usagereport` | the anonymous daily usage report: checks every half hour, sends seven coarse fields at most once a UTC day, and keeps a line in `~/.meru/usage-report.jsonl` for each notice shown or closed and each report sent or failed (see [Anonymous usage report](../ARCHITECTURE.md#anonymous-usage-report)) | `send.go`: `New`, `Loop`, `Mark`; `status.go`: `Status`; `report.go`: `Report`; `log.go`: `readState` |
 | `internal/applenotes` | reads the Notes app's `NoteStore.sqlite`, live and read-only: finds the schema at run time and decodes each note's text from its gzipped protobuf (see [the built-in tools](../ARCHITECTURE.md#approving-a-tool-call)) | `store.go`: `Open`, `Search`, `Note`, `Folders`; `body.go`: `noteText` |
 | `internal/render` | `web_fetch`'s page reader: for a page whose text comes from JavaScript, it installs the pinned `chrome-headless-shell` on first need, starts a proxy on loopback and a fresh Chrome for that page, drives Chrome over two pipes, waits for the text and the traffic to settle, and returns the HTML (see [Pages that need JavaScript](../ARCHITECTURE.md#pages-that-need-javascript)) | `render.go`: `New`, `Render`, `Ready`, `Close`; `browser.go`: `startBrowser`; `cdp.go`: `call`; `proxy.go`: `startProxy`, `arm` |
 | `internal/commands` | the `[[commands]]` entries: startup checks, rendering the model's arguments into an argv, running the program with no shell, and the `dispatch` backend for `cmd.<name>` tools | `commands.go`: `New`, then `render.go`: `Render`, `run.go`: `Run` and `set.go` |
@@ -86,7 +87,7 @@ flowchart TD
     merud["cmd/merud"] --> agent & router & rpc & obs & engine & config
     merud --> index & retrieve & store
     merud --> dispatch & mcp & a2a & builtin & commands & secrets
-    merud --> memory & skills & summarize & render
+    merud --> memory & skills & summarize & render & usagereport
     meru["cmd/meru"] --> tui & rpc & config & catalog & secrets
     desktopapp["cmd/meru-desktop"] --> desktop
     desktop --> rpc & config & opener & about
@@ -97,6 +98,7 @@ flowchart TD
     agent --> store & memory & skills & builtin
     builtin --> dispatch & catalog & secrets & config & memory & index & render & applenotes
     render --> connectors & obs
+    usagereport --> rpc & obs
     commands --> dispatch & engine & rpc & config
     summarize --> store & engine & obs & transcript
     a2a --> dispatch & engine & rpc & obs & loopback
@@ -478,6 +480,29 @@ server or A2A agent (`toolServers`), says "remember", asks for the web
 adds them, `direct` to `tools` and `search` to `search+tools`. On a `tools` turn
 the same sign skips the search of your files (`aboutFiles`). It reads the names
 each turn because `configure` can add a server while `merud` runs.
+
+### `usagereport.Questions`: how the usage report counts questions
+
+```go
+// internal/usagereport/send.go
+func New(dir, version string, store Questions, log *slog.Logger) *Reporter
+
+type Questions interface {
+    QuestionsBetween(ctx context.Context, from, to time.Time) (int, error)
+}
+```
+
+`merud` owns one `usagereport.Reporter`, which `serve` builds in
+`cmd/merud/usagereport.go` and runs with `Loop` in the errgroup. The reporter
+needs one number from the store, yesterday's questions, so it declares this
+one-method interface, and `serve` passes the `*store.Store`, which has
+`QuestionsBetween`. `usagereport` never imports `store` or `config`: `merud`
+reads `[usage_report]` from `config.toml` on each tick and passes it in as
+`usagereport.Settings`. The clients never import `usagereport` either, and a
+policy test fails if one does. `meru report`, `meru chat` and the desktop app
+reach it through the `usage_report` op, which `reportService.handle` answers
+with `Reporter.Status` and changes with `Reporter.Mark` and a checked edit of
+`config.toml`.
 
 ### `config.Config`: settings, checked once
 

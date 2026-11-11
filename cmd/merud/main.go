@@ -28,6 +28,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/aarora79/meru/internal/about"
 	"github.com/aarora79/meru/internal/agent"
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/engine"
@@ -38,6 +39,7 @@ import (
 	"github.com/aarora79/meru/internal/router"
 	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/store"
+	"github.com/aarora79/meru/internal/usagereport"
 )
 
 // main wires the operating system to run: it turns SIGINT and SIGTERM into a
@@ -301,7 +303,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
 		cfg: cfg, main: a.Main, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
-		skills: sk, mem: mem, machine: machine, home: home, web: tools.conns.webOK, log: log,
+		skills: sk, mem: mem, machine: machine, home: home, web: tools.conns.webOK, configPath: configPath, log: log,
 	}.facts)
 	// config.Load has checked output_dir, so expandHome fails only when
 	// the OS can't say where home is; then saves have nowhere to go.
@@ -339,6 +341,14 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// same checked edit as the clients' Jobs screens.
 	tools.bt.UseJobs(jobSvc.add)
 	g.Go(func() error { jobSvc.sched.Loop(gctx); return nil })
+	// The anonymous daily usage report checks every half hour whether to
+	// send, and sends nothing until a client has shown the notice; see
+	// usagereport.go and ARCHITECTURE.md, "Anonymous usage report".
+	svc.report = &reportService{
+		reporter:   usagereport.New(cfg.Dir, about.Version(), st, log),
+		configPath: configPath, editConfig: tools.bt.EditConfig, log: log,
+	}
+	g.Go(func() error { svc.report.reporter.Loop(gctx, svc.report.settings); return nil })
 	warmAnswer := a.StartWarm()
 	g.Go(func() error { warmAnswer(gctx); return nil })
 	requests.open(handler(svc))
@@ -431,6 +441,7 @@ type services struct {
 	save       saveService
 	models     *modelService
 	jobs       *jobService
+	report     *reportService
 	ollama     *ollamaWatch
 	configPath string
 	// metrics is the /metrics address the Usage page shows, or "" when
@@ -445,8 +456,9 @@ type services struct {
 // chat folder ops to the history service, save_file to the save service,
 // attach_file to the tool service, which holds the built-in tools,
 // transcribe to the tool service too, which holds the connectors, the
-// model ops to the model service, and the usage op to the store. The rpc
-// server answers pings itself.
+// model ops to the model service, the usage op to the store, and the
+// usage_report op to the report service. The rpc server answers pings
+// itself.
 func handler(svc services) rpc.Handler {
 	a, idx, tools, mems, sk, hist, st := svc.agent, svc.idx, svc.tools, svc.mems, svc.skills, svc.hist, svc.st
 	return func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, approve rpc.ApproveFunc) error {
@@ -555,6 +567,8 @@ func handler(svc services) rpc.Handler {
 			return svc.jobs.handleJobSet(ctx, req, emit)
 		case rpc.OpJobRemove:
 			return svc.jobs.handleJobRemove(ctx, req, emit)
+		case rpc.OpUsageReport:
+			return svc.report.handle(ctx, req, emit)
 		default:
 			return fmt.Errorf("unknown op %q", req.Op)
 		}

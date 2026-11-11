@@ -287,7 +287,7 @@
 <p class="lede prose">Meru answers questions from your notes and files, and uses the tools you allow. The models run on your computer, so your questions reach no AI company unless you name one and say yes.</p>
 <ul class="cards">
   <li><h3>Your data stays home</h3><p>Your files, mail and questions stay on your computer. Ollama, a free program, runs the models there too.</p></li>
-  <li><h3>No account and no bill</h3><p>Meru needs no sign-up, no subscription and no cloud model. A question costs the electricity your computer uses.</p></li>
+  <li><h3>No account and no bill</h3><p>Meru needs no sign-up, no subscription and no cloud model. A question costs the electricity your computer uses. Meru sends one anonymous count a day, which you can turn off (<a href="https://github.com/aarora79/meru/blob/main/docs/faq/usage-report.md">what it holds</a>).</p></li>
   <li><h3>Answers from your folders</h3><p>You pick the folders Meru may read. It searches them by keyword and by meaning, and names the files behind each answer.</p></li>
   <li><h3>Tools you choose</h3><p>Mail, calendar, notes, web search and GitHub start switched off. Meru asks you before any call that sends, deletes or changes something.</p></li>
   <li><h3>It remembers what you tell it</h3><p>Meru keeps what it learns about you as small Markdown files. You can read, edit or delete each one.</p></li>
@@ -409,7 +409,7 @@
   <text x="630" y="564" class="t3" font-size="12.5" text-anchor="middle">search engine, Google</text>
 </svg>
 </div>
-<figcaption>Everything inside the dashed line runs on your machine: the models, your data and the assistant itself. Only the tools you allow reach the internet, and each call goes through <code>dispatch</code> first.</figcaption>
+<figcaption>Everything inside the dashed line runs on your machine: the models, your data and the assistant itself. Only the tools you allow reach the internet, and each call goes through <code>dispatch</code> first. Apart from them, <code>merud</code> sends one anonymous count a day, with no ID and no text, which you can turn off.</figcaption>
 </figure>
 </section>
 
@@ -427,7 +427,7 @@
 <h2 id="for-teams">What it does for a company</h2>
 <p class="lede prose">Staff want an assistant, and the data they would use it on can't leave the building. Meru fits that problem.</p>
 <ul class="points">
-  <li><b>The data stays put.</b> Meru runs on a laptop, a virtual desktop or a server in your own account. It reads email, documents, code and notes without sending any of it to a model provider, so it can work on material that policy or regulation keeps in-house.</li>
+  <li><b>The data stays put.</b> Meru runs on a laptop, a virtual desktop or a server in your own account. It reads email, documents, code and notes without sending any of it to a model provider, so it can work on material that policy or regulation keeps in-house. The anonymous daily usage report carries none of it, and one line of config turns it off.</li>
   <li><b>Tools stay off until you allow them.</b> Each server's tools start switched off, and risky ones ask before they run.</li>
   <li><b>Every action lands in a log.</b> Each tool call goes into an audit table and the session transcript. One function, <code>dispatch</code>, handles every call, so a reviewer checks one code path.</li>
   <li><b>You can measure it.</b> Meru sends OpenTelemetry metrics and traces (tokens, time, which tool ran and which failed) to a collector you run on the same machine.</li>

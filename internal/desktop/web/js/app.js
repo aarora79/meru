@@ -4,7 +4,8 @@
 // attachments, slash commands and queue, and the side panel. turns.js
 // draws each turn, settings.js the Settings screen, setup.js the Setup
 // screen, commands.js the slash commands, organize.js the rail's
-// right-click menus and their dialogs; api.js reaches Go.
+// right-click menus and their dialogs, report.js the anonymous daily
+// count's banner; api.js reaches Go.
 //
 // The Bridge in Go owns the running turn and the queue. The page keeps
 // only what it draws, and redraws from each Update the Bridge sends.
@@ -21,6 +22,7 @@ import { openSettings, openUsage, settingsPanel, policyWords } from "./settings.
 import { openSetup } from "./setup.js";
 import { connectorProgress } from "./connectors.js";
 import { signIn } from "./signin.js";
+import { loadReport } from "./report.js";
 import { setupVoice } from "./voice.js";
 import { setupOrganize, chatMenu, folderMenu, menuKey as rowMenuKey, deleteDialog, newFolderDialog } from "./organize.js";
 
@@ -1052,7 +1054,9 @@ function openSession(s) {
 
 // loadStatus asks the Bridge for merud's status and draws it. The first
 // time merud reports no folders and no profile, Setup opens on its own.
+// It also asks how the anonymous daily count stands, for the banner.
 function loadStatus() {
+  loadReport();
   bridge.status().then((s) => {
     state.status = s;
     setMachine(s.machine);

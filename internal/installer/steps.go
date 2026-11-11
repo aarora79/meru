@@ -150,7 +150,7 @@ func stepList() []Step {
 		},
 		{
 			ID: StepStart, Title: "Start Meru",
-			What: "Starts merud now and at every login, hands it the connectors you turned on, shows each one as merud installs and checks it, then shows its first scan of your folders.",
+			What: "Starts merud now and at every login, hands it the connectors you turned on, shows each one as merud installs and checks it, then shows its first scan of your folders. Meru will send one anonymous count a day. The box below shows exactly what.",
 			Why:  "merud has to run for Meru to answer, and it installs, runs and repairs the connectors from here on. launchd, the Mac's own service manager, starts it at login.",
 			Cost: "The connectors' downloads, a few minutes the first time. Then the scan runs in the background.",
 		},

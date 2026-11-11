@@ -1,0 +1,8 @@
+{
+  "name": "meru-report-collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

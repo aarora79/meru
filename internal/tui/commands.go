@@ -18,7 +18,7 @@ import (
 // app's composer has the same commands in the same order;
 // TestCommandsMatchChat in internal/desktop reads this line and fails when
 // the two differ.
-const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /large, /scope, /attach, /save, /used, /copy, /usage, /me, /mcp, /signin, /folders, /skills, /sites, /jobs, /model, /log, /about, /help, /exit"
+const commandList = "/new, /incognito, /chats, /delete, /folder, /move, /tag, /untag, /retry, /continue, /large, /scope, /attach, /save, /used, /copy, /usage, /report, /me, /mcp, /signin, /folders, /skills, /sites, /jobs, /model, /log, /about, /help, /exit"
 
 // commandHelp is the /help box's line for each command, in commandList's
 // order: what to type, and what it does. TestCommandHelp fails when a
@@ -43,6 +43,7 @@ var commandHelp = []struct{ use, what string }{
 	{"/used", "what the newest answer used"},
 	{"/copy [N|answer]", "copy a code block, or the whole answer"},
 	{"/usage [by model]", "how much you use Meru"},
+	{"/report", "the anonymous daily count: see it, turn it on or off"},
 	{"/me [add|prefer <text>]", "what Meru knows about you; add to it"},
 	{"/mcp", "connectors: fix, on/off, adopt; tools: Off, Ask or Allow; add a server"},
 	{"/signin [server]", "sign in to a server that asks for it"},
@@ -116,6 +117,8 @@ func (m Model) command(text string) (tea.Model, tea.Cmd) {
 		return m.copyCommand(arg)
 	case "/usage":
 		return m.usageCommand(arg)
+	case "/report":
+		return m.reportCommand()
 	case "/me":
 		return m.meCommand(arg)
 	case "/mcp":

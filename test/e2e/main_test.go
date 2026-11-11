@@ -62,7 +62,8 @@ func runMain(m *testing.M) int {
 	return m.Run()
 }
 
-// buildBinaries compiles merud, meru and fakeollama into dir with `go build`.
+// buildBinaries compiles merud, meru, fakeollama and fakemcp into dir with
+// `go build`, then a release-stamped merud with buildRelease.
 // When the tests run under -race, the binaries get the race detector too, so
 // a data race inside merud fails the run (see checkNoRace).
 func buildBinaries(dir string) error {
@@ -77,6 +78,30 @@ func buildBinaries(dir string) error {
 	args := []string{"build", "-o", dir + string(filepath.Separator)}
 	args = append(args, raceBuildFlags...) // ... spreads the slice into separate arguments
 	args = append(args, "./cmd/merud", "./cmd/meru", "./cmd/fakeollama", "./cmd/fakemcp")
+	cmd := exec.Command("go", args...)
+	cmd.Dir = root
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go %s: %w\n%s", strings.Join(args, " "), err, stderr.String())
+	}
+	return buildRelease(root, dir)
+}
+
+// releaseVersion is the version buildRelease stamps into merud-release.
+const releaseVersion = "v0.7.5"
+
+// buildRelease compiles a second merud, merud-release, with a release
+// version stamped in the way scripts/release.sh does. A plain build calls
+// itself a development build, and a development build never sends the
+// usage report, so usagereport_test.go needs this one.
+func buildRelease(root, dir string) error {
+	const module = "github.com/aarora79/meru"
+	ldflags := "-X " + module + "/internal/obs.releaseVersion=" + releaseVersion +
+		" -X " + module + "/internal/about.releaseVersion=" + releaseVersion
+	args := []string{"build", "-o", filepath.Join(dir, "merud-release"), "-ldflags", ldflags}
+	args = append(args, raceBuildFlags...)
+	args = append(args, "./cmd/merud")
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
 	var stderr bytes.Buffer

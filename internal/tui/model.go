@@ -210,6 +210,13 @@ type Model struct {
 	// usage is merud's last answer to OpUsage; nil until one answers, and
 	// when merud doesn't know the op. The header shows its 1h window.
 	usage []rpc.UsageWindow
+	// report is merud's last answer to OpUsageReport, the anonymous daily
+	// count; nil until one answers, and when merud doesn't know the op.
+	// The banner above the input and the /usage box's section draw from
+	// it. reportSeen is true once this run told merud the banner showed,
+	// so the status timer doesn't tell it again (report.go).
+	report     *rpc.UsageReportStatus
+	reportSeen bool
 	// models is merud's last answer to a model op; nil until one answers.
 	// The header shows the answer model and the model set in use from it.
 	models *rpc.ModelsInfo
@@ -286,7 +293,7 @@ type Model struct {
 	mcpBox *mcpBox
 	// modelBox is the open /model box, or nil, and works the same way.
 	modelBox *modelBox
-	// So do the /chats, /used, /folders, /skills, /sites, /jobs and /log boxes. The
+	// So do the /chats, /used, /folders, /skills, /sites, /jobs, /report and /log boxes. The
 	// /about and /help boxes only scroll.
 
 	chatsBox   *chatsBox
@@ -295,6 +302,7 @@ type Model struct {
 	skillsBox  *skillsBox
 	sitesBox   *sitesBox
 	jobsBox    *jobsBox
+	reportBox  *reportBox
 	logBox     *logBox
 	aboutBox   *scrollBox
 	helpBox    *scrollBox
@@ -375,12 +383,13 @@ func newModel(ask askFunc, send sender, info Info, lk look) Model {
 
 // Init returns the commands Bubble Tea runs first: blink the cursor, ask
 // merud what its index holds, so the header can say whether it is up and
-// how many documents it searches, and ask for the usage numbers.
+// how many documents it searches, and ask for the usage numbers and how
+// the anonymous daily count stands.
 func (m Model) Init() tea.Cmd {
 	if m.ask == nil {
 		return textarea.Blink
 	}
-	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), refreshAfter(refreshScanning))
+	return tea.Batch(textarea.Blink, pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), reportStatusCmd(m.ask), refreshAfter(refreshScanning))
 }
 
 // Update turns one message into the next Model plus an optional command for
@@ -429,6 +438,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case usageDetailMsg:
 		m.applyUsageDetail(msg)
 		return m, nil
+	case reportMsg:
+		cmd := m.applyReport(msg)
+		return m, cmd
 	case meMsg:
 		m.applyMe(msg)
 		return m, nil
@@ -453,8 +465,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Check now, and book the next check. Only this branch books one,
 		// so there is one chain of checks however many answers arrive.
 		// The models come too: another client, such as the desktop app,
-		// may have switched the answer model.
-		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), refreshAfter(nextRefresh(m.index)))
+		// may have switched the answer model, or answered the daily
+		// count's notice.
+		return m, tea.Batch(pingCmd(m.ask), usageCmd(m.ask), listModels(m.ask), reportStatusCmd(m.ask), refreshAfter(nextRefresh(m.index)))
 	case eventMsg:
 		m.handleEvent(msg)
 		return m, nil
@@ -779,17 +792,21 @@ func (m *Model) resize(width, height int) {
 
 // layout grows or shrinks the input box to fit its text, up to
 // maxInputLines, and gives the conversation the rows that are left, less
-// one for the attachments line while the next question carries files. A
-// conversation scrolled to the bottom stays at the bottom.
+// one for the attachments line while the next question carries files and
+// one for the daily count's banner while it shows. A conversation
+// scrolled to the bottom stays at the bottom.
 func (m *Model) layout() {
 	follow := m.conversation.AtBottom()
 	lines := min(max(m.input.LineCount(), 1), maxInputLines)
 	m.input.SetHeight(lines)
-	attach := 0
+	extra := 0
 	if len(m.attached) > 0 {
-		attach = 1
+		extra++
 	}
-	m.conversation.Height = max(m.height-headerLines-(lines+inputChromeH)-helpLines-attach, 1)
+	if m.reportBanner() != "" {
+		extra++
+	}
+	m.conversation.Height = max(m.height-headerLines-(lines+inputChromeH)-helpLines-extra, 1)
 	if follow {
 		m.conversation.GotoBottom()
 	}

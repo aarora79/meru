@@ -39,6 +39,9 @@ type Config struct {
 	Web Web `toml:"web"`
 	// Chat tunes the `meru chat` screen. meru reads it, not merud.
 	Chat Chat `toml:"chat"`
+	// UsageReport says whether merud sends the anonymous daily usage
+	// report (ARCHITECTURE.md, "Anonymous usage report").
+	UsageReport UsageReport `toml:"usage_report"`
 	// Commands lists the local programs the model may run, one tool each
 	// (v0.3). The commands package checks them when merud starts.
 	Commands []Command `toml:"commands"`
@@ -416,6 +419,26 @@ type Chat struct {
 	// Shift in most others); false gives plain selection back.
 	MouseCopy bool `toml:"mouse_copy"`
 }
+
+// UsageReport is the [usage_report] table.
+type UsageReport struct {
+	// Send is "on" to send the report, "off" never to send it, or "" when
+	// the user hasn't chosen. Setup writes "on" or "off" for a new install.
+	// A config from a release without the report has no such line, so it
+	// reads as "": both clients ask, and merud sends nothing until the user
+	// says yes.
+	Send string `toml:"send"`
+	// URL names the collector. Empty, the default, means Meru's own. An
+	// address off this machine must use https; the end-to-end tests point
+	// it at a fake on loopback.
+	URL string `toml:"url"`
+}
+
+// The values [usage_report] send takes.
+const (
+	ReportOn  = "on"
+	ReportOff = "off"
+)
 
 // Command is one [[commands]] entry: a program the user declared, which the
 // model sees as the tool "cmd.<name>". The model fills in the parameters;
