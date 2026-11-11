@@ -488,6 +488,24 @@ gets it from the transcript's user line, so `turnsOf` carries the open
 question's job to its answer's row. `LastJobRuns` answers each job's newest run
 with one `GROUP BY` query; the scheduler reads it once at startup.
 
+### Questions for the usage report (turns.go)
+
+`QuestionsBetween(ctx, from, to)` counts the `turns` rows from `from` up to,
+but not including, `to`, and leaves out rows whose source is `job`, since
+nobody asked those. The anonymous daily usage report sends yesterday's count,
+cut to a bucket such as `"1-5"` (see [usagereport](usagereport.md)). It is
+one query:
+
+```sql
+SELECT COUNT(*) FROM turns WHERE ts >= ? AND ts < ? AND source != ?
+```
+
+An incognito turn writes no row, so it never counts. `usagereport` asks for
+this method through its own `Questions` interface, so it never imports
+`store`; `*store.Store` has the method, which is all Go needs for the store to
+fit the interface. `TestQuestionsBetween` puts rows on both edges of the
+window and a job run inside it, and wants a count of 2.
+
 ## Go ideas used here
 
 - **`database/sql`** — Go's standard interface to SQL databases: a pool, queries,

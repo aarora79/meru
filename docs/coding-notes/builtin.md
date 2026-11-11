@@ -270,6 +270,7 @@ type About struct {
     Files, Chunks int
     DBBytes int64
     Sources []AboutSource
+    Web, UsageReport string
     Commands []string
     Skills, Disabled []string
     Memories map[string]int
@@ -296,6 +297,14 @@ Each `AboutSource` names an MCP server or A2A agent, whether it is connected and
 how many tools it offers. A connector `merud` runs adds its `Sentence`, which
 `sources` puts after a semicolon, so the model can say why one is down:
 `obsidian (not connected; Obsidian needs your vault folder.)`.
+
+`UsageReport` is `merud`'s sentence on the anonymous daily usage report, and
+`aboutText` writes it as `Anonymous daily usage report: on: once a day Meru
+sends ...`, or `off. ...`, or "off until the user chooses". So the model
+answers "does Meru send anything about me?" from the setting, not from its
+training. An empty string leaves the line out. The tool only reads the
+setting: no built-in may name `[usage_report]`, and `TestModelCantSetUsageReport`
+in `internal/policy` fails if one does (see [testing](testing.md)).
 
 Nothing here can leak a secret, because `About` has no field for one: no env,
 no header, no server error, no memory text. `dispatch` also runs the result

@@ -1952,14 +1952,16 @@ Every action then replies with `reporter.Status` in one `usage_report` event.
 its check refuses the edit unless the file loads with the new value. The choice
 goes to `config.toml` before the `dismissed` line: if `merud` stops between
 the two, the notice shows again, which is the safe way to fail.
-`usagereport_test.go` drives `handle` over a temporary config.
+`TestUsageReportOp` drives `handle` over a temporary config, from an upgraded
+file with no choice to `"on"` and `"off"`, and refuses an unknown kind.
 
 `about.go`'s `usageReportSentence(path)` gives `about_meru` the setting in
 words: `on:` with what the report holds and how to turn it off, `off. Meru
 sends nothing about itself.`, or "off until the user chooses" when `send` is
 `""`. It returns `""` when the file doesn't load, and `about_meru` then leaves
 the line out. `aboutService` keeps `configPath` for it, since a client can
-change the setting while `merud` runs.
+change the setting while `merud` runs. `TestAboutMeruNamesReport` checks the
+sentence for each of the three values.
 
 ## Go ideas used here
 

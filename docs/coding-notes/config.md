@@ -2,7 +2,7 @@
 
 **Code:** `internal/config/` (`config.go`, `load.go`, `template.go`, `template.toml`, `known.go`, `embed.go`, `recommend.go`, `ollama.go`, `loopback.go`)
 **Milestone:** v0.1
-**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup)
+**Architecture:** [Model tiers](../../ARCHITECTURE.md#model-tiers), [Observability](../../ARCHITECTURE.md#observability), [Web search](../../ARCHITECTURE.md#web-search), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call), [Skills](../../ARCHITECTURE.md#skills), [First run and setup](../../ARCHITECTURE.md#first-run-and-setup), [Anonymous usage report](../../ARCHITECTURE.md#anonymous-usage-report)
 
 ## What it does
 
@@ -591,6 +591,28 @@ tell "not set" (on) from `false` (paused). `CheckJobs` runs the same checks on a
 it on a job a form hasn't saved yet. `JobsFolder` names the chat folder the
 runs go in. config imports `internal/jobs` for `Parse`, which imports only the
 standard library.
+
+### [usage_report]
+
+`UsageReport` is the `[usage_report]` table, which says whether `merud` sends
+the anonymous daily usage report (see [usagereport](usagereport.md)):
+
+```go
+type UsageReport struct {
+    Send string `toml:"send"` // ReportOn, ReportOff, or "" when the user hasn't chosen
+    URL  string `toml:"url"`  // the collector; "" means Meru's own
+}
+```
+
+The default is the zero value, so a config written by a release before the
+report has no `send` line and reads as "not chosen": both clients ask, and
+`merud` sends nothing until the user says yes. `meru setup` writes `"on"` or
+`"off"` for a new install. `validate` refuses any other `send` value and runs a
+non-empty `url` through `checkReportURL`. That check passes an address on this
+machine, as `loopback.CheckURL` decides, so the end-to-end tests can point the
+report at a fake, and otherwise wants an `https://` address with a host. A
+report holds only coarse fields, but it still never crosses a network over
+plain `http`. `TestUsageReportConfig` covers each case.
 
 ## Go ideas used here
 

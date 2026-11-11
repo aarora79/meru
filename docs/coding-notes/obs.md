@@ -363,6 +363,15 @@ and, for a run the schedule started, records `meru.scheduler.lateness` in
 seconds. The job's name is a metric attribute because config caps `[[jobs]]` at
 50; Run now has no scheduled time, so it records no lateness.
 
+### The usage report
+
+`RecordUsageReport(ctx, outcome)` adds one to `meru.usage_report.sends` each
+time `merud` tries to send the anonymous daily usage report (see
+[usagereport](usagereport.md)). Its one attribute is the outcome, which
+`bounded` holds to `sent` or `failed`. The counter stays on this machine like
+every other metric: it shows how the sends went, on the `/metrics` page or a
+loopback OTLP endpoint, and the report itself carries none of it.
+
 ## Go ideas used here
 
 - **Packages and imports** — how `obs` names the OTel packages it uses, including
