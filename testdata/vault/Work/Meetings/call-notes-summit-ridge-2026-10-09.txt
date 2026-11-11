@@ -1,0 +1,10 @@
+FICTIONAL TEST DATA - every name, number and identifier in this file is made up.
+
+Call with Grace Liu, Summit Ridge Credit Union, 2026-10-09, 30 min
+
+- 11 branches in southern Oregon, cash delivered twice a week by armoured car.
+- They over-order cash by about 22% to be safe; it sits idle.
+- Want a forecast per branch per day; their core system exports CSV nightly.
+- Budget approved up to $50,000. I quoted $45,000 fixed, 10 weeks.
+- Decision by the board meeting, 2026-11-18.
+- Risk: their IT contractor is slow. Ask for read-only export access in week one.

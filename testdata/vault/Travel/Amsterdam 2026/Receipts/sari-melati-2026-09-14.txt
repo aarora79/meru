@@ -1,0 +1,14 @@
+FICTIONAL TEST DATA - every name, number and identifier in this file is made up.
+
+Restaurant Sari Melati (fictional), Amsterdam
+14-09-2026  20:12  Table 11  2 guests
+
+1  Rijsttafel Sari Melati (16 dishes) for 2 ....... 98.00
+2  Bintang beer ................................... 11.00
+1  Fresh mint tea .................................  4.50
+1  Spekkoek (layer cake) ..........................  8.00
+                                         Subtotal  121.50
+                                         Tip        13.00
+                                         TOTAL EUR 134.50
+
+VISA **** 1111   AUTH 044129   Prices incl. VAT

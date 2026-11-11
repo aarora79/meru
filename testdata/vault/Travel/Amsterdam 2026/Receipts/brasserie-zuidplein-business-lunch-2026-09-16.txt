@@ -1,0 +1,13 @@
+FICTIONAL TEST DATA - every name, number and identifier in this file is made up.
+
+Brasserie Zuidplein (fictional), Zuidas, Amsterdam
+16-09-2026  12:55  Table 3  3 guests
+
+3  Lunch of the day ........................ 52.50
+3  Coffee ................................... 9.90
+1  Sparkling water 0.75 l ................... 6.00
+                              TOTAL EUR     68.40
+
+MASTERCARD **** 4444
+Business: lunch with Joost Vandermeer and Femke de Wit, Vandermeer Fulfilment B.V.,
+about a warehouse system migration in 2027.

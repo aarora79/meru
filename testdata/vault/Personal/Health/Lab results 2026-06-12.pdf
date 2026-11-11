@@ -1,0 +1,81 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [7 0 R] >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Length 2606 >>
+stream
+BT
+/F2 15 Tf 1 0 0 1 54 760 Tm (Laboratory Report - Hawthorne Family Medicine) Tj
+/F1 10 Tf 1 0 0 1 54 740 Tm () Tj
+/F1 10 Tf 1 0 0 1 54 726 Tm (Patient: Jordan A. Reyes      DOB: 1987-03-14      MRN: HFM-0048821) Tj
+/F1 10 Tf 1 0 0 1 54 712 Tm (Ordering physician: Dr. Hannah Okafor      Collected: 2026-06-12 07:45 \(fasting\)) Tj
+/F1 10 Tf 1 0 0 1 54 698 Tm (Insurance: Cascade Health PPO) Tj
+/F1 10 Tf 1 0 0 1 54 684 Tm () Tj
+/F1 10 Tf 1 0 0 1 54 670 Tm () Tj
+/F2 11 Tf 1 0 0 1 54 656 Tm (Lipid panel) Tj
+/F1 10 Tf 1 0 0 1 54 642 Tm (Test                          Result     Flag    Reference) Tj
+/F1 10 Tf 1 0 0 1 54 628 Tm (Total cholesterol             231        H       < 200 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 614 Tm (LDL cholesterol \(calc\)        142        H       < 100 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 600 Tm (HDL cholesterol                44                > 40 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 586 Tm (Triglycerides                 226        H       < 150 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 572 Tm () Tj
+/F1 10 Tf 1 0 0 1 54 558 Tm () Tj
+/F2 11 Tf 1 0 0 1 54 544 Tm (Metabolic) Tj
+/F1 10 Tf 1 0 0 1 54 530 Tm (Hemoglobin A1c                5.9 %      H       < 5.7 % \(5.7-6.4 prediabetes range\)) Tj
+/F1 10 Tf 1 0 0 1 54 516 Tm (Fasting glucose               104        H       70-99 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 502 Tm (ALT                            38                7-56 U/L) Tj
+/F1 10 Tf 1 0 0 1 54 488 Tm (Creatinine                    0.98               0.74-1.35 mg/dL) Tj
+/F1 10 Tf 1 0 0 1 54 474 Tm () Tj
+/F1 10 Tf 1 0 0 1 54 460 Tm () Tj
+/F2 11 Tf 1 0 0 1 54 446 Tm (Other) Tj
+/F1 10 Tf 1 0 0 1 54 432 Tm (TSH                           2.1                0.4-4.0 mIU/L) Tj
+/F1 10 Tf 1 0 0 1 54 418 Tm (Vitamin D, 25-OH               19        L       30-100 ng/mL) Tj
+/F1 10 Tf 1 0 0 1 54 404 Tm (Ferritin                       88                24-336 ng/mL) Tj
+/F1 10 Tf 1 0 0 1 54 390 Tm () Tj
+/F1 10 Tf 1 0 0 1 54 376 Tm () Tj
+/F2 11 Tf 1 0 0 1 54 362 Tm (Physician comment) Tj
+/F1 10 Tf 1 0 0 1 54 348 Tm (LDL and triglycerides high; A1c in the prediabetes range. Family history of early heart) Tj
+/F1 10 Tf 1 0 0 1 54 334 Tm (disease) Tj
+/F1 10 Tf 1 0 0 1 54 320 Tm (\(father, heart attack at 58\). Start atorvastatin 10 mg daily. Vitamin D3 2,000 IU daily.) Tj
+/F1 10 Tf 1 0 0 1 54 306 Tm (Diet and exercise counselling given. Repeat lipids and A1c in 6 months \(December 2026\).) Tj
+/F1 10 Tf 1 0 0 1 54 292 Tm () Tj
+/F3 8 Tf 1 0 0 1 54 278 Tm (FICTIONAL TEST DATA - every name, number and identifier in this file is made up.) Tj
+/F3 8 Tf 1 0 0 1 500 30 Tm (Page 1 of 1) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Title (Laboratory Report - Hawthorne Family Medicine) /Producer (meru test vault) >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000212 00000 n 
+0000000314 00000 n 
+0000000419 00000 n 
+0000003077 00000 n 
+0000003223 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R /Info 8 0 R >>
+startxref
+3327
+%%EOF
