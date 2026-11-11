@@ -273,6 +273,9 @@ export function runCommand(text) {
       show("/");
       return false;
     case "/usage":
+    case "/report":
+      // The Usage screen ends with the anonymous daily count, its switch
+      // and what went, so /report opens it too.
       act.openSettings("usage");
       return true;
     case "/me":

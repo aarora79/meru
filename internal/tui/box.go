@@ -34,7 +34,7 @@ const (
 func (m *Model) boxOpen() bool {
 	return m.usageBox != nil || m.meBox != nil || m.mcpBox != nil || m.modelBox != nil ||
 		m.chatsBox != nil || m.usedBox != nil || m.foldersBox != nil || m.skillsBox != nil ||
-		m.sitesBox != nil || m.jobsBox != nil || m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
+		m.sitesBox != nil || m.jobsBox != nil || m.reportBox != nil || m.logBox != nil || m.aboutBox != nil || m.helpBox != nil
 }
 
 // dropBoxes closes every box without giving the input its cursor back,
@@ -42,7 +42,7 @@ func (m *Model) boxOpen() bool {
 func (m *Model) dropBoxes() {
 	m.usageBox, m.meBox, m.mcpBox, m.modelBox = nil, nil, nil, nil
 	m.chatsBox, m.usedBox, m.foldersBox, m.skillsBox, m.logBox = nil, nil, nil, nil, nil
-	m.sitesBox, m.jobsBox = nil, nil
+	m.sitesBox, m.jobsBox, m.reportBox = nil, nil, nil
 	m.aboutBox, m.helpBox = nil, nil
 }
 
@@ -100,6 +100,8 @@ func (m *Model) boxKey(msg tea.KeyMsg) tea.Cmd {
 		return m.sitesKey(msg)
 	case m.jobsBox != nil:
 		return m.jobsKey(msg)
+	case m.reportBox != nil:
+		return m.reportKey(msg)
 	case m.logBox != nil:
 		m.logBox.at = moveMark(msg, m.logBox.at, len(m.logBox.rows))
 	case m.helpBox != nil:
@@ -144,6 +146,8 @@ func (m *Model) boxKeys() keyList {
 	case m.jobsBox != nil:
 		k = keyList{move, bind("enter", "run now"), bind("c", "stop"), bind("o", "last run"), bind("p", "pause"),
 			bind("e", "edit"), bind("a", "add"), bind("d", "remove")}
+	case m.reportBox != nil:
+		k = m.reportKeys()
 	case m.logBox != nil:
 		k = keyList{move}
 	case m.helpBox != nil, m.aboutBox != nil:

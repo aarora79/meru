@@ -71,6 +71,8 @@ func (m Model) View() string {
 		pane = m.sitesBoxView(m.width, h)
 	case m.jobsBox != nil:
 		pane = m.jobsBoxView(m.width, h)
+	case m.reportBox != nil:
+		pane = m.reportBoxView(m.width, h)
 	case m.logBox != nil:
 		pane = m.logBoxView(m.width, h)
 	case m.aboutBox != nil:
@@ -79,6 +81,12 @@ func (m Model) View() string {
 		pane = m.helpBoxView(m.width, h)
 	}
 	parts := []string{m.header(), rule, pane}
+	// The daily count's banner and the attachments line each take a row
+	// above the input while they have something to say; layout leaves
+	// room for both.
+	if m.reportBanner() != "" {
+		parts = append(parts, m.reportBannerLine())
+	}
 	if len(m.attached) > 0 {
 		parts = append(parts, m.attachLine())
 	}

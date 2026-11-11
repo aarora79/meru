@@ -279,7 +279,9 @@ func changes(op rpc.Op) bool {
 		rpc.OpMCPSignIn,
 		// Renaming or removing a chat folder rewrites every chat in it.
 		rpc.OpSessionDelete, rpc.OpSessionMove, rpc.OpSessionTag,
-		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove, rpc.OpTrustedSiteRemove:
+		rpc.OpChatFolderAdd, rpc.OpChatFolderRename, rpc.OpChatFolderRemove, rpc.OpTrustedSiteRemove,
+		// Turning the usage report on or off rewrites config.toml.
+		rpc.OpUsageReport:
 		return true
 	}
 	return false

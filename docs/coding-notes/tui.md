@@ -1,6 +1,6 @@
 # tui
 
-**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `connectors.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`, `signin.go`), plus the `chat` case in `cmd/meru/main.go`
+**Code:** `internal/tui/` (`doc.go`, `model.go`, `view.go`, `styles.go`, `stream.go`, `approval.go`, `commands.go`, `code.go`, `links.go`, `copy.go`, `clipboard.go`, `open.go`, `box.go`, `usage.go`, `me.go`, `mcp.go`, `connectors.go`, `models.go`, `scope.go`, `attach.go`, `save.go`, `used.go`, `chats.go`, `folders.go`, `skills.go`, `logbox.go`, `about.go`, `help.go`, `run.go`, `signin.go`, `jobs.go`, `report.go`), plus the `chat` case in `cmd/meru/main.go`
 **Milestone:** v0.1; sources under answers in v0.2; tool lines, the approval box, usage in the header and in `/usage`, and `/mcp` in v0.3; the memory count, the profile nudge and `/me` in v0.4; the desktop app's features (`/chats`, `/scope`, `/attach`, `/save`, `/used`, Settings boxes, Edit first and the version) after v0.4
 **Architecture:** [Terminal UI](../../ARCHITECTURE.md#terminal-ui), [Approving a tool call](../../ARCHITECTURE.md#approving-a-tool-call)
 
@@ -45,6 +45,7 @@ app already sends; `merud` got no new op for it. The short version of the audit
 | What this answer used, Remembered, Forget | has: `/used`, with `d d` to forget |
 | Past chats and reopening one | has: `/chats [words]` |
 | Settings: Connections, Folders, About you, Skills, Models, Activity, About, and the Usage screen | has: `/mcp`, `/folders`, `/me`, `/skills`, `/model`, `/log`, `/usage`, `/about`; partial for Connections (no form for a server of your own: `meru mcp add stdio\|http`) and Models (the sets, not the cards of models we tried) |
+| The anonymous daily count: its notice, its keys and its Usage section | has: the banner above the input, `/report`, and a section in `/usage` |
 | Sign in to a server with `auth = "oauth"` | has: `/signin [server]`, and the line under "Meru" that names it |
 | Setup | in another terminal: `meru setup` and `meru setup user` |
 | Version beside the name | has |
@@ -1053,6 +1054,43 @@ already uses it to delete to the start of the line. Eighteen commands don't fit 
 the help line, so it ends with `/help commands`, through a key binding whose key is
 the text `/help`, which no key press produces; Bubbles skips a binding with no keys
 at all. The `/help` box lists every key and command.
+
+### report.go
+
+This file shows the anonymous daily count, the one report `merud` may send a
+day (issue #251). `merud` decides everything: whether the count is on, whether
+a notice should show and what goes next. The chat sends `OpUsageReport` and
+draws the reply.
+
+`reportStatusCmd` asks with `Kind` set to `"status"`. `Init` sends it, and so
+does each `refreshMsg`, next to the index and usage checks. The reply comes
+back as a `reportMsg`, and `applyReport` keeps its `rpc.UsageReportStatus` in
+`m.report`. An older `merud` answers with an `unknown op` error event; the chat
+then drops the status, and the banner and the `/usage` section go away with no
+word to the user. When `merud` can't be reached at all, the chat keeps the last
+status, as the header keeps the usage numbers.
+
+When `Banner` is `"new"` or `"ask"`, one line in the accent colour sits above
+the input, over the attachments line when both show. `layout` takes a row from
+the conversation for each, so an 80 by 24 terminal with both still leaves the
+conversation 16 rows. The first reply in a run that shows the banner makes
+`applyReport` return one more request, `Kind` `"seen"`, which tells `merud` a
+person saw the notice; no report goes before that. The `reportSeen` flag on the
+model keeps it to one request per run, though the timer asks for the status
+every few seconds. `merud` ignores a second `"seen"` anyway.
+
+`/report` opens a box that holds the full notice, how the count stands, and the
+next report as the JSON `merud` would send. Its keys depend on `Choice`: with
+the count on, `o` turns it off and `g` closes the notice (`"dismiss"`); with it
+off or not chosen, `s` shares, and `n` says no, which the box offers only before
+the user has chosen. A key does nothing while a request waits, so two quick
+presses can't race. Each reply replaces `m.report`, so the box and the banner
+redraw from what `merud` says now.
+
+`reportUsageLines` adds the same status to the `/usage` box, under the
+dashboard: on, off or not chosen, the sentence `merud` gives when nothing will
+send, when the next one can go, a "Sent to" line when config names another
+collector, and the latest log lines, one each, cut to the box's width.
 
 ### box.go
 

@@ -22,6 +22,7 @@ import (
 // for the same reason: their golden files hold plain text.
 type styles struct {
 	brand      lipgloss.Style // "Meru मेरु" in the header
+	accent     lipgloss.Style // the daily count's banner above the input
 	dim        lipgloss.Style // hints, stats, the header details
 	rule       lipgloss.Style // the line under the header
 	online     lipgloss.Style // "● connected"
@@ -78,6 +79,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 
 	return styles{
 		brand:      r.NewStyle().Foreground(teal).Bold(true),
+		accent:     r.NewStyle().Foreground(teal),
 		dim:        r.NewStyle().Foreground(grey),
 		rule:       r.NewStyle().Foreground(grey),
 		online:     r.NewStyle().Foreground(green),
