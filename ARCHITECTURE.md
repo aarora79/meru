@@ -18,8 +18,9 @@ shorter start, read [level 100](docs/architecture/100.md) (the big picture) and
    endpoints you name, and to the public web pages the model fetches with
    `web_fetch`, which you turn off by taking it out of `[builtin] tools`.
    A page URL that no search result or question of yours gave asks you first, so
-   the model can't send your data out in a URL. Meru measures itself, but no telemetry
-   leaves the machine. No prompt goes to the internet: the fast and embedding
+   the model can't send your data out in a URL. Meru measures itself, and the one
+   thing it sends about itself is an anonymous daily count that you choose (see
+   [Anonymous usage report](#anonymous-usage-report)). No prompt goes to the internet: the fast and embedding
    models always run here, an answer model runs here or on a computer on your
    own network, and a turn goes to one on your network only after you answer
    "this time" or "this chat" (see [Answer endpoints](#answer-endpoints)).
@@ -291,6 +292,7 @@ own. The commands, in the order `/help` lists them:
 | `/used` | what the newest answer used: every source, each tool call, the memories recall brought, and who the calls reached | `memory_forget` |
 | `/copy [N\|answer]` | copy code block N, the newest answer's last block, or the whole answer | — |
 | `/usage [by model]` | the usage box | `usage` |
+| `/report` | the anonymous daily usage report: what goes, the next one, and on or off | `usage_report` |
 | `/me [add\|prefer <text>]` | the profile memories; `add` saves one to `me` and `prefer` one to `preferences` | `memory_list`, `memory_add`, `memory_forget` |
 | `/mcp` | every connector, where `f` fixes one, `o` turns it on or off and `a` adopts one set up by hand; every tool source with each tool's Off, Ask or Allow; and the catalog servers not added yet | `connectors`, `connector_set`, `connector_fix`, `connector_adopt`, `connections`, `tool_policy`, `mcp_add`, `mcp_remove`, `secret_set` |
 | `/folders [add <path>]` | the `[index]` folders and the usual ones not indexed yet | `folders`, `folder_add`, `folder_remove` |
@@ -676,6 +678,7 @@ add` and `configure` use, and applies it at once:
 | `model_save` | writes the models in use to `[models]` |
 | `model_set` | switches to a model on that list that Ollama has, the same way, then writes `[models] main` |
 | `jobs`, `job_set`, `job_remove`, `job_run`, `job_cancel` | (v0.5) list, add or change, remove, run now and stop scheduled jobs (see [Scheduler](#scheduler)) |
+| `usage_report` | reads the anonymous daily usage report's state, marks its notice seen or closed, and writes `[usage_report] send` (see [Anonymous usage report](#anonymous-usage-report)) |
 
 A change to a list edits only that list's lines in `config.toml`: every comment
 and every other key stays. `merud` writes a temporary file, loads it, checks that
@@ -3811,7 +3814,9 @@ What runs where:
   `https://ollama.com/download/Ollama-darwin.zip`, whose address the screen shows
   first. `codesign --verify` then checks Ollama.app's signature, and the installer
   deletes the app when the check fails. It sends no telemetry and never checks for
-  updates.
+  updates. Its last step shows the anonymous daily usage report, ticked on, and
+  writes the answer to `config.toml`; `merud` sends nothing until a client has
+  shown the notice (see [Anonymous usage report](#anonymous-usage-report)).
 - Each link on its screens is a name that the Bridge maps to a fixed `https`
   address. The page can't open an address of its own. The Apple Notes step's two
   buttons have a Bridge method each: one opens the fixed System Settings address
@@ -5716,7 +5721,9 @@ Prometheus you run can read the same metrics from `merud` (see
 
 ### Local only
 
-Meru collects this data about itself, and none of it leaves your machine. It goes
+Meru collects this data about itself, and none of it leaves your machine. The
+anonymous daily usage report is a separate, much smaller thing, with rules of its
+own (see [Anonymous usage report](#anonymous-usage-report)). The data here goes
 only to an endpoint you run on this machine:
 
 - The OTLP (OpenTelemetry Protocol) exporter stays **off until you set
@@ -5936,6 +5943,122 @@ transcript lines hold. No level writes question or answer text. With
 
 ---
 
+## Anonymous usage report
+
+Once a day, `merud` can send one anonymous report to a collector the project
+runs, so the project can count how many installs run Meru, on which systems, and
+which releases they keep. It is the only thing Meru sends about itself. The owner
+chose it on 11 November 2026, in place of "no telemetry leaves the machine,
+ever" ([#251](https://github.com/aarora79/meru/issues/251)).
+
+### What goes
+
+The body is seven fields of JSON, about 100 bytes:
+
+```json
+{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+```
+
+| Field | What it holds | Values |
+| --- | --- | --- |
+| `v` | the report's format | `1` |
+| `meru` | the release | such as `0.7.3` |
+| `os` | the system | `darwin`, `linux`, `windows` |
+| `arch` | the chip | `arm64`, `amd64` |
+| `profile` | the model set | `lite`, `full` |
+| `age` | how long ago a client first showed the notice | `week` (under 7 days), `month` (under 31), `year` (under 366), `older` |
+| `questions` | the questions answered the day before, in UTC, leaving out scheduled jobs | `0`, `1-5`, `6-20`, `21+` |
+
+It holds no ID, no question, no answer, no file name, no setting and no time of
+day. Each install sends at most one report a UTC day, so the collector counts
+the installs that reported each day without an ID. A new field or value needs a
+new `v`, and a new `v` shows the notice again before anything sends under it. A
+golden test in `internal/usagereport` pins the fields.
+
+### When it goes
+
+`merud` checks every 30 minutes, comparing dates, so a computer that slept past
+midnight sends within half an hour of waking. It sends only when all of these
+hold:
+
+- `[usage_report] send = "on"`.
+- `DO_NOT_TRACK` is unset, or `0`, in `merud`'s environment.
+- The build is a release, such as `v0.7.3`. A development build never sends.
+- `meru chat` or Meru.app showed the notice for this `v` on an earlier UTC day.
+  The first report waits a day, so a user who sees the notice and turns it off
+  that day sends nothing.
+- No report went today, and today's send minute has come. `merud` picks a random
+  minute up to two hours after midnight UTC each day, so the time a report
+  arrives says nothing about the user's day.
+
+A failed send tries again at the next check. Nothing queues, so a missed day
+stays missed.
+
+### Who chooses
+
+- **A new install** asks during setup. `meru setup` and the Mac installer's last
+  step show the fields and an example body, with the answer on, and write
+  `send = "on"` or `"off"`. With `DO_NOT_TRACK` set, they write `"off"` without
+  asking.
+- **An upgrade** from a release without the report has no `send` line, which
+  reads as `""`, not chosen. Both clients ask, and `merud` sends nothing until the
+  user says yes. An install script with no terminal writes the template's
+  `send = ""`, so it behaves the same way.
+- **The model never chooses.** No built-in tool names `[usage_report]`, and a
+  policy test keeps it that way.
+
+One-shot `meru` and `meru run --json` never count as showing the notice, so an
+install that never opens `meru chat` or the app never sends.
+
+### What the user sees
+
+Both clients show a banner above the chat until the user acts on it. For a new
+install it says the report is on and offers **See the report**, **Turn off** and
+**Got it**; after an upgrade it asks, with **See the report**, **Share** and
+**Don't share**. **See the report** shows the exact next body. The Usage screen
+has an "Anonymous daily count" section with the choice, why nothing will go if
+something holds it back, when the next one goes, and the recent entries, each
+with the body sent. `meru chat` has `/report`, and `meru report [on|off]` does
+the same from a terminal. Every client reaches it through one op,
+`usage_report`.
+
+### The record
+
+`~/.meru/usage-report.jsonl`, mode 0600, holds one line for each event: `seen`
+when a client showed the notice, `dismissed` when the user closed it or chose,
+and `sent` or `failed` for each try, with the exact body. Nothing about the
+report lives in `meru.db`. Deleting the file means no client has shown the
+notice, so nothing sends until one does.
+
+### The connection
+
+`merud` posts the body to `https://meru-report.meru-workers.workers.dev/v1/report`
+over HTTPS, with no proxy, no redirects and a 10-second limit, and only a 204
+answer counts as sent. `[usage_report] url` names another collector, such as one
+a company runs; it takes an `https` address, or one on this machine, which the
+end-to-end tests use. The clients show the address whenever config changes it.
+Only `internal/usagereport` holds Meru's collector's address, and a policy test
+keeps it there.
+
+### The collector
+
+The collector is a Cloudflare Worker with one D1 table; its code is in
+`collector/`. It stores a report only when the body has exactly the seven fields,
+each with a value from its list, and answers 400 to anything else. It keeps the
+UTC date and the seven fields, with no column for an IP address or a time. It
+reads the sender's address only as the key for a rate limit of five reports a
+minute, and Workers Logs stay off, because they would record it. Cloudflare's
+network still sees each sender's address, as any host does. The Worker publishes
+the counts of the last 90 days at `/` and `/totals`, and deletes rows older than
+400 days.
+
+### Turning it off
+
+The Usage screen's switch, `/report`, `meru report off` and `send = "off"` each
+stop it at the next check. `DO_NOT_TRACK=1` stops it too, but only in `merud`'s
+own environment: launchd and systemd don't pass a shell's variables on, so set
+it in the service file or use one of the others.
+
 ## Privacy boundary
 
 - No prompt goes to the internet, and none leaves the machine without your yes.
@@ -5984,9 +6107,17 @@ transcript lines hold. No level writes question or answer text. With
 - A local command runs with your permissions too, and reaches the network if you
   declare one that does, such as `curl` or `ssh`. You chose it, and the
   `tool_calls` row records each run with its argv.
-- No telemetry leaves the machine. Meru's own metrics and traces are off by default,
-  go only to loopback when on, and leave out prompt text unless you opt in. Meru
-  sends no crash reports and never checks for updates.
+- Meru sends one anonymous usage report a day, and nothing else about itself.
+  The report holds the Meru version, the system, the chip, the model set
+  (`lite` or `full`), how long ago a client first showed the notice (a week, a
+  month, a year or longer) and how many questions Meru answered the day before
+  (0, 1 to 5, 6 to 20, or more). It holds no ID, no question, no answer, no file
+  name and no setting. `merud` sends it only after a client has shown the notice,
+  writes each report to `~/.meru/usage-report.jsonl` as sent, and stops when you
+  turn it off or set `DO_NOT_TRACK`. A new field needs a new report version, and a
+  new version shows the notice again before anything sends. Meru's own metrics and
+  traces still go only to loopback, Meru sends no crash reports, and it never
+  checks for updates (see [Anonymous usage report](#anonymous-usage-report)).
 - Any program on this machine can read the `/metrics` page while it's on. It
   holds counts, durations and names from small fixed sets: models, routes,
   servers, tools and outcomes, never a question, a path or a session ID.

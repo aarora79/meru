@@ -1094,7 +1094,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 
 <p>The installer runs no docker, uv or launchctl for a connector: <code>merud</code> installs each one at the version pinned in its release and keeps it running. A server you set up by hand stays as it is, unless you pick Adopt on its step.</p>
 
-<p>You can skip any step but About you, retry one that fails, and run the installer again: each step looks for its own work first and offers to skip it. It changes <code>config.toml</code> through the same code as <code>meru setup</code>, so your comments stay, and the last screen shows where the file is. It runs only a fixed list of programs, never through a shell, and never checks for updates.</p>
+<p>You can skip any step but About you, retry one that fails, and run the installer again: each step looks for its own work first and offers to skip it. It changes <code>config.toml</code> through the same code as <code>meru setup</code>, so your comments stay, and the last screen shows where the file is. It runs only a fixed list of programs, never through a shell, and never checks for updates. Its last step asks about the anonymous daily count, ticked on.</p>
 
 <!-- ============================================================ -->
 <h2 id="what-you-can-see">What you can see</h2>
@@ -1123,7 +1123,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
   <li>Meru doesn't sandbox MCP servers, so choose them as you would any program.</li>
   <li>A local command runs as you, and reaches the network if you declare one that does, such as <code>curl</code>. You chose it, and <code>meru log</code> shows every run.</li>
   <li>API keys sit in one file only you can read, never in config, and never pass through the model.</li>
-  <li>No telemetry leaves your machine. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
+  <li>Meru sends one anonymous count a day, and only after <code>meru chat</code> or the app has shown you the notice: its version, your system and chip, the model set, and rough install age and question count, with no ID and no text. An upgrade sends nothing until you say yes, and the Usage screen, <code>/report</code> and <code>meru report off</code> turn it off. Meru's timing data goes only to loopback, without your text unless you opt in. Meru sends no crash reports and never checks for updates.</li>
   <li>Your data lives in plain files and one SQLite file that you can back up or delete.</li>
   <li>The model reads your files only through search and the file tools, and both stop at your <code>[index] folders</code> and the indexer's skip rules.</li>
   <li><code>meru log</code> and the <code>tool_calls</code> table show every action Meru took outside itself.</li>

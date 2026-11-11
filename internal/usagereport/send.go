@@ -45,14 +45,15 @@ const sendWindow = 120
 // takes longer is down.
 const timeout = 10 * time.Second
 
-// The reasons merud holds a report back, in the words both clients show.
+// The reasons merud holds a report back, in the words both clients show
+// after the choice itself ("On", "Off" or "Not chosen"), so none repeats it.
 // Named constants let the send rule, Status and the tests share one spelling
 // of each.
 const (
-	reasonDoNotTrack = "Off: DO_NOT_TRACK is set."
-	reasonOff        = "Off."
-	reasonNotChosen  = "Off until you choose."
-	reasonDevBuild   = "Off: this build isn't a release."
+	reasonDoNotTrack = "DO_NOT_TRACK is set, so nothing goes."
+	reasonOff        = "You turned it off."
+	reasonNotChosen  = "Nothing goes until you say yes."
+	reasonDevBuild   = "This build isn't a release, so nothing goes."
 	reasonNotSeen    = "Waiting for meru chat or the app to show the notice."
 	reasonFirstDay   = "The first one goes tomorrow."
 	reasonSentToday  = "Today's has gone."
