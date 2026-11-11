@@ -29,7 +29,7 @@ graphics card.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.7.5.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.7.6.** Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
@@ -60,11 +60,11 @@ are blurred.
 
 ## What Meru sends about itself
 
-Since v0.7.5, Meru can send one anonymous count a day, and that is the only
+Since v0.7.6, Meru can send one anonymous count a day, and that is the only
 thing it sends about itself. Here is a whole report, about 100 bytes:
 
 ```json
-{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
 ```
 
 That's the Meru version, the system and chip, the model set, a rough install age
