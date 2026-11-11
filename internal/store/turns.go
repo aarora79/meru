@@ -388,15 +388,33 @@ func (s *Store) LastJobRuns(ctx context.Context) (map[string]time.Time, error) {
 // QuestionsBetween counts the questions answered from from up to, but not
 // including, to: the turns in that window, leaving out scheduled job runs,
 // which nobody asked. The anonymous usage report sends the count for
-// yesterday as a bucket (internal/usagereport). Incognito turns write no
-// row, so they never count. It fails when the database does.
+// yesterday as a bucket (internal/usagereport). It leaves runs out by the
+// job column, not the source: a turn rebuilt from its transcript has an
+// empty source and its job set. Incognito turns write no row, so they never
+// count. It fails when the database does.
 func (s *Store) QuestionsBetween(ctx context.Context, from, to time.Time) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM turns WHERE ts >= ? AND ts < ? AND source != ?`,
+		`SELECT COUNT(*) FROM turns WHERE ts >= ? AND ts < ? AND job = '' AND source != ?`,
 		from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339), string(rpc.SourceJob)).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("count questions: %w", err)
+	}
+	return n, nil
+}
+
+// ActiveDaysBetween counts the UTC days from from up to, but not including,
+// to that hold at least one question, leaving out job runs as
+// QuestionsBetween does. ts is RFC 3339 text in UTC, so its first ten
+// characters are the day. The usage report sends the count for the last
+// seven days as a bucket. It fails when the database does.
+func (s *Store) ActiveDaysBetween(ctx context.Context, from, to time.Time) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT substr(ts, 1, 10)) FROM turns WHERE ts >= ? AND ts < ? AND job = '' AND source != ?`,
+		from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339), string(rpc.SourceJob)).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count active days: %w", err)
 	}
 	return n, nil
 }

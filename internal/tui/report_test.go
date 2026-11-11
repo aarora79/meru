@@ -140,14 +140,14 @@ func TestReportBox(t *testing.T) {
 		{
 			name:     "new, nothing sent yet",
 			status:   rpc.UsageReportStatus{Choice: "on", Banner: rpc.BannerNew, Next: `{"v":1}`, NextAt: "2026-11-12T00:30:00Z"},
-			want:     []string{"Meru sends one anonymous count a day", "first one goes", "tomorrow.", "On", "Next one after", `{"v":1}`},
+			want:     []string{"Meru sends one anonymous count a day", "tomorrow.", "On", "Next one after", `{"v":1}`},
 			dontWant: []string{"Not chosen"},
 			keys:     map[string]string{"o": rpc.UsageReportOff, "g": rpc.UsageReportDismiss, "s": "", "n": ""},
 		},
 		{
 			name:     "new, one sent",
 			status:   rpc.UsageReportStatus{Choice: "on", Banner: rpc.BannerNew, Sent: true},
-			dontWant: []string{"first one goes"},
+			dontWant: []string{"tomorrow."},
 			keys:     map[string]string{"t": ""},
 		},
 		{

@@ -13,7 +13,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,7 +29,8 @@ import (
 const reportRecent = 5
 
 // reportFields says what the count holds. Setup prints it before it asks.
-const reportFields = "Meru can send one anonymous count a day: its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files. Nothing goes until you open meru chat or the app, and the first one waits a day."
+const reportFields = "Meru can send one anonymous count a day: " + rpc.UsageReportFields +
+	" Nothing goes until you open meru chat or the app, and the first one waits a day."
 
 // isReportArgs reports whether args, the words after "report", are ones
 // `meru report` takes: none, "on", "off" or "send". Anything else, such as
@@ -152,31 +152,7 @@ func reportTime(at string, loc *time.Location) string {
 }
 
 // reportExample returns an example report for this machine and profile,
-// shaped as merud sends it: this build's version when it is a release,
-// this system and chip, profile, a new install's age and no questions.
+// as merud would send it for a new install; see rpc.UsageReportExample.
 func reportExample(profile string) string {
-	// The text after each field is a struct tag: it names the JSON key
-	// encoding/json writes for that field, in the order merud writes them.
-	example := struct {
-		V         int    `json:"v"`
-		Meru      string `json:"meru"`
-		OS        string `json:"os"`
-		Arch      string `json:"arch"`
-		Profile   string `json:"profile"`
-		Age       string `json:"age"`
-		Questions string `json:"questions"`
-	}{1, exampleVersion(about.Version()), runtime.GOOS, runtime.GOARCH, profile, "week", "0"}
-	b, _ := json.Marshal(example)
-	return string(b)
-}
-
-// exampleVersion returns v without its "v" when v is a release, such as
-// "0.7.5" for "v0.7.5", and "dev" for any other build, as merud's own
-// preview does. A development build never sends a report.
-func exampleVersion(v string) string {
-	n, ok := strings.CutPrefix(v, "v")
-	if !ok || strings.Count(n, ".") != 2 || strings.ContainsAny(n, "-+ ") {
-		return "dev"
-	}
-	return n
+	return rpc.UsageReportExample(about.Version(), runtime.GOOS, runtime.GOARCH, profile)
 }

@@ -6,7 +6,7 @@
 
 ## What it does
 
-`usagereport` sends Meru's one anonymous usage report: seven coarse fields, at
+`usagereport` sends Meru's one anonymous usage report: thirteen coarse fields, at
 most once a UTC day, and only after `meru chat` or Meru.app has shown the user
 the notice on an earlier day. It also keeps the record of what the user saw and
 what went, in `~/.meru/usage-report.jsonl`, and answers the clients' questions
@@ -24,7 +24,7 @@ flowchart LR
     merud --> loop["Reporter.Loop<br/>every 30 min"]
     loop --> rule["blocked<br/>a reason, or send"]
     file[("usage-report.jsonl")] --> rule
-    rule --> build["build<br/>seven fields"]
+    rule --> build["build<br/>thirteen fields"]
     db[("meru.db turns")] --> build
     build --> post["post<br/>HTTPS, no proxy"]
     post --> collector["the collector<br/>collector/worker.js"]
@@ -55,19 +55,31 @@ is never sent.
 
 ### report.go: the body and its buckets
 
-`Report` is the whole body, a struct of an `int` and six strings. The struct
-tags (`json:"os"`) name each field in the JSON; see
-[struct tags](go-basics/struct-tags.md). `Version` is the body's format, `1`. A
-golden test compares `json.Marshal` of a sample report with
-`testdata/report-v1.json`, and the file name carries the version, so adding a
-field fails the test until both change. A new version makes both clients show
+`Report` is the whole body: an `int`, nine strings and three booleans. The
+struct tags (`json:"os"`) name each field in the JSON; see
+[struct tags](go-basics/struct-tags.md). `Version` is the body's format, `2`;
+version 1, from v0.7.6, had the first seven fields. A golden test compares
+`json.Marshal` of a sample report with `testdata/report-v2.json`, and the file
+name carries the version, so adding a field fails the test until both change. A new version makes both clients show
 the notice again before anything sends under it.
 
 `releaseNumber` turns `v0.7.6` into `0.7.6` and refuses anything else: a
 development build's `(devel) 5325b3e`, a pseudo-version, a fork's
 `v0.7.6-acme`. `ageBucket` and `questionBucket` turn a time span and a count into
-one of four words each. `startOfDay` gives midnight UTC, because the report
-counts days in UTC, so a user who flies east doesn't send twice in a day.
+one of four words each, and `activeBucket` and `streakBucket` do the same for
+the days used and the weeks in a row. `startOfDay` gives midnight UTC, because the
+report counts days in UTC, so a user who flies east doesn't send twice in a day.
+`weekStart` gives the Monday 00:00 UTC that starts an ISO week: `Weekday` counts
+Sunday as 0, so `(Weekday + 6) % 7` is how many days to go back. `monthStart`
+gives the first of the month.
+
+The six version 2 fields let the collector count installs across days with no
+ID. `week_first`, `month_first` and `first` are true on this install's first
+report of the ISO week, the UTC month and ever: each install sets each flag once
+in its window, so the collector counts the rows with a flag to count installs.
+`previousOf` sends the version from the last report only when it looks like a
+release number, `none` otherwise, since the record is the user's file and could
+hold anything.
 
 ### log.go: reading the record once
 
@@ -85,6 +97,16 @@ file, so `f.Chmod(0o600)` fixes a file that already existed with a looser mode.
 The function has a named result, `(err error)`, so the deferred `Close` can
 report a failed close: on some systems a failed write shows up only there. See
 [defer](go-basics/defer.md).
+
+For version 2, `readState` also keeps `sentDays`, a set of the UTC days with a
+`sent` line back to the start of the ISO week 12 weeks before now, and
+`lastVersion`, the `meru` field of the newest sent body. A set in Go is a map
+whose values say "present", here `map[time.Time]bool`; every key comes from
+`startOfDay`, so two keys for one day are equal. `sentSince` answers the
+first-of-week and first-of-month flags from `lastSent` alone, and `weeksInARow`
+counts this week plus each earlier week with a sent day, stopping at the first
+week without one or at 13. A `failed` line isn't a report, so the next try in
+the same week still sends `week_first: true`.
 
 ### send.go: the loop and the rule
 

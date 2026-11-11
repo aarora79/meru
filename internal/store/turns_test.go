@@ -404,3 +404,40 @@ func TestQuestionsBetween(t *testing.T) {
 		t.Errorf("QuestionsBetween = %d, want 2", n)
 	}
 }
+
+// TestActiveDaysBetween checks the count the usage report sends as
+// active_days: distinct UTC days with a question in the window, job runs
+// left out, both the live ones (source "job") and the ones rebuilt from a
+// transcript (source "", job set).
+func TestActiveDaysBetween(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	from := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 0, 7)
+	for _, turn := range []Turn{
+		{Session: "a", Time: from.Add(time.Hour), Source: "tui"},
+		{Session: "a", Time: from.Add(2 * time.Hour), Source: "tui"}, // same day: one
+		{Session: "b", Time: from.AddDate(0, 0, 2), Source: "desktop"},
+		{Session: "c", Time: from.AddDate(0, 0, 3), Source: "job", Job: "brief"},
+		{Session: "d", Time: from.AddDate(0, 0, 4), Source: "", Job: "brief"}, // replayed job run
+		{Session: "e", Time: to, Source: "cli"},                               // the window's end
+	} {
+		if err := s.InsertTurn(ctx, turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.ActiveDaysBetween(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("ActiveDaysBetween = %d, want 2", n)
+	}
+	q, err := s.QuestionsBetween(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q != 3 {
+		t.Errorf("QuestionsBetween = %d, want 3: a replayed job run must not count", q)
+	}
+}

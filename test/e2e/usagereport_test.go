@@ -67,7 +67,7 @@ func reportHome(t *testing.T, f *fake, c *collector, send string, seen bool) *ho
 	}
 	h.writeConfig(t, fakeConfig(f.url, "[log]\nlevel = \"debug\"\n\n"+table))
 	if seen {
-		line := fmt.Sprintf(`{"type":"seen","at":%q,"report":1,"client":"desktop"}`+"\n",
+		line := fmt.Sprintf(`{"type":"seen","at":%q,"report":2,"client":"desktop"}`+"\n",
 			time.Now().UTC().Add(-48*time.Hour).Format(time.RFC3339))
 		if err := os.WriteFile(filepath.Join(h.dir, "usage-report.jsonl"), []byte(line), 0o600); err != nil {
 			t.Fatal(err)
@@ -176,8 +176,11 @@ func TestReportSendsAfterSeen(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &fields); err != nil {
 		t.Fatalf("body %q: %v", body, err)
 	}
-	if len(fields) != 7 || fields["meru"] != strings.TrimPrefix(releaseVersion, "v") || fields["profile"] != "lite" {
-		t.Errorf("body = %s, want the seven fields of a %s lite install", body, releaseVersion)
+	if len(fields) != 13 || fields["v"] != 2.0 || fields["meru"] != strings.TrimPrefix(releaseVersion, "v") || fields["profile"] != "lite" {
+		t.Errorf("body = %s, want the thirteen fields of a %s lite install", body, releaseVersion)
+	}
+	if fields["first"] != true || fields["week_first"] != true || fields["previous"] != "none" {
+		t.Errorf("body = %s, want a first report with no previous version", body)
 	}
 	b, err := os.ReadFile(filepath.Join(h.dir, "usage-report.jsonl"))
 	if err != nil {
@@ -230,5 +233,44 @@ func TestReportSendNow(t *testing.T) {
 	}
 	if got := c.got(); len(got) != 1 {
 		t.Errorf("collector got %d reports after two clicks, want 1", len(got))
+	}
+}
+
+// TestReportV1Upgrade starts merud on the record a v0.7.6 install keeps: the
+// notice seen and closed under report version 1, and a v1 report sent last
+// week. The new version shows the notice again and holds the report; once a
+// client has shown it, a send carries the install's history: not its first
+// report, the version it reported last, and two weeks in a row.
+func TestReportV1Upgrade(t *testing.T) {
+	t.Parallel()
+	f, c := startFake(t), startCollector(t)
+	h := reportHome(t, f, c, "on", false)
+	week := time.Now().UTC().AddDate(0, 0, -7)
+	record := fmt.Sprintf(`{"type":"seen","at":%q,"report":1,"client":"desktop"}
+{"type":"dismissed","at":%q,"report":1,"client":"desktop"}
+{"type":"sent","at":%q,"body":"{\"v\":1,\"meru\":\"0.7.6\"}"}
+`, week.Format(time.RFC3339), week.Format(time.RFC3339), week.Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(h.dir, "usage-report.jsonl"), []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startReporting(t, h)
+	st := reportStatus(t, h, "")
+	if st.Banner == "" || !strings.Contains(st.Blocked, "Waiting") || len(c.got()) != 0 {
+		t.Fatalf("after the upgrade: banner %q, blocked %q, %d sent; want the notice again and nothing sent", st.Banner, st.Blocked, len(c.got()))
+	}
+	reportStatus(t, h, rpc.UsageReportSeen)
+	reportStatus(t, h, rpc.UsageReportSend)
+	got := c.got()
+	if len(got) != 1 {
+		t.Fatalf("collector got %d reports, want 1", len(got))
+	}
+	_, rest, _ := strings.Cut(got[0], " ")
+	_, body, _ := strings.Cut(rest, " ")
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(body), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["first"] != false || fields["previous"] != "0.7.6" || fields["streak"] != "2-4" || fields["week_first"] != true {
+		t.Errorf("body = %s, want first false, previous 0.7.6, streak 2-4 and the week's first report", body)
 	}
 }

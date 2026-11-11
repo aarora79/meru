@@ -69,11 +69,16 @@ type Settings struct {
 	Profile string // "lite" or "full"
 }
 
-// Questions is the one thing the reporter asks of the store. Declaring the
+// Questions is what the reporter asks of the store. Declaring the
 // interface here, in the package that uses it, keeps usagereport from
-// importing store; *store.Store has this method.
+// importing store; *store.Store has both methods. Both leave out
+// scheduled job runs, which nobody asked.
 type Questions interface {
+	// QuestionsBetween counts the questions in [from, to).
 	QuestionsBetween(ctx context.Context, from, to time.Time) (int, error)
+	// ActiveDaysBetween counts the UTC days in [from, to) with at least
+	// one question.
+	ActiveDaysBetween(ctx context.Context, from, to time.Time) (int, error)
 }
 
 // Reporter decides when to send and keeps usage-report.jsonl. merud makes
@@ -333,6 +338,11 @@ func (r *Reporter) build(ctx context.Context, s Settings, st state, now time.Tim
 	if err != nil {
 		return nil, fmt.Errorf("count yesterday's questions: %w", err)
 	}
+	// The seven days before today, as questions counts the day before it.
+	days, err := r.store.ActiveDaysBetween(ctx, today.AddDate(0, 0, -7), today)
+	if err != nil {
+		return nil, fmt.Errorf("count the days with questions: %w", err)
+	}
 	rep := Report{
 		V:         Version,
 		Meru:      number,
@@ -341,6 +351,15 @@ func (r *Reporter) build(ctx context.Context, s Settings, st state, now time.Tim
 		Profile:   s.Profile,
 		Age:       ageBucket(first, now),
 		Questions: questionBucket(n),
+		// The rest come from this install's own record, so the collector
+		// can count installs across days with no ID: each flag marks this
+		// install's first report of a week, a month, or ever.
+		ActiveDays: activeBucket(days),
+		Streak:     streakBucket(st.weeksInARow(weekStart(now))),
+		Previous:   previousOf(st.lastVersion),
+		WeekFirst:  !st.sentSince(weekStart(now)),
+		MonthFirst: !st.sentSince(monthStart(now)),
+		First:      !st.sentEver,
 	}
 	// A struct of strings and an int can't fail to marshal.
 	body, _ := json.Marshal(rep)

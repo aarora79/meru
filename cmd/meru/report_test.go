@@ -130,17 +130,3 @@ func TestReportText(t *testing.T) {
 		})
 	}
 }
-
-// TestExampleVersion checks that only a release version shows as itself.
-func TestExampleVersion(t *testing.T) {
-	for v, want := range map[string]string{
-		"v0.8.1":                               "0.8.1",
-		"v0.7.5-acme":                          "dev",
-		"(devel) 5325b3e, modified":            "dev",
-		"v0.4.2-0.20260927021103-5325b3ef94cb": "dev",
-	} {
-		if got := exampleVersion(v); got != want {
-			t.Errorf("exampleVersion(%q) = %q, want %q", v, got, want)
-		}
-	}
-}

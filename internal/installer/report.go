@@ -12,20 +12,20 @@
 package installer
 
 import (
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
 	"runtime"
-	"strings"
 
 	"github.com/aarora79/meru/internal/about"
 	"github.com/aarora79/meru/internal/catalog"
 	"github.com/aarora79/meru/internal/config"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // reportFields says what the count holds, under the box on the screen.
-const reportFields = "Its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files. Nothing goes until you open Meru.app or meru chat, and the first one waits a day."
+const reportFields = "It holds " + rpc.UsageReportFields +
+	" Nothing goes until you open Meru.app or meru chat, and the first one waits a day."
 
 // EarlierChoice is what config.toml said about the count when the
 // installer opened. Had is false when there was no config.toml, as on a
@@ -91,35 +91,10 @@ func OfferReport(profile string, earlier EarlierChoice, doNotTrack string) Repor
 	}
 }
 
-// reportExample returns an example report for this Mac and profile,
-// shaped as merud sends it: this build's version when it is a release,
-// this system and chip, the profile, a new install's age and no
-// questions.
+// reportExample returns an example report for this Mac and profile, as
+// merud would send it for a new install; see rpc.UsageReportExample.
 func reportExample(profile string) string {
-	// The text after each field is a struct tag: it names the JSON key
-	// encoding/json writes for that field, in the order merud writes them.
-	example := struct {
-		V         int    `json:"v"`
-		Meru      string `json:"meru"`
-		OS        string `json:"os"`
-		Arch      string `json:"arch"`
-		Profile   string `json:"profile"`
-		Age       string `json:"age"`
-		Questions string `json:"questions"`
-	}{1, exampleVersion(about.Version()), runtime.GOOS, runtime.GOARCH, profile, "week", "0"}
-	b, _ := json.Marshal(example) // a struct of strings always marshals
-	return string(b)
-}
-
-// exampleVersion returns v without its "v" when v is a release, such as
-// "0.7.5" for "v0.7.5", and "dev" for any other build, as merud's own
-// preview does. A development build never sends a report.
-func exampleVersion(v string) string {
-	n, ok := strings.CutPrefix(v, "v")
-	if !ok || strings.Count(n, ".") != 2 || strings.ContainsAny(n, "-+ ") {
-		return "dev"
-	}
-	return n
+	return rpc.UsageReportExample(about.Version(), runtime.GOOS, runtime.GOARCH, profile)
 }
 
 // SaveReport records the user's answer, send or not, as [usage_report]

@@ -144,7 +144,7 @@ func usageReportSentence(path string) string {
 	if err != nil {
 		return ""
 	}
-	const what = "once a day Meru sends its version, the system and chip, the model set, and rough install age and question count, with no ID and no text. "
+	const what = "once a day Meru sends " + rpc.UsageReportFields + " "
 	const change = "The Usage screen, /report in meru chat and `meru report off` turn it off."
 	switch cfg.UsageReport.Send {
 	case config.ReportOn:

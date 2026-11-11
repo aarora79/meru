@@ -30,7 +30,7 @@ func TestOfferReport(t *testing.T) {
 	if err := json.Unmarshal([]byte(o.Example), &got); err != nil {
 		t.Fatalf("example %q isn't JSON: %v", o.Example, err)
 	}
-	if got["os"] != runtime.GOOS || got["arch"] != runtime.GOARCH || got["profile"] != "full" || got["v"] != 1.0 {
+	if got["os"] != runtime.GOOS || got["arch"] != runtime.GOARCH || got["profile"] != "full" || got["v"] != 2.0 {
 		t.Errorf("example = %s, want this system, chip and profile", o.Example)
 	}
 	if !strings.Contains(o.Fields, "No ID, no questions, no files.") {

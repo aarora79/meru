@@ -5,6 +5,8 @@ package desktop
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -175,5 +177,18 @@ func TestUsageReportSend(t *testing.T) {
 	refuse = true
 	if _, err := b.UsageReportSend(ctx); err == nil || !strings.Contains(err.Error(), "gone") {
 		t.Errorf("a refused send gave %v, want the reason", err)
+	}
+}
+
+// TestReportWordsMatch checks that the desktop page names the report's
+// fields in the same words as rpc.UsageReportFields, which meru chat, meru
+// setup and the installer use, so no client says less than another.
+func TestReportWordsMatch(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("web", "js", "report.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"`+rpc.UsageReportFields+`"`) {
+		t.Error("web/js/report.js's FIELDS differs from rpc.UsageReportFields; copy the Go string over")
 	}
 }

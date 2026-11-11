@@ -7,6 +7,7 @@ package usagereport
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -26,21 +27,26 @@ import (
 // day is the test's "now": 10:00 UTC on a Saturday.
 var day = time.Date(2026, 11, 7, 10, 0, 0, 0, time.UTC)
 
-// fakeQuestions is a Questions that returns n, or err.
+// fakeQuestions is a Questions that returns n questions and days active
+// days, or err.
 type fakeQuestions struct {
-	n   int
-	err error
+	n, days int
+	err     error
 }
 
 func (f fakeQuestions) QuestionsBetween(context.Context, time.Time, time.Time) (int, error) {
 	return f.n, f.err
 }
 
+func (f fakeQuestions) ActiveDaysBetween(context.Context, time.Time, time.Time) (int, error) {
+	return f.days, f.err
+}
+
 // newTest returns a Reporter in a temporary home with version, a clock
 // fixed at now, a send minute of minute and an empty environment.
 func newTest(t *testing.T, version string, now time.Time, minute int) *Reporter {
 	t.Helper()
-	r := New(t.TempDir(), version, fakeQuestions{n: 3}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := New(t.TempDir(), version, fakeQuestions{n: 3, days: 4}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	r.now = func() time.Time { return now }
 	r.rand = func(int) int { return minute }
 	r.env = func(string) string { return "" }
@@ -116,12 +122,13 @@ func TestBlocked(t *testing.T) {
 // again before anything sends.
 func TestReportGolden(t *testing.T) {
 	got, err := json.Marshal(Report{
-		V: Version, Meru: "0.7.5", OS: "darwin", Arch: "arm64", Profile: "lite", Age: "month", Questions: "1-5",
+		V: Version, Meru: "0.7.7", OS: "darwin", Arch: "arm64", Profile: "lite", Age: "month", Questions: "1-5",
+		ActiveDays: "3-5", Streak: "2-4", Previous: "0.7.6", WeekFirst: true, MonthFirst: false, First: false,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile(filepath.Join("testdata", "report-v1.json"))
+	want, err := os.ReadFile(filepath.Join("testdata", fmt.Sprintf("report-v%d.json", Version)))
 	if err != nil {
 		t.Fatalf("%v; a new Version needs a new golden file", err)
 	}
@@ -189,7 +196,8 @@ func TestTickSends(t *testing.T) {
 	if len(bodies) != 1 {
 		t.Fatalf("collector got %d reports, want 1", len(bodies))
 	}
-	want := `{"v":1,"meru":"0.7.5","os":"` + osArch()[0] + `","arch":"` + osArch()[1] + `","profile":"full","age":"month","questions":"1-5"}`
+	want := `{"v":2,"meru":"0.7.5","os":"` + osArch()[0] + `","arch":"` + osArch()[1] + `","profile":"full","age":"month","questions":"1-5",` +
+		`"active_days":"3-5","streak":"1","previous":"none","week_first":true,"month_first":true,"first":true}`
 	if bodies[0] != want {
 		t.Errorf("body\n got %s\nwant %s", bodies[0], want)
 	}
@@ -339,7 +347,7 @@ func TestAppendEntryConcurrent(t *testing.T) {
 // a file with no readable "seen" line holds the report back.
 func TestReadStateSkipsBadLines(t *testing.T) {
 	r := newTest(t, "v0.7.5", day, 0)
-	if err := os.WriteFile(r.path, []byte("not json\n{\"type\":\"seen\",\"at\":\"2026-11-01T00:00:00Z\",\"report\":1}\n{\"type\":\"sent\",\"at\":"), 0o600); err != nil {
+	if err := os.WriteFile(r.path, []byte(fmt.Sprintf("not json\n{\"type\":\"seen\",\"at\":\"2026-11-01T00:00:00Z\",\"report\":%d}\n{\"type\":\"sent\",\"at\":", Version)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	st, err := readState(r.path, day)
