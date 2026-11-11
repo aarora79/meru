@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`, `failed_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1600,6 +1600,36 @@ they offered, so `search` gets the four file tools, and on a file turn
 `direct` question that names an indexed folder into `search`, which is now how
 that question gets the file tools. `ARCHITECTURE.md`, "Retrieval", has the
 numbers that compare the two modes.
+
+### Questions about Meru itself (self.go)
+
+"Do you send any tracking data to the cloud?" once routed `search+tools`. The
+search found the telemetry code of a project in the user's indexed folders, about
+40,000 tokens went into the prompt, and the model answered about that project. It
+never called `about_meru`, though the prompt says to for questions about itself.
+
+`aboutMeru(question)` spots such a question with two regular expressions and two
+guards. A regular expression, from Go's `regexp` package, is compiled once into a
+package-level `var` with `regexp.MustCompile`, which panics at startup on a bad
+pattern, a programmer's mistake, not a user's. `(?i)` makes a pattern ignore case.
+
+- `selfTopic` must match: a word about what Meru is, does or sends, such as
+  `send`, `telemetry`, `data`, `privacy`, `model` or `version`.
+- `selfSubject` addresses Meru: its name, or "you" as the subject ("do you",
+  "are you", "who are you"). Then the question counts, as "do you store my data
+  in the cloud" does.
+- `selfOwner`, "your", counts only without "my" or "our" (`userThings`).
+- `userTask` takes out a request for a task, such as "can you search my files for
+  telemetry".
+
+When it holds, `respond` skips the search of the files, unless the question
+names an indexed folder (`namesFolder`): someone who indexes Meru's own code can
+ask "what database does Meru use?" and get the code too. `selfFirst` then runs
+`about_meru` through `runCalls` as `CallerMeru`, the path `runWebFirst` uses, so
+the call gets its `tool_calls` row and transcript lines. Its facts go into the
+prompt after `selfIntroRule`, which says "you" means Meru. `TestAboutMeru` holds
+the phrasings on both sides of the line, and `TestSelfQuestionTurn` replays the
+real turn.
 
 ### Web first (webfirst.go, webnotes.go)
 

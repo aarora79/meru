@@ -187,8 +187,15 @@ func newToolService(ctx context.Context, cfg config.Config, configPath string, s
 		}
 	}
 	// A tool [builtin] tools lists but whose setting is missing stays off;
-	// say why, so the user isn't left guessing.
+	// say why, so the user isn't left guessing. about_meru and
+	// schedule_job get what they need later in serve, once the agent and
+	// the scheduler exist (UseAbout, UseJobs), so here they would always
+	// read as off. merud.log said so at every start, which sent a reader
+	// looking for a fault that wasn't there.
 	for _, off := range bt.Off() {
+		if off.Tool == builtin.AboutMeru || off.Tool == builtin.ScheduleJob {
+			continue
+		}
 		log.Info("built-in tool off", "tool", off.Tool, "reason", off.Reason)
 	}
 	// A built-in that [builtin] tools and off both leave out came with a

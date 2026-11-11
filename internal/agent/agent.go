@@ -839,6 +839,19 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			"skills", strings.Join(picked.names, ","))
 		fileTurn = false
 	}
+	// A question about Meru itself, such as "do you send any tracking data
+	// to the cloud?", runs about_meru first and skips the search of the
+	// files, whose excerpts would make "you" read as the user's projects.
+	// See self.go. A question that points at a connected tool, or a
+	// Continue turn, keeps its own path. One that names an indexed
+	// folder, as "what database does Meru use?" does for someone who
+	// indexes Meru's own code, keeps the search too: about_meru knows the
+	// setup, the code knows the rest.
+	self := target == "" && t.handoff == "" && aboutMeru(question)
+	if self && !namesFolder(question, a.currentFolderNames()) {
+		a.log.DebugContext(ctx, "no search first: the question is about Meru itself")
+		fileTurn = false
+	}
 	t.skills = picked.reg
 	if dec.Route == "tools" && !fileTurn && target != "" {
 		a.log.DebugContext(ctx, "no search first: the question points at a connected tool", "target", target)
@@ -938,6 +951,13 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	web, err := a.runWebFirst(ctx, t, webCalls)
 	if err != nil {
 		return res, err
+	}
+	if self && a.tools != nil {
+		facts, err := a.selfFirst(ctx, t, a.tools.Tools())
+		if err != nil {
+			return res, err
+		}
+		web = joinSections(facts, web)
 	}
 	// A job's own run never sees the tools that change Meru, configure and
 	// schedule_job, so no job makes or changes jobs, whatever a page it
