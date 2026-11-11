@@ -51,7 +51,9 @@ desktop-check`: go vet, staticcheck and govulncheck with the same tags, since th
 usual jobs never see its code. The rest of the app, `internal/desktop`, has no
 tag and runs in the test job. The `desktop-linux` job does the same on
 Ubuntu 24.04, after it installs GTK 4 and WebKitGTK 6.0 with apt, and runs
-`make desktop-linux`, which packs the archive a release carries. A Windows
+`make desktop-linux`, which packs the archive a release carries. The apt step
+fetches from Ubuntu's own archive, not the runner's default mirror, which
+stopped resolving on 11 November 2026 and left the step hanging for hours. A Windows
 (WebView2) job comes later. The same job builds the Mac installer, `cmd/meru-installer`,
 with `make installer`, and `internal/installer` runs in the test job.
 
@@ -193,6 +195,14 @@ attestation; it runs only from `main`, when the owner starts it. No job can
 push code or comment on a pull request.
 
 ## When a check fails
+
+Every job stops after a time limit, `timeout-minutes`, set at several times its
+usual run: 10 to 15 minutes for most, 20 for the macOS desktop build and CodeQL,
+and 30 for the whisper-server builds. Without one, GitHub waits six hours. Each
+apt step also caps every download at 30 seconds with three tries, and treats a
+failed index fetch as an error, so a mirror that stops answering fails the step
+in minutes. A job that hits its limit failed on GitHub's side more often than
+ours; read its log, then run it again.
 
 - **gofmt:** run `make fmt` and commit.
 - **tidy-check:** run `go mod tidy` and commit `go.mod` and `go.sum`.
