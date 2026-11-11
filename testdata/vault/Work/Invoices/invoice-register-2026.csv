@@ -1,0 +1,20 @@
+invoice,issued,client,description,amount_usd,due,paid_on,status_2026_10_28
+INV-2026-023,2026-01-01,Fakeco Outfitters,"Analytics retainer, January",3500,2026-01-16,2026-01-14,paid
+INV-2026-024,2026-02-01,Fakeco Outfitters,"Analytics retainer, February",3500,2026-02-16,2026-02-14,paid
+INV-2026-025,2026-02-05,Acme Logistics,SOW-2 January hours (54 h @ $210),11340,2026-03-07,2026-07-10,"paid, 125 days late"
+INV-2026-026,2026-03-01,Fakeco Outfitters,"Analytics retainer, March",3500,2026-03-16,2026-03-14,paid
+INV-2026-027,2026-03-02,Acme Logistics,"SOW-2 change order 1, February (70 h @ $210)",14700,2026-04-01,2026-04-01,paid
+INV-2026-028,2026-04-01,Acme Logistics,"SOW-2 change order 1, March (80 h @ $210)",16800,2026-05-01,2026-04-30,paid
+INV-2026-029,2026-04-01,Fakeco Outfitters,"Analytics retainer, April",3500,2026-04-16,2026-04-14,paid
+INV-2026-030,2026-05-01,Acme Logistics,"SOW-2 change order 1, April (72 h @ $210)",15120,2026-05-31,2026-06-01,"paid, 1 days late"
+INV-2026-031,2026-05-01,Fakeco Outfitters,"Analytics retainer, May",3500,2026-05-16,2026-05-14,paid
+INV-2026-032,2026-05-04,Nowhere Cold Storage,"Cold-chain inventory assessment, fixed fee",18400,2026-06-03,2026-06-01,paid
+INV-2026-033,2026-06-01,Acme Logistics,"SOW-2 change order 1, May (64 h @ $210)",13440,2026-07-01,2026-07-01,paid
+INV-2026-034,2026-06-01,Fakeco Outfitters,"Analytics retainer, June",3500,2026-06-16,2026-06-14,paid
+INV-2026-035,2026-07-01,Acme Logistics,"SOW-2 change order 1, June (60 h @ $210)",12600,2026-07-31,2026-07-31,paid
+INV-2026-036,2026-07-01,Fakeco Outfitters,"Analytics retainer, July",3500,2026-07-16,2026-07-14,paid
+INV-2026-037,2026-08-01,Fakeco Outfitters,"Analytics retainer, August",3500,2026-08-16,2026-08-14,paid
+INV-2026-038,2026-08-17,Acme Logistics,"SOW-3 milestone 1, data model",32000,2026-09-16,2026-09-10,paid
+INV-2026-039,2026-09-01,Fakeco Outfitters,"Analytics retainer, September",3500,2026-09-16,,OVERDUE 42 days
+INV-2026-040,2026-10-01,Fakeco Outfitters,"Analytics retainer, October",3500,2026-10-16,,OVERDUE 12 days
+INV-2026-041,2026-10-27,Acme Logistics,"SOW-3 milestone 2, Kent and Tacoma",32000,2026-11-26,,"open, not yet due"

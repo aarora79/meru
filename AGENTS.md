@@ -385,6 +385,7 @@ internal/
 collector/           the usage-report collector: a Cloudflare Worker (worker.js), its D1 table,
                      its deploy settings and check.sh; JavaScript, outside the Go module
 test/e2e/            end-to-end tests: real binaries against the fake Ollama and fake MCP
+testdata/vault/      a made-up Obsidian vault for trying and testing Meru without personal files
 deploy/              launchd/ and systemd/ service files, and linux/meru.desktop for the app menu
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
                      installer, and install-linux.sh, Linux's; dmg-readme.txt, the read-me
