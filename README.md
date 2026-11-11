@@ -321,7 +321,7 @@ call.
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
 - [docs/faq/](docs/faq/index.md) — short answers to "how do I…" questions, one page each
-- [docs/faq/usage-report.md](docs/faq/usage-report.md): the anonymous daily count: what it sends, and how to turn it off
+- [docs/faq/usage-report.md](docs/faq/usage-report.md): what the anonymous daily count sends, and how to turn it off
 - [docs/observability.md](docs/observability.md) — read Meru's metrics: the Usage page, Prometheus and traces
 - [docs/releasing.md](docs/releasing.md) — how a release gets built and published
 - [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
