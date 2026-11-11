@@ -98,3 +98,21 @@ func TestUsageReportOp(t *testing.T) {
 		t.Error("an unknown kind was taken")
 	}
 }
+
+// TestAboutMeruNamesReport checks the line about_meru gives the model for
+// each choice, so "does Meru send anything about me?" gets the true answer.
+func TestAboutMeruNamesReport(t *testing.T) {
+	for send, want := range map[string]string{
+		"on":  "on: once a day",
+		"off": "Meru sends nothing about itself",
+		"":    "off until the user chooses",
+	} {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(path, []byte("[usage_report]\nsend = \""+send+"\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := usageReportSentence(path); !strings.Contains(got, want) {
+			t.Errorf("send %q: about_meru says %q, want it to contain %q", send, got, want)
+		}
+	}
+}

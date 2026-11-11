@@ -303,7 +303,7 @@ func serve(ctx context.Context, cfg config.Config, configPath, socketPath string
 	// reads them on each call, so it reports the setup as it is then.
 	tools.bt.UseAbout(aboutService{
 		cfg: cfg, main: a.Main, eng: eng, st: st, folders: idx.currentFolders, servers: tools.dispatcher.Servers,
-		skills: sk, mem: mem, machine: machine, home: home, web: tools.conns.webOK, log: log,
+		skills: sk, mem: mem, machine: machine, home: home, web: tools.conns.webOK, configPath: configPath, log: log,
 	}.facts)
 	// config.Load has checked output_dir, so expandHome fails only when
 	// the OS can't say where home is; then saves have nowhere to go.

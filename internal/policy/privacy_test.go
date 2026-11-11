@@ -108,6 +108,24 @@ func TestCollectorOnlyInUsageReport(t *testing.T) {
 	}
 }
 
+// TestModelCantSetUsageReport fails when a built-in tool, which the model
+// can call, names the [usage_report] table. Only the user turns the report
+// on or off: through setup, a client's switch, `meru report` or a hand
+// edit, never through a tool such as configure.
+func TestModelCantSetUsageReport(t *testing.T) {
+	root := moduleRoot(t)
+	for _, f := range moduleFiles(t, root) {
+		if f.isTest || !strings.HasPrefix(filepath.ToSlash(f.rel), "internal/builtin/") {
+			continue
+		}
+		for _, lit := range stringLiterals(f) {
+			if strings.Contains(lit.value, "usage_report") {
+				t.Errorf("%s: a built-in tool names [usage_report]; the model must never change the usage report", f.fset.Position(lit.pos))
+			}
+		}
+	}
+}
+
 // TestChecksCatchViolations feeds each check a small made-up source and
 // counts the findings. Without it, a bug that made a check see nothing would
 // pass silently.

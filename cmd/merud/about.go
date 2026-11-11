@@ -51,7 +51,10 @@ type aboutService struct {
 	// web says whether web search works now, with the SearXNG
 	// connector's sentence; nil leaves the line out.
 	web func() (bool, string)
-	log *slog.Logger
+	// configPath is config.toml, read on each call for [usage_report]
+	// send, which the clients can change while merud runs.
+	configPath string
+	log        *slog.Logger
 }
 
 // facts gathers the facts about_meru reports. It never fails: a fact it
@@ -115,6 +118,7 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 	if s.web != nil {
 		_, a.Web = s.web()
 	}
+	a.UsageReport = usageReportSentence(s.configPath)
 
 	a.Skills, a.Disabled = s.skills.names(ctx)
 
@@ -129,4 +133,24 @@ func (s aboutService) facts(ctx context.Context) builtin.About {
 		a.Memories[m.Kind]++
 	}
 	return a
+}
+
+// usageReportSentence says, for about_meru, whether merud sends the
+// anonymous daily usage report, so the model answers "does Meru send
+// anything about me?" from the setting and not from its training. It reads
+// config.toml at path; "" when the file doesn't load.
+func usageReportSentence(path string) string {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return ""
+	}
+	const what = "once a day Meru sends its version, the system and chip, the model set, and rough install age and question count, with no ID and no text. "
+	const change = "The Usage screen, /report in meru chat and `meru report off` turn it off."
+	switch cfg.UsageReport.Send {
+	case config.ReportOn:
+		return "on: " + what + change
+	case config.ReportOff:
+		return "off. Meru sends nothing about itself. `meru report on` turns it on."
+	}
+	return "off until the user chooses; meru chat and the app ask. If they say yes, " + what + change
 }

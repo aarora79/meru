@@ -56,12 +56,16 @@ type About struct {
 	Files, Chunks int      // what the search index holds
 	DBBytes       int64    // the size of meru.db on disk
 
-	Sources  []AboutSource  // the MCP servers and A2A agents
-	Web      string         // the SearXNG connector's sentence, such as "Web search is off."; "" leaves it out
-	Commands []string       // the [[commands]] tools, such as "cmd.git-log"
-	Skills   []string       // the skills that load
-	Disabled []string       // [skills] disabled
-	Memories map[string]int // how many memories of each kind
+	Sources []AboutSource // the MCP servers and A2A agents
+	Web     string        // the SearXNG connector's sentence, such as "Web search is off."; "" leaves it out
+	// UsageReport says whether merud sends the anonymous daily usage
+	// report, such as "off. Meru sends nothing about itself."; "" leaves
+	// the line out.
+	UsageReport string
+	Commands    []string       // the [[commands]] tools, such as "cmd.git-log"
+	Skills      []string       // the skills that load
+	Disabled    []string       // [skills] disabled
+	Memories    map[string]int // how many memories of each kind
 
 	// The tools fill these two themselves, from their own settings.
 	builtins  []string
@@ -148,6 +152,9 @@ func aboutText(a About) string {
 	line("Built-in tools: %s.", nameList(a.builtins))
 	if a.Web != "" {
 		line("Web search: %s", a.Web)
+	}
+	if a.UsageReport != "" {
+		line("Anonymous daily usage report: %s", a.UsageReport)
 	}
 	skills := nameList(a.Skills)
 	if len(a.Disabled) > 0 {
