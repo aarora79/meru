@@ -22,6 +22,7 @@ jobs:
   lint:
     name: format, vet, staticcheck, modules
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -45,6 +46,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -81,6 +83,7 @@ jobs:
           - { goos: linux, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -101,6 +104,7 @@ jobs:
   desktop:
     name: desktop app (macOS)
     runs-on: macos-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -121,6 +125,7 @@ jobs:
   desktop-linux:
     name: desktop app (Linux)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -128,10 +133,20 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # GitHub's Ubuntu 24.04 runners fetch packages from
+      # azure.archive.ubuntu.com first. On 11 November 2026 that name stopped
+      # resolving, apt-get update only warned, and apt-get install then hung
+      # for hours on the same host. So the step names Ubuntu's own archive
+      # as the only mirror, turns a failed index fetch into an error, caps
+      # each download at 30 seconds with three tries, and stops after ten
+      # minutes.
       - name: Install GTK 4 and WebKitGTK 6.0
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+          echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
+          sudo apt-get update -qq -o APT::Update::Error-Mode=any "${apt_opts[@]}"
+          sudo apt-get install -y -qq "${apt_opts[@]}" libgtk-4-dev libwebkitgtk-6.0-dev
       - name: make desktop-linux
         run: make desktop-linux
       - name: vet, staticcheck and govulncheck with the desktop tags
@@ -141,6 +156,7 @@ jobs:
     name: end-to-end
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -155,6 +171,7 @@ jobs:
   actionlint:
     name: workflow lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

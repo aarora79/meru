@@ -22,6 +22,7 @@ jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -35,6 +36,7 @@ jobs:
   gosec:
     name: gosec
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write # upload SARIF to code scanning
@@ -64,6 +66,7 @@ jobs:
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -84,6 +87,7 @@ jobs:
     # run everywhere.
     if: github.event.repository.private == false
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -107,6 +111,7 @@ jobs:
     # Dependency review on a private repository also needs Advanced Security.
     if: github.event_name == 'pull_request' && github.event.repository.private == false
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
