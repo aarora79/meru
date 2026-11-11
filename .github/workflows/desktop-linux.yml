@@ -27,6 +27,7 @@ jobs:
     name: build and publish (Linux, x86-64)
     # Ubuntu 24.04 has GTK 4 and WebKitGTK 6.0, which the pinned Wails needs.
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write     # add the files to the release
       id-token: write     # sign the build attestation
@@ -53,10 +54,20 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # GitHub's Ubuntu 24.04 runners fetch packages from
+      # azure.archive.ubuntu.com first. On 11 November 2026 that name stopped
+      # resolving, apt-get update only warned, and apt-get install then hung
+      # for hours on the same host. So the step names Ubuntu's own archive
+      # as the only mirror, turns a failed index fetch into an error, caps
+      # each download at 30 seconds with three tries, and stops after ten
+      # minutes.
       - name: Install GTK 4 and WebKitGTK 6.0
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+          echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
+          sudo apt-get update -qq -o APT::Update::Error-Mode=any "${apt_opts[@]}"
+          sudo apt-get install -y -qq "${apt_opts[@]}" libgtk-4-dev libwebkitgtk-6.0-dev
 
       # The same version stamp scripts/release.sh gives meru and merud.
       - name: make desktop-linux
