@@ -89,7 +89,7 @@ func buildBinaries(dir string) error {
 }
 
 // releaseVersion is the version buildRelease stamps into merud-release.
-const releaseVersion = "v0.7.3"
+const releaseVersion = "v0.7.5"
 
 // buildRelease compiles a second merud, merud-release, with a release
 // version stamped in the way scripts/release.sh does. A plain build calls

@@ -5961,13 +5961,13 @@ ever" ([#251](https://github.com/aarora79/meru/issues/251)).
 The body is seven fields of JSON, about 100 bytes:
 
 ```json
-{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
 ```
 
 | Field | What it holds | Values |
 | --- | --- | --- |
 | `v` | the report's format | `1` |
-| `meru` | the release | such as `0.7.3` |
+| `meru` | the release | such as `0.7.5` |
 | `os` | the system | `darwin`, `linux`, `windows` |
 | `arch` | the chip | `arm64`, `amd64` |
 | `profile` | the model set | `lite`, `full` |
@@ -5988,7 +5988,7 @@ hold:
 
 - `[usage_report] send = "on"`.
 - `DO_NOT_TRACK` is unset, or `0`, in `merud`'s environment.
-- The build is a release, such as `v0.7.3`. A development build never sends.
+- The build is a release, such as `v0.7.5`. A development build never sends.
 - `meru chat` or Meru.app showed the notice for this `v` on an earlier UTC day.
   The first report waits a day, so a user who sees the notice and turns it off
   that day sends nothing.

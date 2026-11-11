@@ -36,7 +36,7 @@ func newReportTest(t *testing.T) *reportService {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return &reportService{
-		reporter:   usagereport.New(dir, "v0.7.3", zeroQuestions{}, log),
+		reporter:   usagereport.New(dir, "v0.7.5", zeroQuestions{}, log),
 		configPath: path,
 		editConfig: func(f func() error) error { return f() },
 		log:        log,

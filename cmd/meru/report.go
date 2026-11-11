@@ -85,7 +85,7 @@ func reportCmd(ctx context.Context, socket string, args []string, stdout io.Writ
 //	Next one after 2026-11-12 00:47.
 //
 //	The next report:
-//	{"v":1,"meru":"0.7.3",...}
+//	{"v":1,"meru":"0.7.5",...}
 //
 //	Recent:
 //	  2026-11-11 00:52  sent  {"v":1,...}
@@ -171,7 +171,7 @@ func reportExample(profile string) string {
 }
 
 // exampleVersion returns v without its "v" when v is a release, such as
-// "0.7.3" for "v0.7.3", and "dev" for any other build, as merud's own
+// "0.7.5" for "v0.7.5", and "dev" for any other build, as merud's own
 // preview does. A development build never sends a report.
 func exampleVersion(v string) string {
 	n, ok := strings.CutPrefix(v, "v")

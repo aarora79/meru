@@ -35,7 +35,7 @@ keys and each value on its list. Anything else gets 400 and stores nothing.
 | Key | Allowed values |
 |-----|----------------|
 | `v` | the number `1` |
-| `meru` | a version such as `0.7.3`, at most 16 characters |
+| `meru` | a version such as `0.7.5`, at most 16 characters |
 | `os` | `darwin`, `linux`, `windows` |
 | `arch` | `arm64`, `amd64` |
 | `profile` | `lite`, `full` |
@@ -121,5 +121,5 @@ build one with a release version, the way `scripts/release.sh` does:
 
 ```sh
 m=github.com/aarora79/meru
-go build -ldflags "-X $m/internal/obs.releaseVersion=0.7.3 -X $m/internal/about.releaseVersion=0.7.3" -o /tmp/merud ./cmd/merud
+go build -ldflags "-X $m/internal/obs.releaseVersion=0.7.5 -X $m/internal/about.releaseVersion=0.7.5" -o /tmp/merud ./cmd/merud
 ```

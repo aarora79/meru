@@ -6,7 +6,7 @@
 CREATE TABLE IF NOT EXISTS reports (
     day       TEXT NOT NULL,    -- UTC date the collector got it, YYYY-MM-DD
     v         INTEGER NOT NULL, -- report format version
-    meru      TEXT NOT NULL,    -- Meru version, such as 0.7.3
+    meru      TEXT NOT NULL,    -- Meru version, such as 0.7.5
     os        TEXT NOT NULL,    -- darwin, linux or windows
     arch      TEXT NOT NULL,    -- arm64 or amd64
     profile   TEXT NOT NULL,    -- lite or full

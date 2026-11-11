@@ -96,7 +96,7 @@ func TestReportArgsAreQuestions(t *testing.T) {
 // the next report, and the recent lines, cut to reportRecent.
 func TestReportText(t *testing.T) {
 	zone := time.FixedZone("test", 2*60*60) // two hours east of UTC
-	body := `{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"0"}`
+	body := `{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"0"}`
 	recent := []rpc.UsageReportEntry{
 		{Type: "sent", At: "2026-11-11T00:52:00Z", Body: body},
 		{Type: "failed", At: "2026-11-10T00:40:00Z", Body: body, Error: "no network"},
@@ -135,7 +135,7 @@ func TestReportText(t *testing.T) {
 func TestExampleVersion(t *testing.T) {
 	for v, want := range map[string]string{
 		"v0.8.1":                               "0.8.1",
-		"v0.7.3-acme":                          "dev",
+		"v0.7.5-acme":                          "dev",
 		"(devel) 5325b3e, modified":            "dev",
 		"v0.4.2-0.20260927021103-5325b3ef94cb": "dev",
 	} {

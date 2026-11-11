@@ -8,7 +8,7 @@
 
 base="${1:-https://meru-report.meru-workers.workers.dev}"
 u="$base/v1/report"
-good='{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
+good='{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
 failed=0
 
 # expect NAME WANT CURL-ARGS... runs curl and compares the status code.
@@ -25,11 +25,11 @@ expect() {
 }
 
 expect "good report"         204 -X POST "$u" -d "$good"
-expect "extra field"         400 -X POST "$u" -d '{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5","id":"x"}'
-expect "missing field"       400 -X POST "$u" -d '{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week"}'
-expect "v as a string"       400 -X POST "$u" -d '{"v":"1","meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
-expect "fork version"        400 -X POST "$u" -d '{"v":1,"meru":"0.7.3-acme","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
-expect "unknown os"          400 -X POST "$u" -d '{"v":1,"meru":"0.7.3","os":"freebsd","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
+expect "extra field"         400 -X POST "$u" -d '{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5","id":"x"}'
+expect "missing field"       400 -X POST "$u" -d '{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week"}'
+expect "v as a string"       400 -X POST "$u" -d '{"v":"1","meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
+expect "fork version"        400 -X POST "$u" -d '{"v":1,"meru":"0.7.5-acme","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
+expect "unknown os"          400 -X POST "$u" -d '{"v":1,"meru":"0.7.5","os":"freebsd","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
 expect "not JSON"            400 -X POST "$u" -d 'not json'
 expect "too big"             413 -X POST "$u" -d "$(head -c 1000 /dev/zero | tr '\0' 'a')"
 expect "GET on report route" 405 "$u"

@@ -1299,7 +1299,7 @@ Anonymous daily count: On
 Next one after 2026-11-12 02:47.
 
 The next report:
-{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"0"}
+{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"0"}
 
 Recent:
   2026-11-11 02:52  sent  {"v":1,...}

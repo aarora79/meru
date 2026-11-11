@@ -78,7 +78,7 @@ about a second per test.
 merud with the race detector, and a data race inside merud fails the run.
 
 `buildRelease` then builds a second daemon, `merud-release`, with the version
-`v0.7.3` stamped in through `-ldflags "-X ..."`, the way `scripts/release.sh`
+`v0.7.5` stamped in through `-ldflags "-X ..."`, the way `scripts/release.sh`
 stamps a release. A plain build calls itself a development build, and a
 development build never sends the usage report, so the report tests start
 `merud-release` and every other test starts the plain `merud`.
@@ -176,7 +176,7 @@ makes a test slower, not flaky.
 | `TestReportUpgradeNeverSends` | `usagereport_test.go` | A config with no `[usage_report] send` line, as an upgrade leaves it, sends nothing even with the notice seen two days ago, and the status says to show `BannerAsk` |
 | `TestReportNotSeenNeverSends` | `usagereport_test.go` | `send = "on"` with no `seen` line sends nothing; after `seen`, still nothing, and `Blocked` holds the first report to tomorrow |
 | `TestReportDoNotTrack` | `usagereport_test.go` | `DO_NOT_TRACK=1` in merud's environment stops a report that would otherwise go, and `Blocked` names it |
-| `TestReportSendsAfterSeen` | `usagereport_test.go` | `send = "on"` and a `seen` line from an earlier day: the fake collector gets one `POST /v1/report` of seven fields with version `0.7.3` and profile `lite`, the record's last line is `sent` with the same body, and the status says `Sent`. It skips before 02:00 UTC, when the day's random send minute may not have come |
+| `TestReportSendsAfterSeen` | `usagereport_test.go` | `send = "on"` and a `seen` line from an earlier day: the fake collector gets one `POST /v1/report` of seven fields with version `0.7.5` and profile `lite`, the record's last line is `sent` with the same body, and the status says `Sent`. It skips before 02:00 UTC, when the day's random send minute may not have come |
 | `TestAnswerCitesLocalNote` | `index_test.go` | v0.2's "done when": merud indexes a notes folder; the router picks `search`; the main model's prompt holds the garden note's fact under "From your files" and the citation rule; `meru "question"` prints the answer, then `Sources:` with `[1]` and the note's path and nothing it didn't cite; `meru index -status` counts four files (the empty one too, the `.env` never) |
 | `TestAnswerCitesSheetRows` | `office_test.go` | merud indexes a CSV file, a TSV file and a Word document and skips an old `.xls`, so `meru index -status` counts three files; the prompt holds the wine list's rows under `Sheet wine-cellar in <path>. Columns: Wine, Year, Note.`, each labelled with its columns; `meru` cites `[1]` with the sheet's name and `rows 2–3` |
 | `TestNewBuiltinE2E` | `builtins_test.go` | A config whose `[builtin] tools` leaves out `analyze_table`: `connections` marks it New and off, `merud.log` names it, and `tool_policy` allow turns it on, clears the mark and writes it into `config.toml` |

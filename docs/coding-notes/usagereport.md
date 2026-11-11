@@ -1,7 +1,7 @@
 # usagereport
 
 **Code:** `internal/usagereport/` (`doc.go`, `report.go`, `log.go`, `send.go`, `status.go`, `usagereport_test.go`, `testdata/report-v1.json`), with `cmd/merud/usagereport.go` for the op
-**Milestone:** none; a release of its own, v0.7.3 ([#251](https://github.com/aarora79/meru/issues/251))
+**Milestone:** none; a release of its own, v0.7.5 ([#251](https://github.com/aarora79/meru/issues/251))
 **Architecture:** [Anonymous usage report](../../ARCHITECTURE.md#anonymous-usage-report)
 
 ## What it does
@@ -43,7 +43,7 @@ lines. Each kind of line looks like this:
 ```json
 {"type":"seen","at":"2026-11-10T14:02:11Z","report":1,"client":"desktop"}
 {"type":"dismissed","at":"2026-11-10T14:02:30Z","report":1,"client":"desktop"}
-{"type":"sent","at":"2026-11-11T01:14:00Z","body":"{\"v\":1,\"meru\":\"0.7.3\",\"os\":\"darwin\",\"arch\":\"arm64\",\"profile\":\"lite\",\"age\":\"week\",\"questions\":\"1-5\"}"}
+{"type":"sent","at":"2026-11-11T01:14:00Z","body":"{\"v\":1,\"meru\":\"0.7.5\",\"os\":\"darwin\",\"arch\":\"arm64\",\"profile\":\"lite\",\"age\":\"week\",\"questions\":\"1-5\"}"}
 {"type":"failed","at":"2026-11-12T00:47:00Z","body":"{...}","error":"send: the collector answered 500"}
 ```
 
@@ -63,9 +63,9 @@ golden test compares `json.Marshal` of a sample report with
 field fails the test until both change. A new version makes both clients show
 the notice again before anything sends under it.
 
-`releaseNumber` turns `v0.7.3` into `0.7.3` and refuses anything else: a
+`releaseNumber` turns `v0.7.5` into `0.7.5` and refuses anything else: a
 development build's `(devel) 5325b3e`, a pseudo-version, a fork's
-`v0.7.3-acme`. `ageBucket` and `questionBucket` turn a time span and a count into
+`v0.7.5-acme`. `ageBucket` and `questionBucket` turn a time span and a count into
 one of four words each. `startOfDay` gives midnight UTC, because the report
 counts days in UTC, so a user who flies east doesn't send twice in a day.
 

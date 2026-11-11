@@ -7,7 +7,7 @@ import { parse } from "./worker.js";
 
 const good = {
   v: 1,
-  meru: "0.7.3",
+  meru: "0.7.5",
   os: "darwin",
   arch: "arm64",
   profile: "lite",
@@ -37,7 +37,7 @@ test("refuses anything else", () => {
     "a missing field": with_("questions", undefined),
     "v as a string": with_("v", "1"),
     "a future v": with_("v", 2),
-    "a fork version": with_("meru", "0.7.3-acme"),
+    "a fork version": with_("meru", "0.7.5-acme"),
     "dev": with_("meru", "dev"),
     "a long version": with_("meru", "1234567890.1.1234567"),
     "a version as a number": with_("meru", 7),
@@ -46,7 +46,7 @@ test("refuses anything else", () => {
     "an unknown profile": with_("profile", "custom"),
     "an unknown age": with_("age", "day"),
     "a raw question count": with_("questions", "3"),
-    "a prototype key": '{"__proto__":{},"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}',
+    "a prototype key": '{"__proto__":{},"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}',
   };
   for (const [name, body] of Object.entries(cases)) {
     assert.equal(parse(body), null, name);
