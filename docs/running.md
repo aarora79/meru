@@ -14,8 +14,8 @@ You need two programs on the machine that will run Meru, and a third for web
 search.
 
 - **Go 1.26 or later**, to build Meru. Download it from <https://go.dev/dl/>, or on
-  macOS run `brew install go`. Check with `go version`. The repo pins Go 1.26.6;
-  if yours is older, `go` downloads 1.26.6 by itself the first time you build.
+  macOS run `brew install go`. Check with `go version`. The repo pins Go 1.26.11;
+  if yours is older, `go` downloads 1.26.11 by itself the first time you build.
 - **Ollama 0.40.5 or later**, to run the models. Download it from
   <https://ollama.com/download>. It runs in the background and listens on
   `http://127.0.0.1:11434`. Check with `curl http://127.0.0.1:11434/api/version`.
