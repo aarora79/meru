@@ -58,6 +58,38 @@ graphics card.
 Meru.app, the desktop app, is a window onto the same `merud`. The chat titles
 are blurred.
 
+## What Meru sends about itself
+
+Since v0.7.5, Meru can send one anonymous count a day, and that is the only
+thing it sends about itself. Here is a whole report, about 100 bytes:
+
+```json
+{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+```
+
+That's the Meru version, the system and chip, the model set, a rough install age
+and a rough count of yesterday's questions. It holds no ID, no question or answer,
+no file name and no setting.
+
+- **You choose.** A new install asks during setup. An upgrade from an earlier
+  release sends nothing until you say yes, and `meru chat` and Meru.app ask you
+  once.
+- **Nothing goes before you've seen it.** `merud` sends only after Meru.app or
+  `meru chat` has shown you the notice, at most once a day.
+- **You can check every report.** `~/.meru/usage-report.jsonl` holds each one as
+  sent, and the Usage screen and `meru report` show them.
+- **You can turn it off** with the Usage screen's switch, `/report` in
+  `meru chat`, `meru report off`, `send = "off"` under `[usage_report]` in
+  `config.toml`, or `DO_NOT_TRACK=1` in `merud`'s environment.
+- **Anyone can see the totals** at
+  [meru-report.meru-workers.workers.dev](https://meru-report.meru-workers.workers.dev/).
+  The collector, a Cloudflare Worker whose code is in [collector/](collector/),
+  stores the date and the seven fields and no IP address.
+
+Meru sends no crash reports and never checks for updates.
+[docs/faq/usage-report.md](docs/faq/usage-report.md) has the details, and
+[ARCHITECTURE.md](ARCHITECTURE.md#anonymous-usage-report) the full rule.
+
 ## How good are the local models?
 
 We ran six answer models through a benchmark of 50 tasks, each three times:
@@ -197,14 +229,8 @@ search engine you run on your machine, so only the search words leave it. When t
 model needs what a page says, `merud` fetches that public page itself, and asks you
 first for any address that no search or question of yours gave.
 
-`merud` sends one thing about itself: an anonymous usage report, once a day, with
-seven coarse fields such as the Meru version and the system, and no ID, question
-or file name. It starts only after Meru.app or `meru chat` has shown you the
-notice, and logs each report it sends in `~/.meru/usage-report.jsonl`.
-[docs/faq/usage-report.md](docs/faq/usage-report.md) lists the fields and how to
-turn it off, and anyone can read the
-[totals](https://meru-report.meru-workers.workers.dev/). Meru sends no crash
-reports and never checks for updates.
+Apart from that, `merud` sends one thing about itself, the anonymous daily count
+described in [What Meru sends about itself](#what-meru-sends-about-itself).
 
 ## What it is
 
@@ -295,6 +321,7 @@ call.
 - [docs/posters/](docs/posters/) — the Meru poster
 - [docs/running.md](docs/running.md) — install, run and troubleshoot Meru
 - [docs/faq/](docs/faq/index.md) — short answers to "how do I…" questions, one page each
+- [docs/faq/usage-report.md](docs/faq/usage-report.md): the anonymous daily count: what it sends, and how to turn it off
 - [docs/observability.md](docs/observability.md) — read Meru's metrics: the Usage page, Prometheus and traces
 - [docs/releasing.md](docs/releasing.md) — how a release gets built and published
 - [docs/lld.md](docs/lld.md) — how the code fits together, for readers new to Go
