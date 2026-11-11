@@ -634,13 +634,7 @@ func (a *Agent) runWebFirst(ctx context.Context, t *turn, calls []webCall) (stri
 	if len(calls) == 0 {
 		return "", nil
 	}
-	tcs := make([]engine.ToolCall, len(calls))
-	for i, c := range calls {
-		// Marshal of a map of strings can't fail.
-		args, _ := json.Marshal(c.args)
-		tcs[i] = engine.ToolCall{Name: c.tool, Arguments: args}
-	}
-	ran, err := a.runCalls(ctx, t, tcs, dispatch.CallerMeru)
+	ran, err := a.runCalls(ctx, t, toolCalls(calls), dispatch.CallerMeru)
 	if err != nil {
 		return "", err
 	}
@@ -668,6 +662,18 @@ func (a *Agent) runWebFirst(ctx context.Context, t *turn, calls []webCall) (stri
 	section := webCiteRule + "\n\nFrom the web\n\n" + strings.Join(parts, "\n\n")
 	obs.RecordContextTokens(ctx, "web", utf8.RuneCountInString(section)/4)
 	return section, nil
+}
+
+// toolCalls turns the calls merud makes itself, for web first and for a
+// question about Meru, into the tool calls runCalls takes.
+func toolCalls(calls []webCall) []engine.ToolCall {
+	tcs := make([]engine.ToolCall, len(calls))
+	for i, c := range calls {
+		// Marshal of a map of strings can't fail.
+		args, _ := json.Marshal(c.args)
+		tcs[i] = engine.ToolCall{Name: c.tool, Arguments: args}
+	}
+	return tcs
 }
 
 // cutRunes cuts s to at most n characters, never splitting a character.

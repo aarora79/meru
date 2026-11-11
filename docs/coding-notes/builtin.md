@@ -73,7 +73,10 @@ When you ask "which model are you using?", the model calls `about_meru` with
 no arguments and gets back what `merud` knows about itself, such as `Answer
 model (main): qwen3.6:35b` and `Ollama version: 0.34.0`. Before this tool, a
 model asked that question answered from its training and named another
-company's model.
+company's model. Its last line says what leaves the computer about Meru: the
+daily report when it is on, no crash reports and no update checks. A question
+about Meru itself gets this tool's facts before the model's first round (see
+the agent note, "Questions about Meru itself").
 
 Two functions here are no tools. When you drop `~/Downloads/garden-plan.pdf` on
 the desktop app, `merud` calls `Upload`, which copies the file to

@@ -1802,7 +1802,10 @@ order.
    [Web first](#web-first)): one that asks for the web or gives a URL, and,
    on a turn that searched your files, one that names a thing the files
    don't cover. `merud` runs `web_search` or `web_fetch` itself, through
-   `dispatch`, and the route gains the tools when it lacked them.
+   `dispatch`, and the route gains the tools when it lacked them. A question about
+   Meru itself runs `about_meru` the same way, and skips the search of the
+   files unless it names an indexed folder (see
+   [Questions about Meru itself](#questions-about-meru-itself)).
 2. **Build the context.** The system prompt puts the parts that stay the same
    from turn to turn first: the configured prompt, the rule that "I" means the
    user, the rule that the model never claims an action no tool took (see
@@ -5163,6 +5166,29 @@ page shows. A page with its text in the HTML never reaches the browser.
 `meru.web.render.duration` times each rendered page, and a `meru.web.render`
 span under the call's `meru.dispatch` span records the requests the proxy let
 through and refused.
+
+### Questions about Meru itself
+
+A question about Meru itself, such as "do you send any tracking data to the
+cloud?" or "which model are you?", runs `about_meru` before the model's first
+round, and the turn skips the search of the files (`agent/self.go`). A real turn
+showed why. That question routed `search+tools`; the search found the telemetry
+code of a project in the user's indexed folders, about 40,000 tokens of it went
+into the prompt, and the model read "you" as "your code", answered about that
+project, and never called `about_meru`, though the prompt says to.
+
+The rule needs two signs. The question addresses Meru, by name or with "you" as
+its subject ("do you", "are you", "who are you"), or says "your" without "my" or
+"our". It also names something Meru is, does or sends: its data, privacy,
+telemetry, model, version or name. The rule leaves out a request for a task, such
+as "can you search my files for telemetry" or "can you run the tests", and a
+question about the user's own things, such as "does my repo send telemetry?". `merud` makes the call itself, through `dispatch`, so it gets its
+`tool_calls` row and transcript lines, and the facts go into the prompt under a
+line that says "you" means Meru. A question that names an indexed folder, as
+"what database does Meru use?" does for someone who indexes Meru's own code,
+keeps its search too: `about_meru` knows the setup, the code knows the rest.
+`about_meru`'s facts include what leaves the computer: the daily report when it
+is on, and nothing else about Meru.
 
 ### Web first
 

@@ -660,7 +660,10 @@ and then removes it, and checks each old process is gone.
 **Built-in tools.** `newToolService` hands `cfg.Builtin` to `builtin.New`, whose
 `tools` list says which built-ins the model may use. Right after, it logs one
 `built-in tool off` info line for each entry of `bt.Off()`: a tool the list
-names whose setting is missing, such as `grep` with no `[index] folders`. The
+names whose setting is missing, such as `grep` with no `[index] folders`. It
+skips `about_meru` and `schedule_job`: `serve` hands them their facts and the
+scheduler later (`UseAbout`, `UseJobs`), so here they would always read as off,
+and the log once said so at every start. The
 e2e test `TestBuiltinToolsSwitch` cuts the list to `datetime` and `grep`, and
 checks what `meru tools` shows and that the log says why `grep` is off.
 

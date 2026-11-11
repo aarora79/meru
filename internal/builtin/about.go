@@ -156,6 +156,9 @@ func aboutText(a About) string {
 	if a.UsageReport != "" {
 		line("Anonymous daily usage report: %s", a.UsageReport)
 	}
+	// A question such as "do you send any tracking data?" needs the rest
+	// of the privacy rule too, not only the daily report.
+	line("What leaves this computer about Meru: only that daily report, when it is on. Meru sends no crash reports and never checks for updates, and its own metrics and traces stay on this computer. A tool or MCP server the user allowed can reach the network on its own.")
 	skills := nameList(a.Skills)
 	if len(a.Disabled) > 0 {
 		skills += "; turned off: " + nameList(a.Disabled)
