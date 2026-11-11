@@ -473,3 +473,83 @@ func TestLoopStops(t *testing.T) {
 func osArch() [2]string {
 	return [2]string{runtime.GOOS, runtime.GOARCH}
 }
+
+// TestSendNow checks the button's rules: it skips the one-day wait and the
+// send minute, and keeps every other rule, so a click never sends a second
+// report in one day.
+func TestSendNow(t *testing.T) {
+	early := time.Date(2026, 11, 7, 0, 10, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		s      Settings
+		lines  []Entry
+		now    time.Time
+		status int // what the fake collector answers
+		sends  bool
+		errHas string
+	}{
+		{name: "the day the notice first showed", s: Settings{Send: "on"}, lines: []Entry{seenAt(day.Add(-time.Hour))}, now: day, status: 204, sends: true},
+		{name: "before the send minute", s: Settings{Send: "on"}, lines: []Entry{seenAt(day.Add(-48 * time.Hour))}, now: early, status: 204, sends: true},
+		{name: "already sent today", s: Settings{Send: "on"}, lines: []Entry{seenAt(day.Add(-48 * time.Hour)), {Type: EntrySent, At: day.Add(-time.Hour)}}, now: day, errHas: reasonSentToday},
+		{name: "off", s: Settings{Send: "off"}, lines: []Entry{seenAt(day.Add(-48 * time.Hour))}, now: day, errHas: reasonOff},
+		{name: "not chosen", s: Settings{}, lines: []Entry{seenAt(day.Add(-48 * time.Hour))}, now: day, errHas: reasonNotChosen},
+		{name: "notice never shown", s: Settings{Send: "on"}, now: day, errHas: reasonNotSeen},
+		{name: "collector refuses", s: Settings{Send: "on"}, lines: []Entry{seenAt(day.Add(-48 * time.Hour))}, now: day, status: 500, sends: true, errHas: "500"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				hits.Add(1)
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+			r := newTest(t, "v0.7.3", tc.now, 119)
+			writeLines(t, r, tc.lines...)
+			tc.s.URL, tc.s.Profile = srv.URL, "lite"
+			err := r.SendNow(context.Background(), tc.s)
+			if (hits.Load() == 1) != tc.sends {
+				t.Errorf("collector got %d reports, want sends %v", hits.Load(), tc.sends)
+			}
+			if tc.errHas == "" && err != nil {
+				t.Errorf("SendNow: %v", err)
+			}
+			if tc.errHas != "" && (err == nil || !strings.Contains(err.Error(), tc.errHas)) {
+				t.Errorf("SendNow error = %v, want it to say %q", err, tc.errHas)
+			}
+			// A send writes its line, sent or failed; a refusal writes none.
+			st, _ := readState(r.path, tc.now)
+			if wrote := len(st.recent) > len(tc.lines); wrote != tc.sends {
+				t.Errorf("record grew %v, want %v", wrote, tc.sends)
+			}
+		})
+	}
+}
+
+// TestStatusCanSend checks that the button is live only when a click would
+// send: on, the notice shown, and nothing sent today.
+func TestStatusCanSend(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		s     Settings
+		lines []Entry
+		want  bool
+	}{
+		{"on and seen today", Settings{Send: "on"}, []Entry{seenAt(day.Add(-time.Hour))}, true},
+		{"sent today", Settings{Send: "on"}, []Entry{seenAt(day.Add(-48 * time.Hour)), {Type: EntrySent, At: day.Add(-time.Hour)}}, false},
+		{"off", Settings{Send: "off"}, []Entry{seenAt(day.Add(-time.Hour))}, false},
+		{"never seen", Settings{Send: "on"}, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newTest(t, "v0.7.3", day, 0)
+			writeLines(t, r, tc.lines...)
+			got, err := r.Status(context.Background(), tc.s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.CanSend != tc.want {
+				t.Errorf("CanSend = %v, want %v", got.CanSend, tc.want)
+			}
+		})
+	}
+}

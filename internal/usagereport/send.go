@@ -172,21 +172,50 @@ func (r *Reporter) tick(ctx context.Context, settings func() (Settings, error), 
 		r.log.Debug("usage report skipped", "why", why)
 		return
 	}
+	_ = r.send(ctx, s, st, now) // send logs and records its own outcome
+}
+
+// SendNow sends today's report at once, for the "Send today's now" button
+// in the clients. It skips the two waits a tick keeps, the one-day wait after
+// the notice and today's random send minute, and holds every other rule: the
+// choice is "on", DO_NOT_TRACK is unset, the build is a release, a client has
+// shown the notice, and no report went today. So a click never sends a
+// second report in one day. It fails with the reason when a rule holds the
+// report back, and when the collector doesn't take it.
+func (r *Reporter) SendNow(ctx context.Context, s Settings) error {
+	now := r.now()
+	r.fileMu.Lock()
+	defer r.fileMu.Unlock()
+	st, err := readState(r.path, now)
+	if err != nil {
+		return err
+	}
+	if why := r.blockedNow(s, st, now); why != "" {
+		return fmt.Errorf("not sent: %s", why)
+	}
+	return r.send(ctx, s, st, now)
+}
+
+// send builds the report, posts it, and records a "sent" or "failed" line
+// either way. The caller holds fileMu and has checked the rules. It returns
+// the post's error, so SendNow can tell the user.
+func (r *Reporter) send(ctx context.Context, s Settings, st state, now time.Time) error {
 	body, err := r.build(ctx, s, st, now)
 	if err != nil {
 		r.log.Debug("usage report: build", "err", err)
-		return
+		return err
 	}
 	e := Entry{Type: EntrySent, At: now.UTC(), Body: string(body)}
-	if err := r.post(ctx, s.URL, body); err != nil {
-		e.Type, e.Error = EntryFailed, err.Error()
+	postErr := r.post(ctx, s.URL, body)
+	if postErr != nil {
+		e.Type, e.Error = EntryFailed, postErr.Error()
 		// One info line a day is enough on a computer with no network;
 		// the tries after it go to debug.
 		level := slog.LevelInfo
 		if st.failedToday {
 			level = slog.LevelDebug
 		}
-		r.log.Log(ctx, level, "usage report failed", "err", err)
+		r.log.Log(ctx, level, "usage report failed", "err", postErr)
 		obs.RecordUsageReport(ctx, "failed")
 	} else {
 		r.log.Info("usage report sent", "report", Version)
@@ -195,11 +224,25 @@ func (r *Reporter) tick(ctx context.Context, settings func() (Settings, error), 
 	if err := appendEntry(r.path, e); err != nil {
 		r.log.Warn("usage report: record", "err", err)
 	}
+	return postErr
 }
 
-// blocked returns the reason today's report can't go at now, or "" when it
-// can. The order sets which reason the Usage screen shows when several hold.
+// blocked returns the reason a tick can't send today's report at now, or ""
+// when it can.
 func (r *Reporter) blocked(s Settings, st state, now time.Time) string {
+	return r.check(s, st, now, false)
+}
+
+// blockedNow is blocked for SendNow: the same rules without the one-day
+// wait after the notice and without today's send minute.
+func (r *Reporter) blockedNow(s Settings, st state, now time.Time) string {
+	return r.check(s, st, now, true)
+}
+
+// check returns the first rule that holds today's report back at now, or
+// "". byHand drops the two waits, for a send the user asked for. The order
+// sets which reason the Usage screen shows when several hold.
+func (r *Reporter) check(s Settings, st state, now time.Time, byHand bool) string {
 	today := startOfDay(now)
 	switch {
 	case doNotTrack(r.env("DO_NOT_TRACK")):
@@ -215,12 +258,14 @@ func (r *Reporter) blocked(s Settings, st state, now time.Time) string {
 	switch {
 	case st.firstSeen.IsZero():
 		return reasonNotSeen
+	case !st.lastSent.Before(today):
+		return reasonSentToday
+	case byHand:
+		return ""
 	case !startOfDay(st.firstSeen).Before(today):
 		// The first report waits for the next UTC day, so a user who sees
 		// the notice and turns it off within hours sends nothing.
 		return reasonFirstDay
-	case !st.lastSent.Before(today):
-		return reasonSentToday
 	case now.Before(today.Add(time.Duration(r.sendMinute(today)) * time.Minute)):
 		return reasonNotYet
 	}

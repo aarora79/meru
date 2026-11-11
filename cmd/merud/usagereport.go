@@ -39,7 +39,8 @@ func (s *reportService) settings() (usagereport.Settings, error) {
 }
 
 // handle answers OpUsageReport. Every action replies with the status after
-// it, so a client redraws from one answer. "on" and "off" write the choice
+// it, so a client redraws from one answer. "send" sends today's report now,
+// if the rules allow it; otherwise the client gets the reason as an error. "on" and "off" write the choice
 // to config.toml first and add the "dismissed" line second: if merud stops
 // between the two, the notice shows again, which is the safe way to fail.
 func (s *reportService) handle(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
@@ -53,6 +54,15 @@ func (s *reportService) handle(ctx context.Context, req rpc.Request, emit func(r
 		if err := s.reporter.Mark(usagereport.EntryDismissed, string(req.Source)); err != nil {
 			return err
 		}
+	case rpc.UsageReportSend:
+		set, err := s.settings()
+		if err != nil {
+			return err
+		}
+		if err := s.reporter.SendNow(ctx, set); err != nil {
+			return err
+		}
+		s.log.InfoContext(ctx, "usage report sent by hand")
 	case rpc.UsageReportOn, rpc.UsageReportOff:
 		if err := s.setSend(req.Kind); err != nil {
 			return err

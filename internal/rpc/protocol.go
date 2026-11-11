@@ -290,9 +290,11 @@ const (
 	// OpUsageReport reads or changes the anonymous daily usage report.
 	// Request.Kind picks the action: UsageReportStatus (or "") asks how it
 	// stands, UsageReportSeen says the client showed the notice,
-	// UsageReportDismiss closes the notice, and UsageReportOn and
-	// UsageReportOff set [usage_report] send. Every action replies with
-	// one "usage_report" event and "done".
+	// UsageReportDismiss closes the notice, UsageReportOn and
+	// UsageReportOff set [usage_report] send, and UsageReportSend sends
+	// today's report now, if none went today. Every action replies with
+	// one "usage_report" event and "done"; a send the rules hold back, or
+	// the collector refuses, replies with an error that says why.
 	OpUsageReport Op = "usage_report"
 )
 
@@ -303,6 +305,7 @@ const (
 	UsageReportDismiss    = "dismiss"
 	UsageReportOn         = "on"
 	UsageReportOff        = "off"
+	UsageReportSend       = "send"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -1007,6 +1010,10 @@ type UsageReportStatus struct {
 	// Sent is true once any report has gone, so the "new" notice can stop
 	// saying the first one goes tomorrow.
 	Sent bool `json:"sent,omitempty"`
+	// CanSend is true when UsageReportSend would send now: the report is
+	// on and allowed, a client has shown the notice, and none went today.
+	// The clients grey out "Send today's now" while it is false.
+	CanSend bool `json:"can_send,omitempty"`
 	// URL is [usage_report] url when config names a collector other than
 	// Meru's own, so a changed destination is in plain view; "" otherwise.
 	URL string `json:"url,omitempty"`

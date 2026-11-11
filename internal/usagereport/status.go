@@ -31,6 +31,7 @@ func (r *Reporter) Status(ctx context.Context, s Settings) (rpc.UsageReportStatu
 		URL:     s.URL,
 		Banner:  banner(s, st, doNotTrack(r.env("DO_NOT_TRACK"))),
 		NextAt:  r.nextAt(why, now),
+		CanSend: r.blockedNow(s, st, now) == "",
 	}
 	body, err := r.build(ctx, s, st, now)
 	if err != nil {

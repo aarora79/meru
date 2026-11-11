@@ -8,6 +8,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -192,5 +193,42 @@ func TestReportSendsAfterSeen(t *testing.T) {
 	}
 	if st := reportStatus(t, h, ""); !st.Sent || !strings.Contains(st.Blocked, "gone") {
 		t.Errorf("status after the send = %+v, want Sent and today's report gone", st)
+	}
+}
+
+// TestReportSendNow checks the "Send today's now" button: the day the
+// notice first shows, a click sends one report at once, and a second click
+// the same day sends nothing and says why.
+func TestReportSendNow(t *testing.T) {
+	t.Parallel()
+	f, c := startFake(t), startCollector(t)
+	h := reportHome(t, f, c, "on", false)
+	startReporting(t, h)
+	if st := reportStatus(t, h, rpc.UsageReportSeen); !st.CanSend {
+		t.Fatalf("after the notice showed, CanSend = false; status %+v", st)
+	}
+	if st := reportStatus(t, h, rpc.UsageReportSend); !st.Sent || st.CanSend {
+		t.Errorf("after a send: Sent %v, CanSend %v; want true, false", st.Sent, st.CanSend)
+	}
+	if got := c.got(); len(got) != 1 {
+		t.Fatalf("collector got %d reports after one click, want 1", len(got))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	defer cancel()
+	var refusal string
+	for ev, err := range rpc.Do(ctx, h.socket, rpc.Request{Op: rpc.OpUsageReport, Kind: rpc.UsageReportSend, Source: rpc.SourceDesktop}, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.Type == rpc.EventError {
+			refusal = ev.Error
+		}
+	}
+	if !strings.Contains(refusal, "gone") {
+		t.Errorf("a second click answered %q, want a refusal saying today's has gone", refusal)
+	}
+	if got := c.got(); len(got) != 1 {
+		t.Errorf("collector got %d reports after two clicks, want 1", len(got))
 	}
 }
