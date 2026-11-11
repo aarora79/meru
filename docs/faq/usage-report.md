@@ -80,7 +80,9 @@ it, and as **new** on the day of its first report.
 `date(day, 'weekday 0', '-6 days')` is SQLite's way to say "the Monday that
 starts this day's week": `weekday 0` moves to the Sunday that ends it. The total
 lives in a counter because the collector deletes rows older than 400 days, and a
-sum over the rows would shrink.
+sum over the rows would shrink. It started at 2, for the two installs that sent
+version 1 reports before v0.7.7: they had reported before, so their first
+version 2 report says `first: false` and adds nothing.
 
 The [public page](https://meru-report.meru-workers.workers.dev/) and
 [`/totals`](https://meru-report.meru-workers.workers.dev/totals) show all of these
