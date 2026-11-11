@@ -24,6 +24,7 @@ host does; `docs/faq/usage-report.md` says so.
 | `worker.test.js` | tests for the schema check; run `node --test` here |
 | `schema.sql` | the `reports` table |
 | `wrangler.toml` | the deploy settings: the database, the rate limit, logs off, the daily cron |
+| `check.sh` | the checks to run after each deploy |
 | `package.json` | marks the folder as JavaScript modules, so `node --test` can import `worker.js` |
 
 ## What the Worker accepts
@@ -72,7 +73,7 @@ on your own machine. Run every command from this folder.
    ```
    Wrangler prints the address. It must be
    `https://meru-report.meru-workers.workers.dev`.
-5. Run the checks below.
+5. Run `./check.sh` (see below).
 6. In the Cloudflare dashboard, open the Worker, then **Settings →
    Observability**, and confirm that logs are off.
 7. Delete the test rows the checks wrote:
@@ -83,31 +84,36 @@ on your own machine. Run every command from this folder.
 ## Checks after every deploy
 
 ```sh
-U=https://meru-report.meru-workers.workers.dev/v1/report
-GOOD='{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"1-5"}'
-
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" -d "$GOOD"                                   # 204
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" -d "${GOOD%\}},\"id\":\"x\"}"               # 400: extra field
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" -d "${GOOD/0.7.3/0.7.3-acme}"                # 400: fork version
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" -d "${GOOD/darwin/freebsd}"                  # 400: unknown os
-curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" -d 'not json'                                # 400
-head -c 1000 /dev/zero | tr '\0' 'a' | curl -s -o /dev/null -w '%{http_code}\n' -X POST "$U" --data-binary @-   # 413
-curl -s -o /dev/null -w '%{http_code}\n' "$U"                                                       # 405: GET on the report route
-for i in 1 2 3 4 5 6 7 8; do curl -s -o /dev/null -w '%{http_code} ' -X POST "$U" -d "$GOOD"; done; echo   # 429 near the end
-
-curl -s https://meru-report.meru-workers.workers.dev/totals                                         # JSON counts
-npx wrangler@4 d1 execute meru-reports --remote --command "SELECT * FROM reports LIMIT 5"          # no IP, no time of day
+./check.sh
 ```
 
-The rate limit counts per Cloudflare location, so the burst may get a few more
-204s than the limit before the 429s start.
+It sends one good report and eleven bad requests or reads, and prints `ok` or
+`FAIL` for each. It exits non-zero if any check fails. Pass an address to check
+another copy, such as `./check.sh http://127.0.0.1:8787` for `wrangler dev`.
+The good report writes one row, so delete test rows before launch.
+
+The script leaves out the rate limit, because Cloudflare counts per location
+and enforces the limit loosely: on 2026-11-11, the first 429 came after about
+22 requests in a few seconds. To see it, send a burst by hand:
+
+```sh
+for i in $(seq 1 30); do curl -s -o /dev/null -w '%{http_code} ' -X POST https://meru-report.meru-workers.workers.dev/v1/report -d 'not json'; done; echo
+```
+
+To confirm the table holds no IP address or time of day:
+
+```sh
+npx wrangler@4 d1 execute meru-reports --remote --command "SELECT * FROM reports LIMIT 5"
+```
 
 ## Trying it on your machine
 
 ```sh
 npx wrangler@4 d1 execute meru-reports --local --file=schema.sql
-npx wrangler@4 dev          # serves on http://127.0.0.1:8787
+npx wrangler@4 dev
 ```
+
+`wrangler dev` serves on `http://127.0.0.1:8787`.
 
 Point a `merud` at it with `[usage_report] url = "http://127.0.0.1:8787"` in
 `config.toml`. A plain `go run` build calls itself `dev` and never sends, so

@@ -19,7 +19,7 @@ enabled = false
 [[d1_databases]]
 binding = "DB"
 database_name = "meru-reports"
-database_id = "REPLACE-WITH-THE-ID-FROM-wrangler-d1-create"
+database_id = "df09b9b3-6c50-463f-8a74-584716d5ecf4"
 
 # At most 5 reports a minute from one sender. An honest install sends one a
 # day; this keeps one sender from using up the free tier's daily writes.
