@@ -270,6 +270,10 @@ and the person's data, replaces the programs and the app, and restarts
 4, and check the version under Settings, About in the desktop app.
 
 Meru never checks for updates on its own. The person decides when to update.
+After an update from a release that had no usage report, the desktop app and
+`meru chat` ask whether to send the anonymous daily count, and `merud` sends
+nothing until the person says yes. Tell them this before they open the app, so
+the question doesn't surprise them; docs/faq/usage-report.md lists what it holds.
 
 ## 8. Uninstall
 

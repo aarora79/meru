@@ -163,8 +163,10 @@ description argues for the exception and the Chief Architect accepts it.
       incognito chats and jobs never leave. No reach for the internet, no provider
       SDK or provider address in code, and no path that sends a prompt off the
       machine without `agent.consent`.
-- [ ] **No telemetry leaves the machine.** No update check, crash report or phone-home.
-      OTLP export stays off until config sets an endpoint, and `merud` refuses a
+- [ ] **No telemetry leaves the machine except the anonymous daily usage report.** No
+      update check, crash report or other phone-home. The report keeps its seven
+      fields, goes only from `internal/usagereport`, and only after a client has
+      shown the notice; a new field needs a new report version. OTLP export stays off until config sets an endpoint, and `merud` refuses a
       non-loopback one. Prompt and response text stay out of spans unless
       `capture_content = true`.
 - [ ] **Deny-by-default for tools and agents.** A new MCP server or A2A agent offers no
@@ -301,7 +303,7 @@ arguing for it, raise it as a blocker and tell the user.
 | Item | Status | Details |
 | --- | --- | --- |
 | No prompt leaves without the user's yes | {PASS/FAIL} | |
-| No telemetry off the machine; OTLP loopback only; no content in spans by default | {PASS/FAIL/N/A} | |
+| No telemetry off the machine except the daily usage report; OTLP loopback only; no content in spans by default | {PASS/FAIL/N/A} | |
 | Deny-by-default tools and agents; loopback-only `merud` except `remote = true` and `web_fetch` | {PASS/FAIL/N/A} | |
 | Every tool call through `dispatch` and `tool_calls` | {PASS/FAIL/N/A} | |
 | Nothing for sale | {PASS/FAIL} | |

@@ -260,7 +260,7 @@
     <tr><th>Data</th><th>Where it goes</th></tr>
     <tr><td>Questions and answers</td><td>Nowhere, by default: the models run on the same machine. An answer model the company names on its own network gets a question only after the user says yes; none goes to the internet.</td></tr>
     <tr><td>Files and documents</td><td>Indexed into a SQLite file on the machine; read live, never copied out.</td></tr>
-    <tr><td>Telemetry, crash reports, update checks</td><td>None. Metrics go to a Prometheus the company runs on the same machine.</td></tr>
+    <tr><td>Telemetry, crash reports, update checks</td><td>One anonymous count a day, with no ID and no text; <code>[usage_report] send = "off"</code> in pushed config stops it. No crash reports and no update checks. Metrics go to a Prometheus the company runs on the same machine.</td></tr>
     <tr><td>Web searches</td><td>The search words go to the engines the company's own SearXNG asks.</td></tr>
     <tr><td>Web pages</td><td>Public addresses only. Meru asks first for an address no search or question gave, unless the user trusted that website.</td></tr>
     <tr><td>Mail and calendar</td><td>Read through the user's own account, when they connect it; Google today.</td></tr>
@@ -449,7 +449,7 @@
     <div class="card gold"><h3>Hardware</h3><p>Apple silicon Macs or GPU machines with enough memory per person, on desks or in the company's own account; the boundary holds wherever the machine is.</p></div>
     <div class="card gold"><h3>Connectors and audit</h3><p>MCP servers for the company's own systems, OAuth apps for GitHub or Slack registered once, and a collector the company runs on each machine to gather the audit rows Meru keeps there.</p></div>
   </div>
-  <p class="small" style="margin-top:16px">The Apache License 2.0 allows this. Meru's core stays local by design: no cloud model, no telemetry, deny by default.</p>
+  <p class="small" style="margin-top:16px">The Apache License 2.0 allows this. Meru's core stays local by design: no cloud model, one anonymous daily count the company can turn off, deny by default.</p>
   <div class="foot"><svg aria-hidden="true"><use href="#logo"/></svg>Meru for organizations<span class="num">16</span></div>
   <nav class="nav" aria-label="Slides"><a href="#s15" aria-label="Previous slide">&#8592;</a><a href="#s17" aria-label="Next slide">&#8594;</a></nav>
 </section></div>

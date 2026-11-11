@@ -412,7 +412,7 @@ Meru serves one user on one machine, so the questions are local ones:
 | Rule | Holds? | How |
 |------|--------|-----|
 | No prompt goes to the internet, and none leaves the machine without the user's yes | | |
-| No telemetry off the machine; OTLP loopback only | | |
+| No telemetry off the machine except the daily usage report; OTLP loopback only | | |
 | Deny-by-default for tools and agents | | |
 | Every tool call through `dispatch` and `tool_calls` | | |
 | Nothing for sale | | |

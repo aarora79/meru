@@ -96,7 +96,7 @@ What still holds:
 
 - The policy tests still refuse a provider's host name and a provider's SDK in the code. You type every URL.
 - Ollama's cloud models stay refused ([#211](https://github.com/aarora79/meru/issues/211)): they would leave the machine through the local Ollama, with no consent card.
-- No telemetry leaves the machine.
+- No telemetry leaves the machine, apart from the anonymous daily usage report that [#251](https://github.com/aarora79/meru/issues/251) added later.
 - With no `[[endpoints]]` in config, nothing changes: every model runs here.
 
 The same pull request that changes the code carries the rule into AGENTS.md, ARCHITECTURE.md, the architecture pages, the README, the landing page, the slides and the posters.

@@ -213,7 +213,7 @@
     <thead><tr><th style="width:34%">Rule</th><th>What it means in code</th></tr></thead>
     <tbody>
       <tr><td>No prompt leaves without a yes</td><td>Only an answer model you name may run on your own network, after "this time" or "this chat". No provider SDK or address in code.</td></tr>
-      <tr><td>No telemetry off the machine</td><td>OpenTelemetry exports to loopback only; no update checks, no crash reports.</td></tr>
+      <tr><td>One anonymous daily count, no other telemetry</td><td>Seven fixed fields with no ID, sent only by <code>internal/usagereport</code> after a client shows the notice. OpenTelemetry exports to loopback only; no update checks, no crash reports.</td></tr>
       <tr><td>Deny by default</td><td>A new MCP server or A2A agent offers nothing until config allowlists it.</td></tr>
       <tr><td>Every tool call through <code>dispatch</code></td><td>One path logs each call to <code>tool_calls</code> and the transcript. Never a second one.</td></tr>
       <tr><td>Nothing for sale</td><td>No pricing, paid licence or sponsor link anywhere in the project.</td></tr>

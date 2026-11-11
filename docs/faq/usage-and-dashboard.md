@@ -34,7 +34,9 @@ prometheus = "127.0.0.1:9464"
 machine only. Point a Prometheus you run at that address; the Usage page lists
 queries to copy, such as tasks per day and the tool calls that failed today.
 
-Nothing leaves the machine: `merud` refuses an address that isn't on this
-machine, and the page holds counts and names, never your questions.
+These numbers never leave the machine: `merud` refuses an address that isn't on
+this machine, and the page holds counts and names, never your questions. The
+anonymous daily usage report is a separate, smaller thing
+([usage-report.md](usage-report.md)).
 
 More detail: [observability.md](../observability.md).

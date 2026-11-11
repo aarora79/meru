@@ -88,6 +88,11 @@ build, which also signs a build attestation.
   requests alone. The same pull request moves the version lines: the README's
   status, AGENTS.md's Status, and the landing page's release pill, whose
   version, link and time `docs/index.html` holds.
+- Run `collector/check.sh` and confirm the collector answers 204 to the good
+  report and every line says `ok`. Each release sends the daily usage report
+  there, so a broken collector loses that release's counts. The good report
+  writes one row; [collector/README.md](../collector/README.md) shows how to
+  delete it.
 
 ## What `make release` does
 
@@ -221,6 +226,8 @@ set the mark, so a zip they download may open without it; a zip saved from a
 browser always carries it.
 
 **Meru never checks for updates.** No release, and no part of Meru, reaches
-GitHub on its own (AGENTS.md, non-negotiable 2). A user updates by
+GitHub on its own (AGENTS.md, non-negotiable 2). The anonymous daily usage
+report names the version a user runs, but it goes to the project's collector,
+and `merud` reads nothing from the answer but its status. A user updates by
 downloading a newer release; [running.md](running.md#install-from-a-release)
 shows how.

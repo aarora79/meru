@@ -45,7 +45,12 @@ types every URL. OTLP goes only to a
 loopback endpoint, and `merud` refuses to start with any other. An MCP server over
 Streamable HTTP or an A2A agent may reach another machine only when its config entry
 says `remote = true`. `web_fetch` and `web_search` are the other exceptions, and #2
-covers them. Code decides "loopback" in one place, by resolving the address.
+covers them. The anonymous daily usage report is the one thing Meru sends about
+itself (#251): one fixed body of seven fields, with no ID and no text, posted only
+by `internal/usagereport` to the collector, over HTTPS, with no proxy and no
+redirects. It goes only when `[usage_report] send = "on"`, `DO_NOT_TRACK` is unset,
+the build is a release, and a client showed the notice on an earlier day. Code
+decides "loopback" in one place, by resolving the address.
 
 **Where the code enforces it.** `loopback.CheckURL` in
 [`internal/loopback/loopback.go`](../../../../internal/loopback/loopback.go), called
@@ -65,7 +70,18 @@ refuses an `@name` for the fast or embed model. `reachClient` in
 near-edge ignores proxy settings and checks each address it connects to with a
 dialer hook (`nearEdgeOnly`). `agent.consent` in
 `internal/agent/consent.go` asks before a turn goes to an endpoint at near-edge,
-and keeps incognito chats and jobs here.
+and keeps incognito chats and jobs here. `newClient` in
+[`internal/usagereport/send.go`](../../../../internal/usagereport/send.go) sets no
+proxy and refuses every redirect, `blocked` holds the report back until every
+condition holds, and `TestReportGolden` pins the body. `TestCollectorOnlyInUsageReport`
+fails when another package names the collector, and `TestModelCantSetUsageReport`
+when a built-in tool can change `[usage_report]`.
+
+**What to check (usage report).** A new field or value without a new `v`, or
+anything in the body beyond the seven fields: an ID, a path, a setting, a time of
+day. A send that skips `blocked`, or a path that marks the notice seen without a
+client showing it. A second package that posts the report or names the collector.
+A proxy, a redirect, or a read of the answer beyond its status.
 
 **What to check (endpoints).** A new path that sends a turn's messages to an
 engine without passing `consent` first, or that reads `a.Main()` mid-turn in
@@ -428,7 +444,7 @@ Any "no" is a blocker until the PR justifies it.
 
 **Network**
 
-- [ ] Every new outbound connection goes to loopback (checked by `loopback.CheckURL`), to a `remote = true` server or agent, to an `[[endpoints]]` entry at near-edge (checked by `loopback.NearEdge`), or through the web tools' guard (#1, #2)
+- [ ] Every new outbound connection goes to loopback (checked by `loopback.CheckURL`), to a `remote = true` server or agent, to an `[[endpoints]]` entry at near-edge (checked by `loopback.NearEdge`), through the web tools' guard, or is the usage report's one post from `internal/usagereport`: fixed body, no proxy, no redirects, sent only with consent (#1, #2)
 - [ ] No cloud-model SDK, provider host, telemetry library or update check (#1)
 - [ ] The web tools check model-chosen URLs at connect time and on every redirect; unknown URLs and downloads ask first (#2)
 

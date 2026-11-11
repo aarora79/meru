@@ -47,6 +47,7 @@ steps and links to [running.md](../running.md) for the full story.
 
 - [How do I see which tools Meru may use and which ones ran?](what-ran.md)
 - [How do I see how much I use Meru?](usage-and-dashboard.md)
+- [What does Meru send about me, and how do I turn it off?](usage-report.md)
 - [How do I find out why an answer was slow or failed?](slow-or-failed.md)
 - [How do I test that Meru still answers well after a change?](check-answers.md)
 

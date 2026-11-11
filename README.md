@@ -171,7 +171,8 @@ done
 Four reasons, most important first:
 
 1. **Privacy you can check.** Meru reads your email, notes and calendar.
-   On a machine you control, none of it ends up in anyone's training set.
+   On a machine you control, none of it ends up in anyone's training set. Meru
+   needs no account and sends one anonymous count a day, which you can turn off.
 2. **No cost per question.** Once you own the hardware, indexing ten years of notes
    or running a brief every morning adds nothing to any bill.
 3. **It keeps working.** No deprecation notices, rate limits, outages or price
@@ -193,6 +194,15 @@ tools until you name them, and logs every call. Web search goes through SearXNG,
 search engine you run on your machine, so only the search words leave it. When the
 model needs what a page says, `merud` fetches that public page itself, and asks you
 first for any address that no search or question of yours gave.
+
+`merud` sends one thing about itself: an anonymous usage report, once a day, with
+seven coarse fields such as the Meru version and the system, and no ID, question
+or file name. It starts only after Meru.app or `meru chat` has shown you the
+notice, and logs each report it sends in `~/.meru/usage-report.jsonl`.
+[docs/faq/usage-report.md](docs/faq/usage-report.md) lists the fields and how to
+turn it off, and anyone can read the
+[totals](https://meru-report.meru-workers.workers.dev/). Meru sends no crash
+reports and never checks for updates.
 
 ## What it is
 
@@ -224,7 +234,8 @@ an assistant, and the data they would use it on can't leave the building.
 - **The data stays put.** Meru runs on a laptop, a virtual desktop or a server in
   your own account, and reads email, documents, code and notes without sending any of
   it to a model provider. It can work on material that policy or regulation keeps
-  in-house.
+  in-house. The anonymous daily usage report carries none of it, and
+  `[usage_report] send = "off"` stops it.
 - **Every action is logged.** Each server's tools stay off until you allow them,
   risky ones ask before they run, and every call goes into an audit table and the
   session transcript. One function, `dispatch`, does all of this, so a reviewer

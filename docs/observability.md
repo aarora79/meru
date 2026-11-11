@@ -6,8 +6,10 @@ tool call. This page shows the three places to read those numbers: the Usage pag
 which needs nothing installed; a `/metrics` page for a Prometheus you run; and an
 OpenTelemetry (OTel) push to a collector you run, which also carries traces.
 
-The numbers never leave this machine. `merud` refuses a `/metrics` address or a
-push endpoint that isn't a loopback address.
+These numbers never leave this machine. `merud` refuses a `/metrics` address or a
+push endpoint that isn't a loopback address. The anonymous daily usage report is
+a separate, much smaller thing, with rules of its own
+([faq/usage-report.md](faq/usage-report.md)).
 
 [ARCHITECTURE.md, "Observability"](../ARCHITECTURE.md#observability) lists every
 metric and span and explains why each exists.
