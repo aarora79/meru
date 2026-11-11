@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.7.5](v0.7.5.md): one anonymous count a day that you choose, and a model that retries a call it got wrong
 - [v0.7.4](v0.7.4.md): sign in to MCP servers on the internet with OAuth, every connected source checked, and photos in the pages Meru writes
 - [v0.7.3](v0.7.3.md): secrets stay out of merud.log, spans and server errors
 - [v0.7.2](v0.7.2.md): web search with Podman, a clear sentence when Ollama stops, and new chats on Auto
