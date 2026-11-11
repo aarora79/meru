@@ -2,15 +2,15 @@
 tags: [work, product, confidential]
 status: pre-launch
 ---
-# ShelfSense launch plan
+# FakeShelf launch plan
 
-**Confidential. Not announced. Brightline doesn't know.**
+**Confidential. Not announced. Acme doesn't know.**
 
-ShelfSense is Cedar Ridge's first product: inventory demand forecasting for
+FakeShelf is Testbed's first product: inventory demand forecasting for
 small and mid-size warehouses, from the nightly CSV exports their warehouse
 system already makes. It turns the forecasting method I refined on
 SOW-2 into a hosted service. Goal: revenue that doesn't depend on my hours or on
-Brightline (see [[Invoicing and receivables]]).
+Acme (see [[Invoicing and receivables]]).
 
 ## Dates
 | Date | Milestone |
@@ -28,23 +28,24 @@ Brightline (see [[Invoicing and receivables]]).
 - Beta customers: 50% off for the first year
 
 ## Beta customers
-1. Oakridge Outfitters (Ben asked for it free; see [[2026-10-26 Oakridge late payment]])
-2. Cascadia Cold Storage (Lena Park), signed the beta agreement 2026-10-19
-3. Vandermeer Fulfilment B.V., maybe, if the 2027 project happens (see [[2026-09-16 Vandermeer Fulfilment]])
+1. Fakeco Outfitters (Ben asked for it free; see [[2026-10-26 Fakeco late payment]])
+2. Nowhere Cold Storage (Lena Phony), signed the beta agreement 2026-10-19
+3. Fakenburg Fulfilment B.V., maybe, if the 2027 project happens (see [[2026-09-16 Fakenburg Fulfilment]])
 
 ## Money
-- Built so far: 410 hours of my time (unbilled), Dana Kim 60 hours ($7,200)
+- Built so far: 410 hours of my time (unbilled), Dana Fakerly 60 hours ($7,200)
 - Hosting: about $380/month on the beta
-- Asking Pacific Crest Bank for a $75,000 SBA line of credit
+- Asking First Bank of Nowhere for a $75,000 SBA line of credit; one-pager in
+  `FakeShelf-bank-one-pager.pdf`
 - Year-one target: $180,000 annual recurring revenue (ARR)
 
 ## Risks
-- **IP:** Brightline's MSA gives them the deliverables. The forecasting *code*
+- **IP:** Acme's MSA gives them the deliverables. The forecasting *code*
   for SOW-2 is theirs; my method and templates stay mine (MSA section 5).
-  ShelfSense is a clean rewrite, no Brightline code or data. Nadia Hollis
+  FakeShelf is a clean rewrite, no Acme code or data. Nadia Shamwell
   reviewing on 2026-11-04 ($450/hour).
-- **Non-solicitation:** none of Brightline's staff can be approached until 12
+- **Non-solicitation:** none of Acme's staff can be approached until 12
   months after the MSA ends.
-- **[[Brightline job offer]]:** taking it probably kills ShelfSense, or makes it
+- **[[Acme job offer]]:** taking it probably kills FakeShelf, or makes it
   a conflict. Raymond asked in passing whether I "had anything of my own" in the works.
 - Time: launch work happens at night, and sleep is already bad (see [[Therapy notes]]).

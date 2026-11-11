@@ -1,9 +1,9 @@
 id,counterparty,type,signed,start,end,value_usd,notice_days,next_key_date,status,file
-C-2025-01,Brightline Logistics Inc.,MSA,2025-01-24,2025-02-01,2028-01-31,,90,2027-11-02 notice deadline,active,MSA-Brightline-Logistics-signed.pdf
-C-2025-01-S1,Brightline Logistics Inc.,SOW-1,2025-01-24,2025-02-01,2025-05-30,38000,,,complete,
-C-2025-01-S2,Brightline Logistics Inc.,SOW-2,2025-06-20,2025-07-01,2026-01-31,60000,,,complete,
-C-2025-01-S3,Brightline Logistics Inc.,SOW-3,2026-06-12,2026-07-01,2026-12-15,96000,,2026-12-15 milestone 3,active,
-C-2026-02,"Halcyon Bio, Inc.",Mutual NDA,2026-08-04,2026-08-04,2028-08-04,,,2026-11-14 proposal due,active,NDA-Halcyon-Bio.docx
-C-2026-03,Dana Kim,Subcontractor,2026-06-20,2026-06-20,2026-12-31,,10,2026-12-31 end,active,
-C-2026-04,Summit Ridge Credit Union,Proposal,,,,45000,,2026-11-18 board decision,pending,
-C-2024-05,Ferro & Daughters Hardware,Fixed-fee SOW,2024-11-02,2024-11-15,2025-06-13,27500,,,complete,
+C-2025-01,Acme Logistics Inc.,MSA,2025-01-24,2025-02-01,2028-01-31,,90,2027-11-02 notice deadline,active,MSA-Acme-Logistics-signed.pdf
+C-2025-01-S1,Acme Logistics Inc.,SOW-1,2025-01-24,2025-02-01,2025-05-30,38000,,,complete,
+C-2025-01-S2,Acme Logistics Inc.,SOW-2,2025-06-20,2025-07-01,2026-01-31,60000,,,complete,
+C-2025-01-S3,Acme Logistics Inc.,SOW-3,2026-06-12,2026-07-01,2026-12-15,96000,,2026-12-15 milestone 3,active,
+C-2026-02,"Mockup Bio, Inc.",Mutual NDA,2026-08-04,2026-08-04,2028-08-04,,,2026-11-14 proposal due,active,NDA-Mockup-Bio.docx
+C-2026-03,Dana Fakerly,Subcontractor,2026-06-20,2026-06-20,2026-12-31,,10,2026-12-31 end,active,
+C-2026-04,Notreal Credit Union,Proposal,,,,45000,,2026-11-18 board decision,pending,
+C-2024-05,Madeup & Daughters Hardware,Fixed-fee SOW,2024-11-02,2024-11-15,2025-06-13,27500,,,complete,

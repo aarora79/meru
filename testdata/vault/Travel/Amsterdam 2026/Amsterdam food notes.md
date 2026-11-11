@@ -5,7 +5,7 @@ tags: [travel, food]
 
 What we ate, and what to order next time.
 
-## Canal & Crumb Food Tours, Jordaan walk (Sun 13)
+## Notreal Food Tours, Jordaan walk (Sun 13)
 Guide: Sanne, very funny, grew up on the Lindengracht. Eight stops, 3 hours.
 - Old Amsterdam cheese aged 4 years: crunchy crystals, best thing on the tour
 - Bitterballen with mustard at a brown cafe
@@ -15,7 +15,7 @@ Guide: Sanne, very funny, grew up on the Lindengracht. Eight stops, 3 hours.
 - Jenever tasting: young vs old (oude) jenever
 - Tip: EUR 20 cash to Sanne
 
-## Restaurant Sari Melati (Mon 14)
+## Restaurant Warung Example (Mon 14)
 Indonesian rijsttafel, 16 small dishes. Rendang was the standout; sambal
 goreng udang too hot for Priya. Next time: order the vegetarian version too.
 
@@ -23,11 +23,11 @@ goreng udang too hot for Priya. Next time: order the vegetarian version too.
 Kibbeling (fried cod) with garlic sauce, herring broodje, a stroopwafel the size
 of a plate. All cash.
 
-## Kaasbar Noord (Tue 15)
+## Fake Kaasbar (Tue 15)
 Five cheeses, five beers. Favourite pairing: smoked goat cheese with a Dutch tripel.
 Bought 500 g of the aged Gouda to bring home (declared at customs).
 
-## Restaurant Lindengracht 41 (Thu 17, anniversary)
+## Restaurant Example 41 (Thu 17, anniversary)
 Seven-course tasting menu with the wine pairing. Chef sent out a dessert with
 "10" in chocolate. Table by the window. Best meal of the trip.
 Priya cried a little at the toast. Kept the menu.

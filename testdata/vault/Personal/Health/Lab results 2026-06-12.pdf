@@ -15,14 +15,14 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
 endobj
 6 0 obj
-<< /Length 2606 >>
+<< /Length 2637 >>
 stream
 BT
-/F2 15 Tf 1 0 0 1 54 760 Tm (Laboratory Report - Hawthorne Family Medicine) Tj
+/F2 15 Tf 1 0 0 1 54 760 Tm (Laboratory Report - Example Family Medicine) Tj
 /F1 10 Tf 1 0 0 1 54 740 Tm () Tj
-/F1 10 Tf 1 0 0 1 54 726 Tm (Patient: Jordan A. Reyes      DOB: 1987-03-14      MRN: HFM-0048821) Tj
-/F1 10 Tf 1 0 0 1 54 712 Tm (Ordering physician: Dr. Hannah Okafor      Collected: 2026-06-12 07:45 \(fasting\)) Tj
-/F1 10 Tf 1 0 0 1 54 698 Tm (Insurance: Cascade Health PPO) Tj
+/F1 10 Tf 1 0 0 1 54 726 Tm (Patient: Jordan Q. Testperson      DOB: 1987-03-14      MRN: HFM-9999999) Tj
+/F1 10 Tf 1 0 0 1 54 712 Tm (Ordering physician: Dr. Hannah Imaginary      Collected: 2026-06-12 07:45 \(fasting\)) Tj
+/F1 10 Tf 1 0 0 1 54 698 Tm (Insurance: Example Health PPO, member CHX-999999999-01) Tj
 /F1 10 Tf 1 0 0 1 54 684 Tm () Tj
 /F1 10 Tf 1 0 0 1 54 670 Tm () Tj
 /F2 11 Tf 1 0 0 1 54 656 Tm (Lipid panel) Tj
@@ -72,10 +72,10 @@ xref
 0000000212 00000 n 
 0000000314 00000 n 
 0000000419 00000 n 
-0000003077 00000 n 
-0000003223 00000 n 
+0000003108 00000 n 
+0000003254 00000 n 
 trailer
 << /Size 9 /Root 1 0 R /Info 8 0 R >>
 startxref
-3327
+3358
 %%EOF

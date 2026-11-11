@@ -1,6 +1,6 @@
 FICTIONAL TEST DATA - every name, number and identifier in this file is made up.
 
-Kaasbar Noord (fictional), Amsterdam-Noord
+Fake Kaasbar (fictional), Amsterdam-Noord
 15-09-2026  16:40
 
 2  Cheese & beer tasting (5 + 5) @ 27.50 ..... 55.00

@@ -1,12 +1,12 @@
 date,client,project,hours,billable,notes
-2026-10-01,Brightline,SOW-3 Atlas,6.5,fixed,Kent load validation
-2026-10-02,Brightline,SOW-3 Atlas,7.0,fixed,Kent cutover
-2026-10-06,Summit Ridge,proposal,3.0,no,discovery prep
-2026-10-07,Brightline,SOW-3 Atlas,8.0,fixed,Tacoma mapping
-2026-10-09,Summit Ridge,proposal,4.5,no,call + proposal
-2026-10-13,Brightline,SOW-3 Atlas,7.5,fixed,Tacoma loads
-2026-10-15,Halcyon Bio,discovery,2.0,no,NDA review of shipment data
-2026-10-20,Brightline,SOW-3 Atlas,9.0,fixed,Tacoma reconciliation
-2026-10-22,Brightline,account,2.5,no,QBR
-2026-10-24,Brightline,SOW-3 Atlas,6.0,fixed,milestone 2 sign-off
-2026-10-27,Brightline,admin,1.0,no,INV-2026-041
+2026-10-01,Acme,SOW-3 Atlas,6.5,fixed,Kent load validation
+2026-10-02,Acme,SOW-3 Atlas,7.0,fixed,Kent cutover
+2026-10-06,Notreal,proposal,3.0,no,discovery prep
+2026-10-07,Acme,SOW-3 Atlas,8.0,fixed,Tacoma mapping
+2026-10-09,Notreal,proposal,4.5,no,call + proposal
+2026-10-13,Acme,SOW-3 Atlas,7.5,fixed,Tacoma loads
+2026-10-15,Mockup Bio,discovery,2.0,no,NDA review of shipment data
+2026-10-20,Acme,SOW-3 Atlas,9.0,fixed,Tacoma reconciliation
+2026-10-22,Acme,account,2.5,no,QBR
+2026-10-24,Acme,SOW-3 Atlas,6.0,fixed,milestone 2 sign-off
+2026-10-27,Acme,admin,1.0,no,INV-2026-041

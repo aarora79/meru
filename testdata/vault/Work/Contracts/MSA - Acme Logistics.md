@@ -1,12 +1,12 @@
 ---
-tags: [work, contract, brightline]
+tags: [work, contract, acme]
 status: active
 ---
-# MSA - Brightline Logistics
+# MSA - Acme Logistics
 
-Master Services Agreement between **Cedar Ridge Consulting LLC** and
-**Brightline Logistics Inc.** Signed copy: `Work/Contracts/MSA-Brightline-Logistics-signed.pdf`.
-Editable draft: `Work/Contracts/MSA-Brightline-Logistics-draft.docx`.
+Master Services Agreement between **Testbed Consulting LLC** and
+**Acme Logistics Inc.** Signed copy: `Work/Contracts/MSA-Acme-Logistics-signed.pdf`.
+Editable draft: `Work/Contracts/MSA-Acme-Logistics-draft.docx`.
 
 ## Key terms
 - **Effective date:** 2025-02-01
@@ -16,11 +16,11 @@ Editable draft: `Work/Contracts/MSA-Brightline-Logistics-draft.docx`.
 - **Rates:** $210/hour, rising to $225/hour on 2027-02-01
 - **Payment:** net 30; 1.5% a month on late invoices
 - **Liability cap:** fees paid in the 12 months before the claim
-- **Insurance:** Cedar Ridge keeps $2M professional liability
-- **IP:** client owns the work product; Cedar Ridge keeps its own tools and templates
+- **Insurance:** Testbed keeps $2M professional liability
+- **IP:** client owns the work product; Testbed keeps its own tools and templates
 - **Non-solicitation:** 12 months after the end, neither side hires the other's staff
 - **Governing law:** Oregon; disputes go to mediation in Portland first
-- **Signed by:** Jordan Reyes (owner) and Raymond Teague (CFO), 2025-01-24
+- **Signed by:** Jordan Testperson (owner) and Raymond Fakesworth (CFO), 2025-01-24
 
 ## Statements of work
 | SOW | What | Price | Dates | Status |
@@ -30,5 +30,5 @@ Editable draft: `Work/Contracts/MSA-Brightline-Logistics-draft.docx`.
 | SOW-3 | [[Atlas warehouse migration]] | $96,000 fixed, 3 milestones | 2026-07-01 to 2026-12-15 | active |
 
 ## Risks
-- SOW-3 milestone 3 depends on Brightline's IT team freeing the old WMS
+- SOW-3 milestone 3 depends on Acme's IT team freeing the old WMS
   database; Elena said "first week of December" on 2026-10-22.
