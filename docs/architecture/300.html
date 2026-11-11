@@ -3487,13 +3487,13 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 <p>The body is seven fields of JSON, about 100 bytes:</p>
 
-<pre><code>{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}</code></pre>
+<pre><code>{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}</code></pre>
 
 <div class="tbl"><table>
   <thead><tr><th>Field</th><th>What it holds</th><th>Values</th></tr></thead>
   <tbody>
     <tr><td><code>v</code></td><td>the report's format</td><td><code>1</code></td></tr>
-    <tr><td><code>meru</code></td><td>the release</td><td>such as <code>0.7.5</code></td></tr>
+    <tr><td><code>meru</code></td><td>the release</td><td>such as <code>0.7.6</code></td></tr>
     <tr><td><code>os</code></td><td>the system</td><td><code>darwin</code>, <code>linux</code>, <code>windows</code></td></tr>
     <tr><td><code>arch</code></td><td>the chip</td><td><code>arm64</code>, <code>amd64</code></td></tr>
     <tr><td><code>profile</code></td><td>the model set</td><td><code>lite</code>, <code>full</code></td></tr>
@@ -3511,7 +3511,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 <ul>
   <li><code>[usage_report] send = "on"</code>.</li>
   <li><code>DO_NOT_TRACK</code> is unset, or <code>0</code>, in <code>merud</code>'s environment.</li>
-  <li>The build is a release, such as <code>v0.7.5</code>. A development build never sends.</li>
+  <li>The build is a release, such as <code>v0.7.6</code>. A development build never sends.</li>
   <li><code>meru chat</code> or Meru.app showed the notice for this <code>v</code> on an earlier UTC day. The first report waits a day, so a user who sees the notice and turns it off that day sends nothing.</li>
   <li>No report went today, and today's send minute has come. <code>merud</code> picks a random minute up to two hours after midnight UTC each day, so the time a report arrives says nothing about the user's day.</li>
 </ul>

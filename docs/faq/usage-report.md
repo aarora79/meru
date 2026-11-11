@@ -9,13 +9,13 @@ and the first count waits until the next day.
 One report, about 100 bytes, at most once a day:
 
 ```json
-{"v":1,"meru":"0.7.5","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
 ```
 
 | Field | What it holds | Values |
 | --- | --- | --- |
 | `v` | the report's format | `1` |
-| `meru` | the Meru release | such as `0.7.5` |
+| `meru` | the Meru release | such as `0.7.6` |
 | `os` | your system | `darwin` (macOS), `linux`, `windows` |
 | `arch` | your chip | `arm64`, `amd64` |
 | `profile` | the model set | `lite`, `full` |
@@ -83,7 +83,7 @@ can't send.
 
 ## When Meru never sends
 
-- You upgraded from a release before v0.7.5 and haven't said yes. Your config has
+- You upgraded from a release before v0.7.6 and haven't said yes. Your config has
   no `send` line, and Meru asks in `meru chat` and the app.
 - You never open `meru chat` or the app. A one-shot `meru "..."` or
   `meru run --json` doesn't count as showing the notice, so a computer that only
