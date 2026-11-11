@@ -57,7 +57,7 @@ type state struct {
 // error.
 func readState(path string, now time.Time) (state, error) {
 	var st state
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is the Meru home plus FileName, set by New
 	if errors.Is(err, fs.ErrNotExist) {
 		return st, nil
 	}
@@ -117,7 +117,7 @@ func appendEntry(path string, e Entry) (err error) {
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- path is the Meru home plus FileName, set by New
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
