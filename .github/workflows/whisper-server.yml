@@ -205,9 +205,9 @@ jobs:
         # the step instead of hanging it (see ci.yml, desktop-linux).
         timeout-minutes: 15
         run: |
-          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
-          sudo apt-get update -qq -o APT::Update::Error-Mode=any $apt_opts
-          sudo apt-get install -y -qq $apt_opts libttspico-utils sox
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
+          sudo apt-get update -qq -o APT::Update::Error-Mode=any "${apt_opts[@]}"
+          sudo apt-get install -y -qq "${apt_opts[@]}" libttspico-utils sox
           curl -fsSL -o model.bin "$MODEL_URL"
           echo "${MODEL_SHA256}  model.bin" | sha256sum -c -
           pico2wave -l en-US -w speech.wav "What did I write in my notes about the garden plan last spring?"

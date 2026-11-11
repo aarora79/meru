@@ -144,9 +144,9 @@ jobs:
         timeout-minutes: 10
         run: |
           echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
-          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
-          sudo apt-get update -qq -o APT::Update::Error-Mode=any $apt_opts
-          sudo apt-get install -y -qq $apt_opts libgtk-4-dev libwebkitgtk-6.0-dev
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30)
+          sudo apt-get update -qq -o APT::Update::Error-Mode=any "${apt_opts[@]}"
+          sudo apt-get install -y -qq "${apt_opts[@]}" libgtk-4-dev libwebkitgtk-6.0-dev
       - name: make desktop-linux
         run: make desktop-linux
       - name: vet, staticcheck and govulncheck with the desktop tags
