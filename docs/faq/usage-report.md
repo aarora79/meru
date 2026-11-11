@@ -73,6 +73,14 @@ one of the ways above.
 
 `meru report on`, **Share** on the notice, or `send = "on"` in `config.toml`.
 
+## Send today's now
+
+Meru sends each day's report between midnight and 2 a.m. UTC, or soon after your
+computer wakes. To send today's at once, click **Send today's now** on the Usage
+screen, press `t` in `/report`, or run `meru report send`. It sends only if none
+went today, so it never adds a second count for the day, and it says why when it
+can't send.
+
 ## When Meru never sends
 
 - You upgraded from a release before v0.7.3 and haven't said yes. Your config has

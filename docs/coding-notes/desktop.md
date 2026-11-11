@@ -812,7 +812,9 @@ section.
 and not turned it off (ARCHITECTURE.md, "Anonymous usage report"). The app
 only shows what `merud` says and passes on the user's choice. `UsageReport`
 asks how the count stands, `UsageReportMark` sends `"seen"` or `"dismiss"`,
-and `UsageReportSet` sends `"on"` or `"off"`. Each sends the `usage_report`
+`UsageReportSet` sends `"on"` or `"off"`, and `UsageReportSend` sends today's
+report now, for the Usage section's "Send today's now" button, which stays
+greyed out while the view's `can_send` is false. Each sends the `usage_report`
 op with the desktop as its source and returns a `UsageReportView`, which
 copies `merud`'s status and turns a missing list into an empty one. A
 `merud` older than the op answers `unknown op "usage_report"`; the view then

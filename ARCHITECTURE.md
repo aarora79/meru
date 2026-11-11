@@ -292,7 +292,7 @@ own. The commands, in the order `/help` lists them:
 | `/used` | what the newest answer used: every source, each tool call, the memories recall brought, and who the calls reached | `memory_forget` |
 | `/copy [N\|answer]` | copy code block N, the newest answer's last block, or the whole answer | — |
 | `/usage [by model]` | the usage box | `usage` |
-| `/report` | the anonymous daily usage report: what goes, the next one, and on or off | `usage_report` |
+| `/report` | the anonymous daily usage report: what goes, the next one, on or off, and `t` to send today's now | `usage_report` |
 | `/me [add\|prefer <text>]` | the profile memories; `add` saves one to `me` and `prefer` one to `preferences` | `memory_list`, `memory_add`, `memory_forget` |
 | `/mcp` | every connector, where `f` fixes one, `o` turns it on or off and `a` adopts one set up by hand; every tool source with each tool's Off, Ask or Allow; and the catalog servers not added yet | `connectors`, `connector_set`, `connector_fix`, `connector_adopt`, `connections`, `tool_policy`, `mcp_add`, `mcp_remove`, `secret_set` |
 | `/folders [add <path>]` | the `[index]` folders and the usual ones not indexed yet | `folders`, `folder_add`, `folder_remove` |
@@ -678,7 +678,7 @@ add` and `configure` use, and applies it at once:
 | `model_save` | writes the models in use to `[models]` |
 | `model_set` | switches to a model on that list that Ollama has, the same way, then writes `[models] main` |
 | `jobs`, `job_set`, `job_remove`, `job_run`, `job_cancel` | (v0.5) list, add or change, remove, run now and stop scheduled jobs (see [Scheduler](#scheduler)) |
-| `usage_report` | reads the anonymous daily usage report's state, marks its notice seen or closed, and writes `[usage_report] send` (see [Anonymous usage report](#anonymous-usage-report)) |
+| `usage_report` | reads the anonymous daily usage report's state, marks its notice seen or closed, writes `[usage_report] send`, and sends today's report now on request (see [Anonymous usage report](#anonymous-usage-report)) |
 
 A change to a list edits only that list's lines in `config.toml`: every comment
 and every other key stays. `merud` writes a temporary file, loads it, checks that
@@ -5999,6 +5999,13 @@ hold:
 A failed send tries again at the next check. Nothing queues, so a missed day
 stays missed.
 
+**Send today's now.** The Usage screen's **Send today's now**, `t` in `/report`
+and `meru report send` send today's report at once. They skip the two waits, the
+day after the notice and the send minute, and keep every other rule, so a click
+never sends a second report in one day and the daily counts still count
+installs. The button stays greyed out while a click wouldn't send, and a
+refused send says why.
+
 ### Who chooses
 
 - **A new install** asks during setup. `meru setup` and the Mac installer's last
@@ -6022,9 +6029,9 @@ install it says the report is on and offers **See the report**, **Turn off** and
 **Got it**; after an upgrade it asks, with **See the report**, **Share** and
 **Don't share**. **See the report** shows the exact next body. The Usage screen
 has an "Anonymous daily count" section with the choice, why nothing will go if
-something holds it back, when the next one goes, and the recent entries, each
-with the body sent. `meru chat` has `/report`, and `meru report [on|off]` does
-the same from a terminal. Every client reaches it through one op,
+something holds it back, when the next one goes, the recent entries, each with
+the body sent, and **Send today's now**. `meru chat` has `/report`, and
+`meru report [on|off|send]` does the same from a terminal. Every client reaches it through one op,
 `usage_report`.
 
 ### The record

@@ -521,7 +521,7 @@
     <tr><td><code>/copy [N|answer]</code></td><td>copy code block N, the newest answer's last block, or the whole answer</td><td>—</td></tr>
 
     <tr><td><code>/usage [by model]</code></td><td>the usage box</td><td><code>usage</code></td></tr>
-    <tr><td><code>/report</code></td><td>the anonymous daily usage report: what goes, the next one, and on or off</td><td><code>usage_report</code></td></tr>
+    <tr><td><code>/report</code></td><td>the anonymous daily usage report: what goes, the next one, on or off, and <code>t</code> to send today's now</td><td><code>usage_report</code></td></tr>
 
     <tr><td><code>/me [add|prefer &lt;text&gt;]</code></td><td>the profile memories; <code>add</code> saves one to <code>me</code> and <code>prefer</code> one to <code>preferences</code></td><td><code>memory_list</code>, <code>memory_add</code>, <code>memory_forget</code></td></tr>
 
@@ -680,7 +680,7 @@
     <tr><td><code>model_save</code></td><td>writes the models in use to <code>[models]</code></td></tr>
     <tr><td><code>model_set</code></td><td>switches to a model on that list that Ollama has, the same way, then writes <code>[models] main</code></td></tr>
     <tr><td><code>jobs</code>, <code>job_set</code>, <code>job_remove</code>, <code>job_run</code>, <code>job_cancel</code></td><td>(v0.5) list, add or change, remove, run now and stop scheduled jobs (see <a href="#scheduler">Scheduled jobs</a>)</td></tr>
-    <tr><td><code>usage_report</code></td><td>reads the anonymous daily usage report's state, marks its notice seen or closed, and writes <code>[usage_report] send</code> (see <a href="#usage-report">The anonymous usage report</a>)</td></tr>
+    <tr><td><code>usage_report</code></td><td>reads the anonymous daily usage report's state, marks its notice seen or closed, writes <code>[usage_report] send</code>, and sends today's report now on request (see <a href="#usage-report">The anonymous usage report</a>)</td></tr>
 
   </tbody>
 
@@ -3512,6 +3512,8 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 <p>A failed send tries again at the next check. Nothing queues, so a missed day stays missed.</p>
 
+<p><b>Send today's now.</b> The Usage screen's <b>Send today's now</b>, <code>t</code> in <code>/report</code> and <code>meru report send</code> send today's report at once. They skip the two waits, the day after the notice and the send minute, and keep every other rule, so a click never sends a second report in one day and the daily counts still count installs. The button stays greyed out while a click wouldn't send, and a refused send says why.</p>
+
 <h3>Who chooses</h3>
 
 <ul>
@@ -3524,7 +3526,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 <h3>What the user sees</h3>
 
-<p>Both clients show a banner above the chat until the user acts on it. For a new install it says the report is on and offers <b>See the report</b>, <b>Turn off</b> and <b>Got it</b>; after an upgrade it asks, with <b>See the report</b>, <b>Share</b> and <b>Don't share</b>. <b>See the report</b> shows the exact next body. The Usage screen has an "Anonymous daily count" section with the choice, why nothing will go if something holds it back, when the next one goes, and the recent entries, each with the body sent. <code>meru chat</code> has <code>/report</code>, and <code>meru report [on|off]</code> does the same from a terminal. Every client reaches it through one op, <code>usage_report</code>.</p>
+<p>Both clients show a banner above the chat until the user acts on it. For a new install it says the report is on and offers <b>See the report</b>, <b>Turn off</b> and <b>Got it</b>; after an upgrade it asks, with <b>See the report</b>, <b>Share</b> and <b>Don't share</b>. <b>See the report</b> shows the exact next body. The Usage screen has an "Anonymous daily count" section with the choice, why nothing will go if something holds it back, when the next one goes, the recent entries, each with the body sent, and <b>Send today's now</b>. <code>meru chat</code> has <code>/report</code>, and <code>meru report [on|off|send]</code> does the same from a terminal. Every client reaches it through one op, <code>usage_report</code>.</p>
 
 <h3>The record</h3>
 

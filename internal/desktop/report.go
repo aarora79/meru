@@ -27,6 +27,7 @@ type UsageReportView struct {
 	NextAt    string                 `json:"next_at"`
 	Version   int                    `json:"version"`
 	Sent      bool                   `json:"sent"`
+	CanSend   bool                   `json:"can_send"`
 	URL       string                 `json:"url"`
 	Recent    []rpc.UsageReportEntry `json:"recent"`
 }
@@ -61,6 +62,15 @@ func (b *Bridge) UsageReportSet(ctx context.Context, choice string) (UsageReport
 	return b.usageReport(ctx, choice)
 }
 
+// UsageReportSend asks merud to send today's report now, for the Usage
+// screen's "Send today's now" button, and returns the view after. merud
+// sends only when no report went today and every other rule allows it; a
+// send it holds back fails with the reason, such as "not sent: Today's has
+// gone.", and so does one the collector refuses.
+func (b *Bridge) UsageReportSend(ctx context.Context) (UsageReportView, error) {
+	return b.usageReport(ctx, rpc.UsageReportSend)
+}
+
 // usageReport sends the usage_report op with kind and turns the reply
 // into a view.
 func (b *Bridge) usageReport(ctx context.Context, kind string) (UsageReportView, error) {
@@ -85,6 +95,7 @@ func (b *Bridge) usageReport(ctx context.Context, kind string) (UsageReportView,
 		NextAt:    s.NextAt,
 		Version:   s.Version,
 		Sent:      s.Sent,
+		CanSend:   s.CanSend,
 		URL:       s.URL,
 		Recent:    s.Recent,
 	}

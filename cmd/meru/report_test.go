@@ -34,6 +34,9 @@ func TestReportCommand(t *testing.T) {
 			"meru: this merud is older than meru report; update merud and restart it"},
 		{"refused", []string{"report", "on"}, "config.toml has a problem", rpc.UsageReportOn, 1, "",
 			"meru: config.toml has a problem"},
+		{"send", []string{"report", "send"}, "", rpc.UsageReportSend, 0, "Sent today's report.", ""},
+		{"send refused", []string{"report", "send"}, "not sent: Today's has gone.", rpc.UsageReportSend, 1, "",
+			"meru: not sent: Today's has gone."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,7 +72,7 @@ func TestReportCommand(t *testing.T) {
 }
 
 // TestReportArgsAreQuestions checks that words after "report" other than
-// on and off make a question, not the command.
+// on, off and send make a question, not the command.
 func TestReportArgsAreQuestions(t *testing.T) {
 	for _, tt := range []struct {
 		args []string
@@ -78,6 +81,7 @@ func TestReportArgsAreQuestions(t *testing.T) {
 		{nil, true},
 		{[]string{"on"}, true},
 		{[]string{"off"}, true},
+		{[]string{"send"}, true},
 		{[]string{"seen"}, false},
 		{[]string{"on", "the", "weather"}, false},
 	} {

@@ -120,7 +120,9 @@ export function reportSection() {
 
 // drawSection fills section from v: the choice, why nothing will send,
 // when the next one goes, where it goes when config changed that, the
-// recent entries and the switch. fill redraws it from a reply.
+// recent entries, the switch and, while the report is on, "Send today's
+// now", which stays greyed out until merud says a send would go. fill
+// redraws it from a reply.
 function drawSection(section, v, fill) {
   section.append(el("h2", "section-head", "Anonymous daily count"));
   section.append(el("p", "report-choice", CHOICES[v.choice] ?? v.choice));
@@ -144,7 +146,22 @@ function drawSection(section, v, fill) {
       },
     );
   });
-  section.append(toggle, err);
+  section.append(toggle);
+  if (on) {
+    // merud sends at most one report a day, so the button is live only
+    // while none has gone today and every other rule allows it.
+    const send = button("Send today's now", { className: "button secondary" });
+    send.disabled = !v.can_send;
+    send.addEventListener("click", () => {
+      send.disabled = true;
+      bridge.usageReportSend().then(fill, (e) => {
+        err.textContent = errorText(e);
+        bridge.usageReport().then(fill, () => {});
+      });
+    });
+    section.append(send);
+  }
+  section.append(err);
 
   if (v.next) {
     const details = el("details", "report-next");

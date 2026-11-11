@@ -1289,6 +1289,8 @@ which `/usage by model` in `meru chat` sends.
 `meru report` shows where the anonymous daily count stands. It sends one
 `OpUsageReport` with `Kind` `"status"`, and `meru report on` and `meru report
 off` send `"on"` or `"off"`, which `merud` writes to `[usage_report] send`.
+`meru report send` sends today's report now; `merud` refuses with the reason
+once one went today or while a rule holds it back, and `meru` prints it.
 Every request carries `Source: rpc.SourceCLI`. `merud` answers each with one
 `usage_report` event, and `reportText` prints it:
 

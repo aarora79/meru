@@ -95,8 +95,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
   meru tools            list the tools the model may use
   meru log [-n N] [-v]  show the latest tool calls, newest first
   meru usage            show how much you use Meru
-  meru report [on|off]  show the anonymous daily count and the next one,
-                        or turn it on or off
+  meru report [on|off|send]
+                        show the anonymous daily count and the next one,
+                        turn it on or off, or send today's now
   meru model            show the model sets and which one is in use
   meru model use <name> [--rebuild]
                         switch to a model set until merud stops

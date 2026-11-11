@@ -1083,7 +1083,10 @@ every few seconds. `merud` ignores a second `"seen"` anyway.
 next report as the JSON `merud` would send. Its keys depend on `Choice`: with
 the count on, `o` turns it off and `g` closes the notice (`"dismiss"`); with it
 off or not chosen, `s` shares, and `n` says no, which the box offers only before
-the user has chosen. A key does nothing while a request waits, so two quick
+the user has chosen. While `merud` says a send would go (`CanSend`), `t` sends
+today's report now. A refused send shows "Not sent:" and the reason, and keeps
+the status, since the refusal is `merud` answering, not an older `merud`. A key
+does nothing while a request waits, so two quick
 presses can't race. Each reply replaces `m.report`, so the box and the banner
 redraw from what `merud` says now.
 

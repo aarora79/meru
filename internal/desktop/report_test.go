@@ -143,3 +143,37 @@ func TestReportBannerNeverTakesFocus(t *testing.T) {
 		t.Error("app.js should ask for the banner on each status poll")
 	}
 }
+
+// TestUsageReportSend checks the "Send today's now" call: it sends the
+// send kind from the desktop, copies CanSend into the view, and passes a
+// refusal on to the page as an error rather than treating it as an older
+// merud.
+func TestUsageReportSend(t *testing.T) {
+	ctx := context.Background()
+	refuse := false
+	var got rpc.Request
+	b, _ := newBridge(startServer(t, func(ctx context.Context, req rpc.Request, emit func(rpc.Event) error, _ rpc.ApproveFunc) error {
+		got = req
+		if refuse {
+			return emit(rpc.Event{Type: rpc.EventError, Error: "not sent: Today's has gone."})
+		}
+		return emit(rpc.Event{Type: rpc.EventUsageReport, UsageReport: &rpc.UsageReportStatus{Choice: "on", Sent: true}})
+	}))
+	defer b.ServiceShutdown()
+
+	v, err := b.UsageReportSend(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != rpc.UsageReportSend || got.Source != rpc.SourceDesktop {
+		t.Errorf("sent %+v, want kind send from the desktop", got)
+	}
+	if !v.Available || !v.Sent || v.CanSend {
+		t.Errorf("view = %+v, want Available and Sent, and no CanSend", v)
+	}
+
+	refuse = true
+	if _, err := b.UsageReportSend(ctx); err == nil || !strings.Contains(err.Error(), "gone") {
+		t.Errorf("a refused send gave %v, want the reason", err)
+	}
+}

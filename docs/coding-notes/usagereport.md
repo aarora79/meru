@@ -121,6 +121,13 @@ its `CheckRedirect` refuses every redirect. The `.(*http.Transport)` after
 a `*http.Transport`", which `Clone` needs. See [HTTP clients](go-basics/http-clients.md).
 `post` counts only 204 as sent.
 
+`SendNow` is the "Send today's now" button. It takes the same lock, reads the
+file, and asks `blockedNow`, which is `blocked` without the two waits: the day
+after the notice and the send minute. Every other rule holds, so a click never
+sends a second report in a day. A tick and a click share `send`, which builds,
+posts and writes the line either way. `check` holds the rules once, with a
+`byHand` flag for the two waits, so the two callers can't drift apart.
+
 `Mark` adds a `seen` or `dismissed` line for the current version, once: a second
 mark of the same kind adds nothing, so a client may mark on every poll.
 

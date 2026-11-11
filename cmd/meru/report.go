@@ -1,8 +1,9 @@
-// This file holds `meru report`, `meru report on` and `meru report off`:
+// This file holds `meru report`, `meru report on`, `meru report off` and
+// `meru report send`:
 // they show where the anonymous daily count stands, the exact report
 // merud would send next and the last few lines of its log, and set the
-// choice in [usage_report] send. merud decides and sends; this side asks
-// and prints. See ARCHITECTURE.md, "Anonymous usage report".
+// choice in [usage_report] send; send asks merud to send today's report
+// now. merud decides and sends; this side asks and prints. See ARCHITECTURE.md, "Anonymous usage report".
 //
 // A one-shot command never tells merud it showed the notice ("seen"):
 // only meru chat and the desktop app count as showing it, so merud never
@@ -32,22 +33,25 @@ const reportRecent = 5
 const reportFields = "Meru can send one anonymous count a day: its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files. Nothing goes until you open meru chat or the app, and the first one waits a day."
 
 // isReportArgs reports whether args, the words after "report", are ones
-// `meru report` takes: none, "on" or "off". Anything else, such as
+// `meru report` takes: none, "on", "off" or "send". Anything else, such as
 // `meru report on the weather`, reads as a question that starts with
 // "report".
 func isReportArgs(args []string) bool {
-	return len(args) == 0 || (len(args) == 1 && (args[0] == config.ReportOn || args[0] == config.ReportOff))
+	return len(args) == 0 || (len(args) == 1 &&
+		(args[0] == config.ReportOn || args[0] == config.ReportOff || args[0] == rpc.UsageReportSend))
 }
 
-// reportCmd runs `meru report [on|off]`. With no word it asks merud how
-// the count stands; with "on" or "off" it sets the choice first. Either
-// way it prints the status merud sends back. It fails when merud can't be
+// reportCmd runs `meru report [on|off|send]`. With no word it asks merud
+// how the count stands; with "on" or "off" it sets the choice first; with
+// "send" it asks merud to send today's report now, which merud refuses,
+// with the reason, once one went today or while a rule holds it back.
+// Either way it prints the status merud sends back. It fails when merud can't be
 // reached, when merud refuses, and with a plain line when merud is older
 // than the usage_report op.
 func reportCmd(ctx context.Context, socket string, args []string, stdout io.Writer) error {
 	kind := rpc.UsageReportStatusKind
 	if len(args) == 1 {
-		kind = args[0] // "on" and "off" are also the op's Kind values
+		kind = args[0] // "on", "off" and "send" are also the op's Kind values
 	}
 	req := rpc.Request{Op: rpc.OpUsageReport, Kind: kind, Source: rpc.SourceCLI}
 	for ev, err := range rpc.Do(ctx, socket, req, nil) {
@@ -59,7 +63,11 @@ func reportCmd(ctx context.Context, socket string, args []string, stdout io.Writ
 			if ev.UsageReport == nil {
 				return errors.New("merud sent no report status")
 			}
-			_, err := io.WriteString(stdout, reportText(*ev.UsageReport, time.Local))
+			text := reportText(*ev.UsageReport, time.Local)
+			if kind == rpc.UsageReportSend {
+				text = "Sent today's report.\n\n" + text
+			}
+			_, err := io.WriteString(stdout, text)
 			return err
 		case rpc.EventError:
 			if strings.Contains(ev.Error, "unknown op") {

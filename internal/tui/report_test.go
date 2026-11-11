@@ -148,6 +148,13 @@ func TestReportBox(t *testing.T) {
 			name:     "new, one sent",
 			status:   rpc.UsageReportStatus{Choice: "on", Banner: rpc.BannerNew, Sent: true},
 			dontWant: []string{"first one goes"},
+			keys:     map[string]string{"t": ""},
+		},
+		{
+			name:   "on, can send now",
+			status: rpc.UsageReportStatus{Choice: "on", CanSend: true},
+			want:   []string{"send today's now"},
+			keys:   map[string]string{"t": rpc.UsageReportSend},
 		},
 		{
 			name:   "upgrade",
@@ -255,5 +262,28 @@ func TestReportUsageSection(t *testing.T) {
 		if !strings.Contains(view, w) {
 			t.Errorf("usage box lacks %q:\n%s", w, view)
 		}
+	}
+}
+
+// TestReportSendRefused checks that a send merud refuses shows the reason
+// in the box and keeps the status, since the refusal is merud answering,
+// not an older merud that doesn't know the op.
+func TestReportSendRefused(t *testing.T) {
+	merud := &fakeMerud{events: reportEvents(rpc.UsageReportStatus{Choice: "on", CanSend: true})}
+	m := testModel(merud.ask, newFakeSender())
+	m.resize(80, 40)
+	m, cmd := update(t, m, typeText("/report"), press(tea.KeyEnter))
+	m, _ = update(t, m, cmd())
+	merud.events = []rpc.Event{{Type: rpc.EventError, Error: "not sent: Today's has gone."}}
+	m, cmd = update(t, m, typeText("t"))
+	if cmd == nil {
+		t.Fatal("t sent nothing")
+	}
+	m, _ = update(t, m, cmd())
+	if m.report == nil {
+		t.Fatal("a refused send cleared the status")
+	}
+	if view := m.View(); !strings.Contains(view, "Not sent: Today's has gone.") {
+		t.Errorf("box lacks the reason:\n%s", view)
 	}
 }

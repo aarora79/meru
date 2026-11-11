@@ -55,6 +55,7 @@ type reportMsg struct {
 type reportBox struct {
 	busy bool
 	err  string
+	note string // "Sent today's report." after a send that went
 }
 
 // reportCmd returns a command that sends one usage_report request with
@@ -63,7 +64,8 @@ type reportBox struct {
 // longer, so it gets the longer wait.
 func reportCmd(ask askFunc, kind string) tea.Cmd {
 	timeout := pingTimeout
-	if kind == rpc.UsageReportOn || kind == rpc.UsageReportOff {
+	// A send waits for the collector too, up to its own 10 seconds.
+	if kind == rpc.UsageReportOn || kind == rpc.UsageReportOff || kind == rpc.UsageReportSend {
 		timeout = changeTimeout
 	}
 	return func() tea.Msg {
@@ -110,14 +112,20 @@ func (m *Model) applyReport(msg reportMsg) tea.Cmd {
 	switch {
 	case msg.err == nil:
 		m.report = msg.status
-	case msg.answered:
+	case msg.answered && msg.kind != rpc.UsageReportSend:
+		// A refused send is merud saying why, not an older merud, so the
+		// chat keeps the status it has.
 		m.report = nil
 	}
 	if b := m.reportBox; b != nil && msg.kind != rpc.UsageReportSeen {
 		b.busy = false
-		b.err = ""
+		b.err, b.note = "", ""
 		switch {
+		case msg.err == nil && msg.kind == rpc.UsageReportSend:
+			b.note = "Sent today's report."
 		case msg.err == nil:
+		case msg.kind == rpc.UsageReportSend:
+			b.err = "Not sent: " + strings.TrimPrefix(msg.err.Error(), "not sent: ")
 		case msg.kind == rpc.UsageReportStatusKind:
 			b.err = "merud didn't answer: " + msg.err.Error()
 		default:
@@ -163,7 +171,8 @@ func (m Model) reportCommand() (tea.Model, tea.Cmd) {
 }
 
 // reportKey handles one key in the /report box. While the count is on, o
-// turns it off and g closes the notice. While it is off or not chosen, s
+// turns it off and g closes the notice, and t sends today's report now when
+// merud says a send would go (CanSend). While it is off or not chosen, s
 // turns it on, and n turns it off, which only means something before the
 // user has chosen. A key waits while a request is out, so two presses
 // can't race.
@@ -178,6 +187,8 @@ func (m *Model) reportKey(msg tea.KeyMsg) tea.Cmd {
 		kind = rpc.UsageReportOff
 	case r.Choice == "on" && isKey(msg, "g"):
 		kind = rpc.UsageReportDismiss
+	case r.CanSend && isKey(msg, "t"):
+		kind = rpc.UsageReportSend
 	case r.Choice != "on" && isKey(msg, "s"):
 		kind = rpc.UsageReportOn
 	case r.Choice == "" && isKey(msg, "n"):
@@ -197,6 +208,8 @@ func (m *Model) reportKeys() keyList {
 	switch {
 	case r == nil:
 		return nil
+	case r.Choice == "on" && r.CanSend:
+		return keyList{bind("t", "send today's now"), bind("o", "turn off"), bind("g", "got it")}
 	case r.Choice == "on":
 		return keyList{bind("o", "turn off"), bind("g", "got it")}
 	case r.Choice == "":
@@ -238,6 +251,9 @@ func (m *Model) reportBoxView(width, height int) string {
 		}
 		if b.busy {
 			body = append(body, "", m.style.dim.Render("asking merud…"))
+		}
+		if b.note != "" {
+			body = append(body, "", b.note)
 		}
 		if b.err != "" {
 			body = append(body, "")

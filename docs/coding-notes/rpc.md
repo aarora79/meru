@@ -618,7 +618,11 @@ passes as a job.
 report (see [usagereport](usagereport.md)). `Request.Kind` picks the action:
 `UsageReportStatusKind` (`"status"`, or `""`) only asks; `UsageReportSeen` says
 the client showed the notice; `UsageReportDismiss` closes it; and
-`UsageReportOn` and `UsageReportOff` set `[usage_report] send`. `Request.Source`
+`UsageReportOn` and `UsageReportOff` set `[usage_report] send`; and
+`UsageReportSend` sends today's report now, if none went today. A send the rules
+hold back, or the collector refuses, answers with an error event that says why,
+such as `not sent: Today's has gone.`. `CanSend` in the status says whether a
+send would go, so the clients grey the button out. `Request.Source`
 names the client, and `merud` writes it on the record's line. Every action
 replies with one `usage_report` event, so a client redraws from one answer.
 
