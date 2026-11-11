@@ -47,6 +47,9 @@ const state = {
   obsidian: { vault: "", adopt: true },
   profile: null,
   meru: { clearQuarantine: true, addPath: true },
+  // report is the Start Meru box for the anonymous daily count: null until
+  // the screen says how it starts, then true or false.
+  report: null,
 };
 
 const MARKS = { done: "✓", skipped: "–", failed: "!", running: "…", pending: "" };
@@ -220,7 +223,7 @@ async function skip() {
 
 // collect gathers what the current form holds into the Bridge's Input.
 function collect(id) {
-  const input = { choice: state.choice, meru: state.meru, folders: [], commands: [], obsidian: state.obsidian, google: state.google, profile: state.profile || {} };
+  const input = { choice: state.choice, meru: state.meru, folders: [], commands: [], obsidian: state.obsidian, google: state.google, profile: state.profile || {}, report: state.report === true };
   if (id === "folders") input.folders = state.folders.filter((f) => f.chosen).map((f) => f.path);
   if (id === "skills") input.commands = state.commands.filter((c) => c.chosen && !c.on).map((c) => c.name);
   if (id === "profile") {
@@ -496,8 +499,21 @@ const FORMS = {
     body.append(el("p", "dim", "The answers stay on this Mac, as files you can edit in ~/.meru/memory/. Change them later in Meru.app's Settings, About you, or with /me in meru chat."));
   },
 
-  start(body) {
+  start(body, screen) {
     body.append(el("p", "", "The step writes ~/Library/LaunchAgents/com.meru.merud.plist, loads it with launchctl, and waits for merud to answer. Then it hands merud the connectors you turned on, web search, Obsidian and Google, and shows each line merud reports while it downloads, installs and checks them. merud then scans your folders by itself; this screen follows the scan for two minutes and leaves the rest to merud."));
+    const r = screen.report;
+    if (!r) return;
+    // The box starts as the Bridge says, ticked unless DO_NOT_TRACK is
+    // set, and keeps the user's choice when the screen draws again.
+    if (state.report === null) state.report = r.send;
+    body.append(el("div", "options", null,
+      el("label", "option", null,
+        checkbox(state.report, false, (v) => { state.report = v; }),
+        el("span", "", null,
+          el("strong", "", "Send one anonymous count a day"),
+          el("p", "", r.fields),
+          el("code", "", r.example),
+          r.doNotTrack ? el("p", "dim", "DO_NOT_TRACK is set, so the box starts unticked.") : null))));
   },
 };
 

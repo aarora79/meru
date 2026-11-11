@@ -3550,7 +3550,12 @@ own the first time you run `meru`.
 6. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
    name, your email, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
-7. **A test question.** When `merud` runs, Meru asks it one question so you see it
+7. **Anonymous daily count.** For a config this run wrote, Meru shows the seven
+   fields of the anonymous usage report with an example body and asks
+   `Send it? [Y/n]`, then writes `[usage_report] send`. With `DO_NOT_TRACK` set it
+   writes `"off"` without asking. A config that was there before setup keeps its
+   own choice (see [Anonymous usage report](#anonymous-usage-report)).
+8. **A test question.** When `merud` runs, Meru asks it one question so you see it
    working. Otherwise it tells you how to start `merud`. A new `config.toml`
    takes a restart of `merud`; a new server doesn't (see
    [MCP](#mcp)).

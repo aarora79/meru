@@ -218,6 +218,8 @@ type Screen struct {
 	// EmailRequired is true after the Google step, whose tools need the
 	// address.
 	EmailRequired bool `json:"emailRequired"`
+	// Report is the anonymous daily count, on the Start Meru screen.
+	Report *ReportOffer `json:"report,omitempty"`
 }
 
 // ModelState is one model the Ollama step will pull, and whether Ollama
@@ -277,6 +279,9 @@ func (b *Bridge) Screen(id string) (Screen, error) {
 			return Screen{}, err
 		}
 		return Screen{Profile: &prof, EmailRequired: b.flow.Is(StepGoogle, StatusDone)}, nil
+	case StepStart:
+		offer := OfferReport(b.chosen().Profile, os.Getenv("DO_NOT_TRACK"))
+		return Screen{Report: &offer}, nil
 	}
 	return Screen{}, nil
 }
@@ -311,6 +316,9 @@ type Input struct {
 	Obsidian ObsidianInput `json:"obsidian"`
 	Google   GoogleInput   `json:"google"`
 	Profile  Profile       `json:"profile"`
+	// Report is the Start Meru step's box: true sends the anonymous daily
+	// count. A page that sends nothing leaves it false, which sends none.
+	Report bool `json:"report"`
 }
 
 // Run runs step id with in, for Continue and Retry, and returns the new
@@ -460,11 +468,17 @@ func (b *Bridge) run(ctx context.Context, id string, in Input, say func(string))
 		if !b.flow.Is(StepProfile, StatusDone) {
 			return "", errors.New("tell Meru your name first, in About you")
 		}
+		// The choice goes into config.toml before merud starts, so merud
+		// reads it on its first start.
+		report, err := SaveReport(p, in.Report)
+		if err != nil {
+			return "", err
+		}
 		detail, err := StartMerud(ctx, b.o.Run, p, say)
 		if err != nil {
 			return "", err
 		}
-		lines := []string{detail}
+		lines := []string{detail, report}
 		for _, r := range HandConnectors(ctx, p.Socket(), b.handOffs(), say) {
 			lines = append(lines, r.Line)
 			if r.Link != "" {

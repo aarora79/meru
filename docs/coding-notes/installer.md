@@ -3,7 +3,7 @@
 **Code:** `internal/installer/` (`doc.go`, `run.go`, `steps.go`, `bridge.go`,
 `machine.go`, `configfile.go`, `meru.go`, `ollama.go`, `folders.go`,
 `websearch.go`, `obsidian.go`, `notes.go`, `commands.go`, `google.go`, `profile.go`,
-`connectors.go`, `merud.go`,
+`connectors.go`, `merud.go`, `report.go`,
 `assets.go`, the page in `web/`, and `launchd/com.meru.merud.plist`, a copy of
 the one in `deploy/`), plus `cmd/meru-installer/main.go` and its `Info.plist`
 **Milestone:** the Mac installer, asked for ahead of v0.5
@@ -240,8 +240,23 @@ job and waits for `Ping`. `FollowScan` asks `index_status` every two seconds whi
 `merud`'s own startup scan runs, and stops watching after two minutes; the scan
 carries on in `merud`. `loadJob` and `xmlText`, which write and load the plist,
 live here now that `merud`'s is the only launchd job the installer writes. The
-Bridge's Start Meru step runs `StartMerud`, then `HandConnectors`, then
-`FollowScan`.
+Bridge's Start Meru step runs `SaveReport`, then `StartMerud`, then
+`HandConnectors`, then `FollowScan`.
+
+### report.go
+
+The Start Meru screen carries a box for the anonymous daily count, ticked by
+default, with what the count holds and an example under it. `OfferReport`
+builds what the screen shows: the box starts unticked when `DO_NOT_TRACK` in
+the installer's environment holds anything but `""` or `"0"`, and the example
+uses this Mac's `runtime.GOOS` and `runtime.GOARCH` and the chosen model set's
+profile. The page sends the box's state as `Input.Report`. `SaveReport` writes
+it as `[usage_report] send = "on"` or `"off"` through
+`catalog.SetTableString`, before `StartMerud`, so `merud` reads the choice on
+its first start. The installer only records the choice: `merud` sends nothing
+until Meru.app or `meru chat` has shown the notice. `TestBridgeStartReport`
+checks that the write lands even when the step fails later, at a `merud` that
+isn't installed.
 
 ### assets.go and web/
 

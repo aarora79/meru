@@ -1054,7 +1054,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
 <!-- ============================================================ -->
 <h2 id="setup">First run and setup</h2>
 
-<p><code>meru setup</code> walks you through seven steps in the terminal. You can run it again at any time; v0.3 doesn't start it for you the first time you run <code>meru</code>.</p>
+<p><code>meru setup</code> walks you through eight steps in the terminal. You can run it again at any time; v0.3 doesn't start it for you the first time you run <code>meru</code>.</p>
 
 <ol>
   <li><b>Ollama.</b> Meru checks that Ollama runs and is 0.40.5 or later. If it doesn't run, Meru prints the install step and waits; if it is older, Meru says to update it.</li>
@@ -1063,6 +1063,7 @@ argv        = ["git", "-C", "{repo}", "log", "--since=1.week", "--oneline"]
   <li><b>Web search.</b> Meru checks that SearXNG answers. If not, it prints the Docker commands that start it, or the setting that turns on JSON, and waits. You can skip it.</li>
   <li><b>Tools.</b> When <code>merud</code> runs, Meru offers the Obsidian and Google connectors one at a time, and <code>merud</code> installs and runs the ones you pick. You can skip any.</li>
   <li><b>About you</b>, when <code>merud</code> runs: your name, your email, your work, where you live and how you like answers, each saved as a memory. <code>meru setup user</code> asks the same.</li>
+  <li><b>Anonymous daily count</b>, for a new config: the fields of the anonymous daily report and an example, then "Send it?". <code>DO_NOT_TRACK</code> answers no.</li>
   <li><b>A test question</b>, when <code>merud</code> runs, so you see it work.</li>
 </ol>
 

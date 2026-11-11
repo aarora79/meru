@@ -1,6 +1,6 @@
 # merud and meru
 
-**Code:** `cmd/merud/` (`main.go`, `metrics.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`, `endpoints.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
+**Code:** `cmd/merud/` (`main.go`, `metrics.go`, `runtime.go`, `ollama.go`, `index.go`, `backends.go`, `tools.go`, `connectors.go`, `memory.go`, `skills.go`, `sessions.go`, `history.go`, `attach.go`, `about.go`, `endpoints.go`, `usagereport.go`), `cmd/meru/` (`main.go`, `index.go`, `approve.go`, `tools.go`, `log.go`, `usage.go`, `report.go`, `run.go`, `look.go`, `setup.go`, `mcp.go`, `adopt.go`, `connector.go`, `probe.go`, `user.go`, `memory.go`, `skills.go`, `check.go`, `checkfile.go`)
 **Milestone:** v0.1; the store, the indexer and `meru index` in v0.2; the approval prompt, `meru tools`, `meru log`, `meru setup`, `meru mcp` and `meru usage` in v0.3; the memory folder and its ops, `meru setup user`, `meru memory`, memory recall, `meru skills`, the session replay and the summarizer in v0.4; `meru check` in v0.4
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client), [Model tiers](../../ARCHITECTURE.md#model-tiers)
 
@@ -950,6 +950,7 @@ Each fact comes from a place `merud` already keeps:
 | folders, files, chunks, database size | `idx.currentFolders`, `st.Stats`, `st.DiskBytes` |
 | MCP servers, A2A agents, commands | `tools.dispatcher.Servers`, the list `meru tools` prints, with a connector's sentence |
 | web search | `web`, the SearXNG connector's `webOK`: its sentence, such as "Web search is off." |
+| the anonymous daily usage report | `usageReportSentence`, which reads `[usage_report] send` from `config.toml` on each call |
 | skills on and off | `skillService.names` |
 | memories by kind | `mem.List`, keeping only each memory's kind |
 
@@ -1283,6 +1284,38 @@ In `merud`, `handleUsage` answers `OpUsage` from the store: `Usage` for the
 windows of time, or `UsageByModel` when `Request.Kind` is `rpc.UsageByModel`,
 which `/usage by model` in `meru chat` sends.
 
+### meru: report.go
+
+`meru report` shows where the anonymous daily count stands. It sends one
+`OpUsageReport` with `Kind` `"status"`, and `meru report on` and `meru report
+off` send `"on"` or `"off"`, which `merud` writes to `[usage_report] send`.
+Every request carries `Source: rpc.SourceCLI`. `merud` answers each with one
+`usage_report` event, and `reportText` prints it:
+
+```text
+Anonymous daily count: On
+Next one after 2026-11-12 02:47.
+
+The next report:
+{"v":1,"meru":"0.7.3","os":"darwin","arch":"arm64","profile":"lite","age":"week","questions":"0"}
+
+Recent:
+  2026-11-11 02:52  sent  {"v":1,...}
+```
+
+The choice prints as On, Off or Not chosen; then come `Blocked`, `merud`'s
+reason that nothing goes, the next time in local time, `Sent to:` when config
+names another collector, the exact JSON `merud` would send, and the newest five
+lines of `usage-report.jsonl`. `reportText` takes the time zone as a
+parameter, so `TestReportText` pins the times.
+
+`meru report` never sends `"seen"`. Only `meru chat` and the desktop app count
+as showing the notice, so a script that runs `meru report` can't start the
+sending. `main.go` takes `report` as the command only alone or with `on` or
+`off` (`isReportArgs`), so `meru report on the weather` stays a question. A
+`merud` older than the op answers `unknown op`, and `meru report` says merud
+needs an update.
+
 ### meru: run.go
 
 `meru run --json "question"` is the headless mode: it lets a script drive
@@ -1421,7 +1454,7 @@ skips. `doIt` goes in this order:
 5. Send `mcp_reload` (`reload` in `mcp.go`), so the server works without a
    restart, and print its state as `meru tools` would.
 
-`setupCmd` runs the seven steps from ARCHITECTURE.md "First run and setup". It
+`setupCmd` runs the eight steps from ARCHITECTURE.md "First run and setup". It
 writes `config.toml` only when none exists. Its last parameter, `main`, comes
 from `meru setup --main <model>`: `scripts/install.sh` passes the answer model it
 picked for the Mac's memory and downloaded. Setup then skips the profile
@@ -1457,6 +1490,20 @@ web search is off and asks nothing.
 
 Step 6 offers `meru setup user` when `merud` answers a ping, and says to run it
 later when it doesn't: the answers go to `merud`, which owns the memory folder.
+
+Step 7, Anonymous daily count, is `offerReport`. When setup wrote
+`config.toml` in this run, it prints what the count holds and an example for
+this machine (`reportExample`: `runtime.GOOS`, `runtime.GOARCH` and the chosen
+profile), asks `Send it? [Y/n]`, and writes `send = "on"` or `"off"` under
+`[usage_report]` with `catalog.SetTableString`, which keeps every other line.
+The question comes after step 3 has written the file, so step 7 edits setup's
+own new file instead of going through `firstConfig`; a setup stopped before
+step 7 leaves `send = ""`, and the clients ask later. When `DO_NOT_TRACK` holds
+anything but `""` or `"0"` (`doNotTrack`), it writes `"off"` without asking
+and says why. The console reads the variable through its `getenv` field, so
+`TestSetupReportDoNotTrack` sets it without touching the test's environment.
+An existing `config.toml` stays as it is: the step names `meru report on` and
+`meru report off` instead.
 
 `config.toml` sits next to the socket, so `meru -socket /tmp/x/merud.sock setup`
 works on the Meru home in `/tmp/x`, the same one `merud -config
@@ -1879,6 +1926,40 @@ renames or removes a chat folder: the Jobs folder stays while `config.toml`
 holds a job, since the job's next run would bring it back. `add` saves a new job
 the same way, for the built-in `schedule_job`; `main.go` hands it over with
 `tools.bt.UseJobs(jobSvc.add)` once the job service exists.
+
+### merud: usagereport.go
+
+`serve` builds a `reportService` after the job service: a
+`usagereport.Reporter` made with `usagereport.New(cfg.Dir, about.Version(), st,
+log)`, the config path, and `tools.bt.EditConfig`, the lock every
+`config.toml` write takes. The store goes in as the reporter's `Questions`, the
+one-method interface `usagereport` declares, which `*store.Store` fits with
+`QuestionsBetween`. `reporter.Loop` runs in the errgroup beside the scheduler,
+and the handler sends `usage_report` to `reportService.handle`.
+
+`settings` loads `config.toml` again on each tick and each op and returns
+`[usage_report] send`, `url` and the profile as a `usagereport.Settings`. So
+`meru report off`, the Settings switch or a hand edit takes effect at the next
+tick without a restart. `handle` reads `Request.Kind`:
+
+- `"status"` or `""` only asks;
+- `"seen"` and `"dismiss"` call `reporter.Mark`, which adds a `seen` or
+  `dismissed` line to `usage-report.jsonl` with the client's source;
+- `"on"` and `"off"` call `setSend`, then `Mark` a `dismissed` line.
+
+Every action then replies with `reporter.Status` in one `usage_report` event.
+`setSend` writes `send` through `catalog.SetTableString` under the config lock;
+its check refuses the edit unless the file loads with the new value. The choice
+goes to `config.toml` before the `dismissed` line: if `merud` stops between
+the two, the notice shows again, which is the safe way to fail.
+`usagereport_test.go` drives `handle` over a temporary config.
+
+`about.go`'s `usageReportSentence(path)` gives `about_meru` the setting in
+words: `on:` with what the report holds and how to turn it off, `off. Meru
+sends nothing about itself.`, or "off until the user chooses" when `send` is
+`""`. It returns `""` when the file doesn't load, and `about_meru` then leaves
+the line out. `aboutService` keeps `configPath` for it, since a client can
+change the setting while `merud` runs.
 
 ## Go ideas used here
 
