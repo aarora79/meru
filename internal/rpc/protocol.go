@@ -287,6 +287,22 @@ const (
 	// in progress goes on to its end; the job's past runs stay in the Jobs
 	// folder.
 	OpJobRemove Op = "job_remove"
+	// OpUsageReport reads or changes the anonymous daily usage report.
+	// Request.Kind picks the action: UsageReportStatus (or "") asks how it
+	// stands, UsageReportSeen says the client showed the notice,
+	// UsageReportDismiss closes the notice, and UsageReportOn and
+	// UsageReportOff set [usage_report] send. Every action replies with
+	// one "usage_report" event and "done".
+	OpUsageReport Op = "usage_report"
+)
+
+// The Request.Kind values OpUsageReport takes.
+const (
+	UsageReportStatusKind = "status"
+	UsageReportSeen       = "seen"
+	UsageReportDismiss    = "dismiss"
+	UsageReportOn         = "on"
+	UsageReportOff        = "off"
 )
 
 // Source says where a question came from. It becomes a metric attribute, so
@@ -488,6 +504,8 @@ const (
 	// UsageDetail. An older merud answers that request with "usage"
 	// instead, which a client takes as "charts need a newer merud".
 	EventUsageDetail EventType = "usage_detail"
+	// EventUsageReport answers OpUsageReport, in UsageReport.
+	EventUsageReport EventType = "usage_report"
 	// EventMemories answers OpMemoryList and OpMemoryAdd, in Memories. On
 	// an OpAsk reply it lists the memories recall put in this turn's
 	// prompt, before the first "token"; a turn that recalled none sends
@@ -587,6 +605,8 @@ type Event struct {
 	Usage []UsageWindow `json:"usage,omitempty"`
 	// UsageDetail is set on a "usage_detail" event.
 	UsageDetail *UsageDetailReply `json:"usage_detail,omitempty"`
+	// UsageReport is set on a "usage_report" event.
+	UsageReport *UsageReportStatus `json:"usage_report,omitempty"`
 	// Memories is set on a "memories" event.
 	Memories []MemoryInfo `json:"memories,omitempty"`
 	// Skills is set on a "skills" event, and on a "route" event that
@@ -954,6 +974,54 @@ const (
 	ToolsCount     = 12               // how many tools the reply holds, busiest first
 	MetricsExample = "127.0.0.1:9464" // the [observability] prometheus value the clients suggest
 )
+
+// The notices UsageReportStatus.Banner names.
+const (
+	// BannerAsk asks the user to choose, as after an upgrade from a
+	// release without the report: nothing sends until they say yes.
+	BannerAsk = "ask"
+	// BannerNew tells the user the report is on, as setup chose for a new
+	// install, and offers to turn it off.
+	BannerNew = "new"
+)
+
+// UsageReportStatus is everything a client needs to draw the usage-report
+// notice and the Usage section (ARCHITECTURE.md, "Anonymous usage report").
+type UsageReportStatus struct {
+	// Choice is [usage_report] send: "on", "off", or "" when the user
+	// hasn't chosen.
+	Choice string `json:"choice"`
+	// Blocked says, in words a client shows as it is, why no report will
+	// go right now; "" when the next one goes at NextAt.
+	Blocked string `json:"blocked,omitempty"`
+	// Banner names the notice to show, BannerAsk or BannerNew, or "" for
+	// none.
+	Banner string `json:"banner,omitempty"`
+	// Next is the next report, the exact JSON merud would send.
+	Next string `json:"next,omitempty"`
+	// NextAt is the earliest time the next report can go, in RFC 3339, or
+	// "" when nothing will send until the user or a client acts.
+	NextAt string `json:"next_at,omitempty"`
+	// Version is the report's format version.
+	Version int `json:"version"`
+	// Sent is true once any report has gone, so the "new" notice can stop
+	// saying the first one goes tomorrow.
+	Sent bool `json:"sent,omitempty"`
+	// URL is [usage_report] url when config names a collector other than
+	// Meru's own, so a changed destination is in plain view; "" otherwise.
+	URL string `json:"url,omitempty"`
+	// Recent holds the last lines of usage-report.jsonl, newest first.
+	Recent []UsageReportEntry `json:"recent,omitempty"`
+}
+
+// UsageReportEntry is one line of usage-report.jsonl, as a client shows it.
+type UsageReportEntry struct {
+	Type   string `json:"type"`             // "seen", "dismissed", "sent" or "failed"
+	At     string `json:"at"`               // RFC 3339, UTC
+	Client string `json:"client,omitempty"` // which client showed the notice
+	Body   string `json:"body,omitempty"`   // the exact report sent or tried
+	Error  string `json:"error,omitempty"`  // why a send failed
+}
 
 // UsageDetailReply is the dashboard: every number comes from meru.db's
 // turns and tool_calls, which rebuild from the transcripts, so it needs

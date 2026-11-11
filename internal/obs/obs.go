@@ -358,6 +358,16 @@ func CaptureContent() bool {
 	return s != nil && s.captureContent
 }
 
+// RecordUsageReport records one try at sending the anonymous daily usage
+// report: meru.usage_report.sends with the outcome, "sent" or "failed".
+func RecordUsageReport(ctx context.Context, outcome string) {
+	in := load()
+	if in == nil {
+		return
+	}
+	in.usageReportSends.Add(ctx, 1, metric.WithAttributes(attr(keyOutcome, bounded(outcome, "sent", "failed"))))
+}
+
 // RecordJobRun records one scheduled job's run: meru.scheduler.job_runs
 // with the job and the outcome, one of the turn outcomes, and, for a run
 // the schedule started, meru.scheduler.lateness. A run started by hand

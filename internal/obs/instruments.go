@@ -39,6 +39,7 @@ const (
 	metricRenderDuration    = "meru.web.render.duration"
 	metricSpeechDuration    = "meru.speech.duration"
 	metricJobRuns           = "meru.scheduler.job_runs"
+	metricUsageReportSends  = "meru.usage_report.sends"
 	metricJobLateness       = "meru.scheduler.lateness"
 )
 
@@ -157,6 +158,7 @@ type instruments struct {
 	renderDuration    metric.Float64Histogram
 	speechDuration    metric.Float64Histogram
 	jobRuns           metric.Int64Counter
+	usageReportSends  metric.Int64Counter
 	jobLateness       metric.Float64Histogram
 }
 
@@ -245,6 +247,10 @@ func newInstruments(meter metric.Meter) (*instruments, error) {
 	in.jobRuns, err = meter.Int64Counter(metricJobRuns,
 		metric.WithUnit("{run}"),
 		metric.WithDescription("Scheduled job runs, by job and outcome."))
+	keep(err)
+	in.usageReportSends, err = meter.Int64Counter(metricUsageReportSends,
+		metric.WithUnit("{report}"),
+		metric.WithDescription("Anonymous daily usage reports merud tried to send, by outcome: sent or failed."))
 	keep(err)
 	// A run starts on time, within a tick, or late after the computer
 	// slept: seconds up to the 12-hour catch-up limit.

@@ -728,3 +728,38 @@ func TestBuiltinOffChecks(t *testing.T) {
 		}
 	}
 }
+
+// TestUsageReportConfig checks [usage_report]: a config without the table
+// reads as "not chosen", send takes only "on", "off" or "", and url takes
+// https or an address on this machine.
+func TestUsageReportConfig(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "profile = \"lite\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UsageReport != (UsageReport{}) {
+		t.Errorf("a config without [usage_report] reads %+v, want the zero value", cfg.UsageReport)
+	}
+	tests := []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{"on", `send = "on"`, true},
+		{"off", `send = "off"`, true},
+		{"not chosen", `send = ""`, true},
+		{"yes is unknown", `send = "yes"`, false},
+		{"https collector", `url = "https://collector.example.org"`, true},
+		{"loopback collector", `url = "http://127.0.0.1:8787"`, true},
+		{"plain http off the machine", `url = "http://collector.example.org"`, false},
+		{"not a URL", `url = "collector"`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, "[usage_report]\n"+tc.body+"\n"))
+			if (err == nil) != tc.ok {
+				t.Errorf("Load(%s) error = %v, want ok %v", tc.body, err, tc.ok)
+			}
+		})
+	}
+}

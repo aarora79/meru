@@ -384,3 +384,19 @@ func (s *Store) LastJobRuns(ctx context.Context) (map[string]time.Time, error) {
 	}
 	return last, rows.Err()
 }
+
+// QuestionsBetween counts the questions answered from from up to, but not
+// including, to: the turns in that window, leaving out scheduled job runs,
+// which nobody asked. The anonymous usage report sends the count for
+// yesterday as a bucket (internal/usagereport). Incognito turns write no
+// row, so they never count. It fails when the database does.
+func (s *Store) QuestionsBetween(ctx context.Context, from, to time.Time) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM turns WHERE ts >= ? AND ts < ? AND source != ?`,
+		from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339), string(rpc.SourceJob)).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count questions: %w", err)
+	}
+	return n, nil
+}
