@@ -90,7 +90,8 @@ func (a *Agent) selfFirst(ctx context.Context, t *turn, all []engine.ToolSpec) (
 	if !offersTool(all, builtin.AboutMeru) {
 		return "", nil
 	}
-	ran, err := a.runCalls(ctx, t, []engine.ToolCall{{Name: builtin.AboutMeru, Arguments: []byte("{}")}}, dispatch.CallerMeru)
+	calls := []webCall{{tool: builtin.AboutMeru, args: map[string]any{}}}
+	ran, err := a.runCalls(ctx, t, toolCalls(calls), dispatch.CallerMeru)
 	if err != nil {
 		return "", err
 	}
