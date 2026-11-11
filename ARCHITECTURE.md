@@ -3553,8 +3553,8 @@ own the first time you run `meru`.
 6. **About you.** When `merud` runs, Meru offers `meru setup user`, which asks your
    name, your email, your work, where you live and how you like answers, and saves each as a
    memory (see [Memory](#memory)).
-7. **Anonymous daily count.** For a config this run wrote, Meru shows the seven
-   fields of the anonymous usage report with an example body and asks
+7. **Anonymous daily count.** For a config this run wrote, Meru shows the fields
+   of the anonymous usage report with an example body and asks
    `Send it? [Y/n]`, then writes `[usage_report] send`. With `DO_NOT_TRACK` set it
    writes `"off"` without asking. A config that was there before setup keeps its
    own choice (see [Anonymous usage report](#anonymous-usage-report)).
@@ -5984,25 +5984,39 @@ ever" ([#251](https://github.com/aarora79/meru/issues/251)).
 
 ### What goes
 
-The body is seven fields of JSON, about 100 bytes:
+The body is thirteen fields of JSON, about 250 bytes (report version 2, from
+v0.7.7; v0.7.6 sent the first seven as version 1):
 
 ```json
-{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+{"v":2,"meru":"0.7.7","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5",
+ "active_days":"3-5","streak":"2-4","previous":"0.7.6","week_first":true,"month_first":false,"first":false}
 ```
 
 | Field | What it holds | Values |
 | --- | --- | --- |
-| `v` | the report's format | `1` |
-| `meru` | the release | such as `0.7.6` |
+| `v` | the report's format | `2` |
+| `meru` | the release | such as `0.7.7` |
 | `os` | the system | `darwin`, `linux`, `windows` |
-| `arch` | the chip | `arm64`, `amd64` |
+| `arch` | the chip's family | `arm64`, `amd64` |
 | `profile` | the model set | `lite`, `full` |
 | `age` | how long ago a client first showed the notice | `week` (under 7 days), `month` (under 31), `year` (under 366), `older` |
 | `questions` | the questions answered the day before, in UTC, leaving out scheduled jobs | `0`, `1-5`, `6-20`, `21+` |
+| `active_days` | the days among the seven before today with a question, jobs left out | `0`, `1-2`, `3-5`, `6-7` |
+| `streak` | the ISO weeks in a row, Monday to Sunday in UTC, with a report, this one included | `1`, `2-4`, `5-12`, `13+` |
+| `previous` | the version in this install's last report | `none`, or such as `0.7.6` |
+| `week_first` | this is the install's first report of the ISO week | `true`, `false` |
+| `month_first` | this is its first report of the UTC month | `true`, `false` |
+| `first` | this is its first report ever | `true`, `false` |
 
 It holds no ID, no question, no answer, no file name, no setting and no time of
-day. Each install sends at most one report a UTC day, so the collector counts
-the installs that reported each day without an ID. A new field or value needs a
+day. `merud` works out the last six from `usage-report.jsonl` and the `turns`
+table; `previous` is sent only when it is a release number, so a hand-edited
+record can't put text in a report. Each install sends at most one report a UTC
+day, so the collector counts the installs that reported each day. The three flags
+count across days with no ID: each install sets `week_first` on exactly one report
+a week, `month_first` on one a month and `first` on one ever, so counting the rows
+with a flag counts each install once in that window. The FAQ,
+`docs/faq/usage-report.md`, gives each count and its SQL. A new field or value needs a
 new `v`, and a new `v` shows the notice again before anything sends under it. A
 golden test in `internal/usagereport` pins the fields.
 
@@ -6084,14 +6098,19 @@ keeps it there.
 ### The collector
 
 The collector is a Cloudflare Worker with one D1 table; its code is in
-`collector/`. It stores a report only when the body has exactly the seven fields,
-each with a value from its list, and answers 400 to anything else. It keeps the
-UTC date and the seven fields, with no column for an IP address or a time. It
+`collector/`. It stores a report only when the body has exactly the fields of its
+version, version 1 or 2, each with a value from its list, and answers 400 to
+anything else. It keeps the UTC date and the fields, with no column for an IP
+address or a time, and an all-time count of first reports in a counter that
+outlives the 400-day clean-up. It
 reads the sender's address only as the key for a rate limit of five reports a
 minute, and Workers Logs stay off, because they would record it. Cloudflare's
 network still sees each sender's address, as any host does. The Worker publishes
-the counts of the last 90 days at `/` and `/totals`, and deletes rows older than
-400 days.
+the active and new installs of each of the last 90 days, weeks and months, the
+total, and this week's counts by version, system, chip, model set, streak and
+active days at `/` and `/totals`. It shows each field's counts on its own, never
+crossed, since a cross of several fields on a quiet week could single out one
+install. It deletes rows older than 400 days.
 
 ### Turning it off
 
@@ -6149,10 +6168,13 @@ it in the service file or use one of the others.
   declare one that does, such as `curl` or `ssh`. You chose it, and the
   `tool_calls` row records each run with its argv.
 - Meru sends one anonymous usage report a day, and nothing else about itself.
-  The report holds the Meru version, the system, the chip, the model set
-  (`lite` or `full`), how long ago a client first showed the notice (a week, a
-  month, a year or longer) and how many questions Meru answered the day before
-  (0, 1 to 5, 6 to 20, or more). It holds no ID, no question, no answer, no file
+  The report holds the Meru version, the system, the chip's family, the model
+  set (`lite` or `full`), how long ago a client first showed the notice (a week,
+  a month, a year or longer), how many questions Meru answered the day before (0,
+  1 to 5, 6 to 20, or more), on how many of the seven days before it you asked
+  any, how many weeks in a row it has reported, the version it reported last,
+  and whether it is its first report of the week, the month or ever. It holds no
+  ID, no question, no answer, no file
   name and no setting. `merud` sends it only after a client has shown the notice,
   writes each report to `~/.meru/usage-report.jsonl` as sent, and stops when you
   turn it off or set `DO_NOT_TRACK`. A new field needs a new report version, and a

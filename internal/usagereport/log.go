@@ -48,6 +48,46 @@ type state struct {
 	sentEver    bool      // any "sent" line exists, for any version
 	failedToday bool      // a "failed" line exists for now's UTC day
 	recent      []Entry   // the last recentCount lines, newest first
+
+	// sentDays is a set: the UTC days with a "sent" line, from the start of
+	// the ISO week maxStreakWeeks-1 weeks before now's on. A map whose
+	// values say "present" is how Go writes a set. Every key comes from
+	// startOfDay, in UTC, so == on keys means the same day.
+	sentDays map[time.Time]bool
+	// lastVersion is the meru field of the newest "sent" body, any version,
+	// or "" when no body says.
+	lastVersion string
+}
+
+// sentSince reports whether a report went on or after day. lastSent is the
+// newest report, so it alone answers.
+func (st state) sentSince(day time.Time) bool {
+	return st.sentEver && !st.lastSent.Before(day)
+}
+
+// weeksInARow returns the ISO weeks in a row with a report that end with
+// the week starting thisWeek, which counts as one: the report being built
+// belongs to it. It stops at the first earlier week with none, and at
+// maxStreakWeeks.
+func (st state) weeksInARow(thisWeek time.Time) int {
+	n := 1
+	for w := thisWeek.AddDate(0, 0, -7); n < maxStreakWeeks; w = w.AddDate(0, 0, -7) {
+		if !st.sentIn(w, w.AddDate(0, 0, 7)) {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+// sentIn reports whether a report went on a day in [from, to).
+func (st state) sentIn(from, to time.Time) bool {
+	for d := range st.sentDays {
+		if !d.Before(from) && d.Before(to) {
+			return true
+		}
+	}
+	return false
 }
 
 // readState reads the file at path and returns its state as of now. A line
@@ -68,6 +108,8 @@ func readState(path string, now time.Time) (state, error) {
 	defer f.Close()
 
 	today := startOfDay(now)
+	horizon := weekStart(now).AddDate(0, 0, -7*(maxStreakWeeks-1))
+	st.sentDays = map[time.Time]bool{}
 	var all []Entry
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -90,8 +132,12 @@ func readState(path string, now time.Time) (state, error) {
 			}
 		case EntrySent:
 			st.sentEver = true
-			if e.At.After(st.lastSent) {
+			if e.At.After(st.lastSent) || st.lastSent.IsZero() {
 				st.lastSent = e.At
+				st.lastVersion = bodyVersion(e.Body)
+			}
+			if day := startOfDay(e.At); !day.Before(horizon) {
+				st.sentDays[day] = true
 			}
 		case EntryFailed:
 			if !e.At.Before(today) {
@@ -106,6 +152,18 @@ func readState(path string, now time.Time) (state, error) {
 		st.recent = append(st.recent, all[i])
 	}
 	return st, nil
+}
+
+// bodyVersion returns the meru field of body, a report as sent, or "" when
+// body doesn't parse or has none. Both v1 and v2 bodies have the field.
+func bodyVersion(body string) string {
+	var b struct {
+		Meru string `json:"meru"`
+	}
+	if json.Unmarshal([]byte(body), &b) != nil {
+		return ""
+	}
+	return b.Meru
 }
 
 // appendEntry adds e to the file at path as one line. The caller holds the

@@ -12,12 +12,17 @@
 import { bridge, errorText } from "./api.js";
 import { el, button } from "./turns.js";
 
+// FIELDS names what the count holds. It must match rpc.UsageReportFields
+// word for word; TestReportWordsMatch in internal/desktop checks it.
+const FIELDS =
+  "its version, your system and chip, the model set, a rough install age, rough counts of yesterday's questions and of the days you used it last week, how many weeks in a row it has reported, the version it reported last, and whether it is its first report of the week, the month or ever. No ID, no questions, no files.";
+
 // What the banner says, before its buttons, for each banner merud names.
 const NEW_TEXT =
-  "Meru sends one anonymous count a day: its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files.";
+  "Meru sends one anonymous count a day: " + FIELDS;
 const NEW_FIRST = " Your first one goes tomorrow.";
 const ASK_TEXT =
-  "Meru can now send one anonymous count a day: its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files. It stays off unless you say yes.";
+  "Meru can now send one anonymous count a day: " + FIELDS + " It stays off unless you say yes.";
 
 // What the Usage section calls each choice.
 const CHOICES = { on: "On", off: "Off", "": "Not chosen" };

@@ -2718,7 +2718,7 @@ env_allowlist = []            # names passed through besides PATH, HOME and LANG
   <li><b>Web search.</b> Meru checks that SearXNG answers JSON at <code>[web] searxng_url</code>. When nothing answers at Meru's own address and <code>merud</code> runs, it offers to have <code>merud</code> run SearXNG and sends <code>connector_set</code> (see <a href="#connector-setup">Setting up a connector</a>), printing each step <code>merud</code> reports; with <code>merud</code> down it names <code>meru mcp set searxng enabled=true</code>. When SearXNG answers HTML, it names the <code>search.formats</code> setting to change. Then it waits: Enter checks again, <code>s</code> skips. Meru works without web search (see <a href="#web-search">Web search</a>).</li>
   <li><b>Tools.</b> With <code>merud</code> running, Meru offers the Obsidian and Google connectors, one at a time. For one that is off it asks the connector's fields, a secret without showing it, and <code>merud</code> turns it on with them; for one set up by hand it offers Adopt, which shows <code>merud</code>'s plan and asks again. With <code>merud</code> down it names <code>meru mcp fix &lt;id&gt;</code> for later. Setup prints no docker or <code>uvx</code> command: <code>merud</code> installs each connector. <code>meru mcp add</code> still adds any server by hand (see below).</li>
   <li><b>About you.</b> When <code>merud</code> runs, Meru offers <code>meru setup user</code>, which asks your name, your email, your work, where you live and how you like answers, and saves each as a memory (see <a href="#memory">Memory</a>).</li>
-  <li><b>Anonymous daily count.</b> For a config this run wrote, Meru shows the seven fields of the anonymous usage report with an example body and asks <code>Send it? [Y/n]</code>, then writes <code>[usage_report] send</code>. With <code>DO_NOT_TRACK</code> set it writes <code>"off"</code> without asking. A config that was there before setup keeps its own choice (see <a href="#usage-report">The anonymous usage report</a>).</li>
+  <li><b>Anonymous daily count.</b> For a config this run wrote, Meru shows the fields of the anonymous usage report with an example body and asks <code>Send it? [Y/n]</code>, then writes <code>[usage_report] send</code>. With <code>DO_NOT_TRACK</code> set it writes <code>"off"</code> without asking. A config that was there before setup keeps its own choice (see <a href="#usage-report">The anonymous usage report</a>).</li>
   <li><b>A test question.</b> When <code>merud</code> runs, Meru asks it one question so you see it working. Otherwise it tells you how to start <code>merud</code>. A new <code>config.toml</code> takes a restart of <code>merud</code>; a new server doesn't (see <a href="#mcp">MCP</a>).</li>
 </ol>
 
@@ -3485,24 +3485,31 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 <h3>What goes</h3>
 
-<p>The body is seven fields of JSON, about 100 bytes:</p>
+<p>The body is thirteen fields of JSON, about 250 bytes (report version 2, from v0.7.7; v0.7.6 sent the first seven as version 1):</p>
 
-<pre><code>{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}</code></pre>
+<pre><code>{"v":2,"meru":"0.7.7","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5",
+ "active_days":"3-5","streak":"2-4","previous":"0.7.6","week_first":true,"month_first":false,"first":false}</code></pre>
 
 <div class="tbl"><table>
   <thead><tr><th>Field</th><th>What it holds</th><th>Values</th></tr></thead>
   <tbody>
-    <tr><td><code>v</code></td><td>the report's format</td><td><code>1</code></td></tr>
-    <tr><td><code>meru</code></td><td>the release</td><td>such as <code>0.7.6</code></td></tr>
+    <tr><td><code>v</code></td><td>the report's format</td><td><code>2</code></td></tr>
+    <tr><td><code>meru</code></td><td>the release</td><td>such as <code>0.7.7</code></td></tr>
     <tr><td><code>os</code></td><td>the system</td><td><code>darwin</code>, <code>linux</code>, <code>windows</code></td></tr>
-    <tr><td><code>arch</code></td><td>the chip</td><td><code>arm64</code>, <code>amd64</code></td></tr>
+    <tr><td><code>arch</code></td><td>the chip's family</td><td><code>arm64</code>, <code>amd64</code></td></tr>
     <tr><td><code>profile</code></td><td>the model set</td><td><code>lite</code>, <code>full</code></td></tr>
     <tr><td><code>age</code></td><td>how long ago a client first showed the notice</td><td><code>week</code> (under 7 days), <code>month</code> (under 31), <code>year</code> (under 366), <code>older</code></td></tr>
     <tr><td><code>questions</code></td><td>the questions answered the day before, in UTC, leaving out scheduled jobs</td><td><code>0</code>, <code>1-5</code>, <code>6-20</code>, <code>21+</code></td></tr>
+    <tr><td><code>active_days</code></td><td>the days among the seven before today with a question, jobs left out</td><td><code>0</code>, <code>1-2</code>, <code>3-5</code>, <code>6-7</code></td></tr>
+    <tr><td><code>streak</code></td><td>the ISO weeks in a row, Monday to Sunday in UTC, with a report, this one included</td><td><code>1</code>, <code>2-4</code>, <code>5-12</code>, <code>13+</code></td></tr>
+    <tr><td><code>previous</code></td><td>the version in this install's last report</td><td><code>none</code>, or such as <code>0.7.6</code></td></tr>
+    <tr><td><code>week_first</code></td><td>this is the install's first report of the ISO week</td><td><code>true</code>, <code>false</code></td></tr>
+    <tr><td><code>month_first</code></td><td>this is its first report of the UTC month</td><td><code>true</code>, <code>false</code></td></tr>
+    <tr><td><code>first</code></td><td>this is its first report ever</td><td><code>true</code>, <code>false</code></td></tr>
   </tbody>
 </table></div>
 
-<p>It holds no ID, no question, no answer, no file name, no setting and no time of day. Each install sends at most one report a UTC day, so the collector counts the installs that reported each day without an ID. A new field or value needs a new <code>v</code>, and a new <code>v</code> shows the notice again before anything sends under it. A golden test in <code>internal/usagereport</code> pins the fields.</p>
+<p>It holds no ID, no question, no answer, no file name, no setting and no time of day. <code>merud</code> works out the last six from <code>usage-report.jsonl</code> and the <code>turns</code> table; <code>previous</code> is sent only when it is a release number, so a hand-edited record can't put text in a report. Each install sends at most one report a UTC day, so the collector counts the installs that reported each day. The three flags count across days with no ID: each install sets <code>week_first</code> on exactly one report a week, <code>month_first</code> on one a month and <code>first</code> on one ever, so counting the rows with a flag counts each install once in that window. The FAQ, <code>docs/faq/usage-report.md</code>, gives each count and its SQL. A new field or value needs a new <code>v</code>, and a new <code>v</code> shows the notice again before anything sends under it. A golden test in <code>internal/usagereport</code> pins the fields.</p>
 
 <h3>When it goes</h3>
 
@@ -3545,7 +3552,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 <h3>The collector</h3>
 
-<p>The collector is a Cloudflare Worker with one D1 table; its code is in <code>collector/</code>. It stores a report only when the body has exactly the seven fields, each with a value from its list, and answers 400 to anything else. It keeps the UTC date and the seven fields, with no column for an IP address or a time. It reads the sender's address only as the key for a rate limit of five reports a minute, and Workers Logs stay off, because they would record it. Cloudflare's network still sees each sender's address, as any host does. The Worker publishes the counts of the last 90 days at <code>/</code> and <code>/totals</code>, and deletes rows older than 400 days.</p>
+<p>The collector is a Cloudflare Worker with one D1 table; its code is in <code>collector/</code>. It stores a report only when the body has exactly the fields of its version, version 1 or 2, each with a value from its list, and answers 400 to anything else. It keeps the UTC date and the fields, with no column for an IP address or a time, and an all-time count of first reports in a counter that outlives the 400-day clean-up. It reads the sender's address only as the key for a rate limit of five reports a minute, and Workers Logs stay off, because they would record it. Cloudflare's network still sees each sender's address, as any host does. The Worker publishes the active and new installs of each of the last 90 days, weeks and months, the total, and this week's counts by version, system, chip, model set, streak and active days at <code>/</code> and <code>/totals</code>. It shows each field's counts on its own, never crossed, since a cross of several fields on a quiet week could single out one install. It deletes rows older than 400 days.</p>
 
 <h3>Turning it off</h3>
 
@@ -3563,7 +3570,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <li><code>web_fetch</code> makes <code>merud</code> fetch public pages off this machine, by default, when the model asks; taking it out of <code>[builtin] tools</code> turns it off. It refuses any address on this machine or your network. It runs without asking only for a URL that a search result or your own question gave in the same session, so the model can't carry your data out in a URL it made up; any other URL, and every download, asks you first, and a scheduled job declines them (see <a href="#web-search">Web search</a>).</li>
   <li>Meru doesn't sandbox MCP servers. They run with your permissions, so choose them with the same care as any program you install.</li>
   <li>A local command runs with your permissions too, and reaches the network if you declare one that does, such as <code>curl</code> or <code>ssh</code>. You chose it, and the <code>tool_calls</code> row records each run with its argv.</li>
-  <li>Meru sends one anonymous usage report a day, and nothing else about itself. The report holds the Meru version, the system, the chip, the model set (<code>lite</code> or <code>full</code>), how long ago a client first showed the notice (a week, a month, a year or longer) and how many questions Meru answered the day before (0, 1 to 5, 6 to 20, or more). It holds no ID, no question, no answer, no file name and no setting. <code>merud</code> sends it only after a client has shown the notice, writes each report to <code>~/.meru/usage-report.jsonl</code> as sent, and stops when you turn it off or set <code>DO_NOT_TRACK</code>. A new field needs a new report version, and a new version shows the notice again before anything sends. Meru's own metrics and traces still go only to loopback, Meru sends no crash reports, and it never checks for updates (see <a href="#usage-report">The anonymous usage report</a>).</li>
+  <li>Meru sends one anonymous usage report a day, and nothing else about itself. The report holds the Meru version, the system, the chip's family, the model set (<code>lite</code> or <code>full</code>), how long ago a client first showed the notice (a week, a month, a year or longer), how many questions Meru answered the day before (0, 1 to 5, 6 to 20, or more), on how many of the seven days before it you asked any, how many weeks in a row it has reported, the version it reported last, and whether it is its first report of the week, the month or ever. It holds no ID, no question, no answer, no file name and no setting. <code>merud</code> sends it only after a client has shown the notice, writes each report to <code>~/.meru/usage-report.jsonl</code> as sent, and stops when you turn it off or set <code>DO_NOT_TRACK</code>. A new field needs a new report version, and a new version shows the notice again before anything sends. Meru's own metrics and traces still go only to loopback, Meru sends no crash reports, and it never checks for updates (see <a href="#usage-report">The anonymous usage report</a>).</li>
   <li>Any program on this machine can read the <code>/metrics</code> page while it's on. It holds counts, durations and names from small fixed sets: models, routes, servers, tools and outcomes, never a question, a path or a session ID.</li>
   <li>The store is a plain file, readable only by you (mode <code>0600</code>). Back it up or delete it; it's yours.</li>
   <li>Deleting a chat removes its transcript and its content in <code>meru.db</code>; its <code>tool_calls</code> rows stay without arguments or results. An incognito chat writes no transcript, no session rows and no summary, and saves no memory; <code>tool_calls</code> records each of its calls without arguments or results (see <a href="#incognito">Incognito chats</a>).</li>

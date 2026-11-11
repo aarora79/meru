@@ -29,18 +29,28 @@ host does; `docs/faq/usage-report.md` says so.
 
 ## What the Worker accepts
 
-It stores a report only when the body is a JSON object with exactly these seven
-keys and each value on its list. Anything else gets 400 and stores nothing.
+It stores a report only when the body is a JSON object with exactly the keys
+of the version it names, and each value on its list. Version 1 has the first
+seven keys and came from Meru v0.7.6; version 2 has all thirteen and comes from
+v0.7.7 on. Anything else gets 400 and stores nothing.
 
-| Key | Allowed values |
-|-----|----------------|
-| `v` | the number `1` |
-| `meru` | a version such as `0.7.5`, at most 16 characters |
-| `os` | `darwin`, `linux`, `windows` |
-| `arch` | `arm64`, `amd64` |
-| `profile` | `lite`, `full` |
-| `age` | `week`, `month`, `year`, `older` |
-| `questions` | `0`, `1-5`, `6-20`, `21+` |
+| Key | Versions | Allowed values |
+|-----|----------|----------------|
+| `v` | 1, 2 | the number `1` or `2` |
+| `meru` | 1, 2 | a version such as `0.7.7`, at most 16 characters |
+| `os` | 1, 2 | `darwin`, `linux`, `windows` |
+| `arch` | 1, 2 | `arm64`, `amd64` |
+| `profile` | 1, 2 | `lite`, `full` |
+| `age` | 1, 2 | `week`, `month`, `year`, `older` |
+| `questions` | 1, 2 | `0`, `1-5`, `6-20`, `21+` |
+| `active_days` | 2 | `0`, `1-2`, `3-5`, `6-7` |
+| `streak` | 2 | `1`, `2-4`, `5-12`, `13+` |
+| `previous` | 2 | `none`, or a version such as `0.7.6` |
+| `week_first`, `month_first`, `first` | 2 | `true` or `false`, as JSON booleans |
+
+A version 1 row keeps the six later columns empty. The all-time count of
+installs lives in the `counters` table, because the daily clean-up deletes
+rows older than 400 days.
 
 The lists in `worker.js` must match `internal/usagereport`. A change to either
 needs a new report version, and Meru shows its notice again before it sends one.
@@ -76,10 +86,21 @@ on your own machine. Run every command from this folder.
 5. Run `./check.sh` (see below).
 6. In the Cloudflare dashboard, open the Worker, then **Settings →
    Observability**, and confirm that logs are off.
-7. Delete the test rows the checks wrote:
+7. Delete the rows the checks wrote, which all have Meru version `0.0.0`:
    ```sh
-   npx wrangler@4 d1 execute meru-reports --remote --command "DELETE FROM reports"
+   npx wrangler@4 d1 execute meru-reports --remote --command "DELETE FROM reports WHERE meru = '0.0.0'"
    ```
+
+## Moving a database to report version 2
+
+A database made before v0.7.7 needs the six new columns and the counter table.
+Run this once, then deploy the new `worker.js`, before releasing v0.7.7:
+
+```sh
+npx wrangler@4 d1 execute meru-reports --remote --file=migrations/0002_v2.sql
+npx wrangler@4 deploy
+./check.sh
+```
 
 ## Checks after every deploy
 
@@ -87,10 +108,12 @@ on your own machine. Run every command from this folder.
 ./check.sh
 ```
 
-It sends one good report and eleven bad requests or reads, and prints `ok` or
-`FAIL` for each. It exits non-zero if any check fails. Pass an address to check
-another copy, such as `./check.sh http://127.0.0.1:8787` for `wrangler dev`.
-The good report writes one row, so delete test rows before launch.
+It sends a good version 1 and version 2 report and a set of bad requests and
+reads, and prints `ok` or `FAIL` for each. It exits non-zero if any check fails.
+Pass an address to check another copy, such as `./check.sh http://127.0.0.1:8787`
+for `wrangler dev`. The good reports write two rows with Meru version `0.0.0`
+and `first` false, so they never count as new installs; delete them with the
+command in step 7.
 
 The script leaves out the rate limit, because Cloudflare counts per location
 and enforces the limit loosely: on 2026-11-11, the first 429 came after about
@@ -121,5 +144,5 @@ build one with a release version, the way `scripts/release.sh` does:
 
 ```sh
 m=github.com/aarora79/meru
-go build -ldflags "-X $m/internal/obs.releaseVersion=0.7.5 -X $m/internal/about.releaseVersion=0.7.5" -o /tmp/merud ./cmd/merud
+go build -ldflags "-X $m/internal/obs.releaseVersion=v0.7.7 -X $m/internal/about.releaseVersion=v0.7.7" -o /tmp/merud ./cmd/merud
 ```

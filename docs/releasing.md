@@ -90,9 +90,12 @@ build, which also signs a build attestation.
   version, link and time `docs/index.html` holds.
 - Run `collector/check.sh` and confirm the collector answers 204 to the good
   report and every line says `ok`. Each release sends the daily usage report
-  there, so a broken collector loses that release's counts. The good report
-  writes one row; [collector/README.md](../collector/README.md) shows how to
-  delete it.
+  there, so a broken collector loses that release's counts. The good reports
+  write rows with Meru version `0.0.0`;
+  [collector/README.md](../collector/README.md) shows how to delete them. A
+  release that raises the report's version needs the collector to accept it
+  first: run the migration the collector's README names, and deploy, before
+  `make release`.
 
 ## What `make release` does
 

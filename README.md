@@ -61,15 +61,20 @@ are blurred.
 ## What Meru sends about itself
 
 Since v0.7.6, Meru can send one anonymous count a day, and that is the only
-thing it sends about itself. Here is a whole report, about 100 bytes:
+thing it sends about itself. Here is a whole report, about 250 bytes:
 
 ```json
-{"v":1,"meru":"0.7.6","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5"}
+{"v":2,"meru":"0.7.7","os":"darwin","arch":"arm64","profile":"lite","age":"month","questions":"1-5",
+ "active_days":"3-5","streak":"2-4","previous":"0.7.6","week_first":true,"month_first":false,"first":false}
 ```
 
-That's the Meru version, the system and chip, the model set, a rough install age
-and a rough count of yesterday's questions. It holds no ID, no question or answer,
-no file name and no setting.
+That's the Meru version, the system and the chip's family, the model set, a rough
+install age, rough counts of yesterday's questions and of the days you used Meru
+last week, how many weeks in a row it has reported, the version it reported last,
+and whether this is its first report of the week, the month or ever. It holds no
+ID, no question or answer, no file name, no setting and no time of day. Those last
+three let the project count installs per week and month, and in total, without an
+ID; [the FAQ](docs/faq/usage-report.md#how-the-counts-work) shows how.
 
 - **You choose.** A new install asks during setup. An upgrade from an earlier
   release sends nothing until you say yes, and `meru chat` and Meru.app ask you
@@ -84,7 +89,7 @@ no file name and no setting.
 - **Anyone can see the totals** at
   [meru-report.meru-workers.workers.dev](https://meru-report.meru-workers.workers.dev/).
   The collector, a Cloudflare Worker whose code is in [collector/](collector/),
-  stores the date and the seven fields and no IP address.
+  stores the date and the report's fields and no IP address.
 
 Meru sends no crash reports and never checks for updates.
 [docs/faq/usage-report.md](docs/faq/usage-report.md) has the details, and

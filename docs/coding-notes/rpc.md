@@ -626,6 +626,12 @@ send would go, so the clients grey the button out. `Request.Source`
 names the client, and `merud` writes it on the record's line. Every action
 replies with one `usage_report` event, so a client redraws from one answer.
 
+`usagereport.go` in this package holds the words every client uses for the
+report, `UsageReportFields`, and `UsageReportExample`, which writes a report as
+`merud` would send it for a new install. They sit here because `meru chat`,
+`meru setup` and the Mac installer all import `rpc`, so all three say the same
+thing; the desktop page keeps a copy that `TestReportWordsMatch` holds equal.
+
 The event's `UsageReport` field holds a `UsageReportStatus`. `Choice` is
 `"on"`, `"off"` or `""`; `Blocked` is `merud`'s reason, in words a client shows
 as they are, that no report will go now; `Banner` is `BannerAsk` (after an

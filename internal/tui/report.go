@@ -30,7 +30,7 @@ const (
 // The /report box's full notice: what the count holds, then what happens
 // next. The desktop app shows the same words.
 const (
-	reportFields      = "one anonymous count a day: its version, your system and chip, the model set, and rough install age and question count. No ID, no questions, no files."
+	reportFields      = "one anonymous count a day: " + rpc.UsageReportFields
 	reportNewText     = "Meru sends " + reportFields
 	reportFirstText   = " Your first one goes tomorrow."
 	reportAskText     = "Meru can now send " + reportFields + " It stays off unless you say yes."

@@ -193,10 +193,12 @@ copies live in `internal/skills/builtin/`.
    "no cloud-model code path", and narrowed it to near-edge on 2 November 2026
    (#78, [the design](docs/design/model-router.md)).
 2. **No telemetry leaves the machine except the anonymous daily usage report, and
-   no update checks or crash reports, ever.** The report is one fixed set of seven
-   coarse fields, listed in ARCHITECTURE.md, "Anonymous usage report", with no ID
-   and no text. `merud` sends it at most once a day, and only after `meru chat` or
-   Meru.app has shown the notice on an earlier day. It is off for anyone who says
+   no update checks or crash reports, ever.** The report is one fixed set of thirteen
+   coarse fields, listed in ARCHITECTURE.md, "Anonymous usage report", with no ID,
+   no text and no time of day; each is a bucket, a version or a yes-or-no that
+   `merud` works out on the machine. `merud` sends it at most once a day, and only
+   after `meru chat` or Meru.app has shown the notice, on an earlier day unless the
+   user asks for today's with Send today's now. It is off for anyone who says
    no, sets `DO_NOT_TRACK`, or upgraded from a release without it and hasn't said
    yes; the model can never turn it on. A new field needs a new report version,
    and a new version shows the notice again. Only `internal/usagereport` sends it.
@@ -329,7 +331,7 @@ internal/
   jobs/              scheduled jobs (v0.5): five-field cron schedules with every_weeks, the
                      next run and the words for it, catch-up after sleep, and the loop that
                      runs each job one at a time and stops one on request
-  usagereport/       the anonymous daily usage report: its seven fields, the rule for when it
+  usagereport/       the anonymous daily usage report: its thirteen fields, the rule for when it
                      goes, the record in ~/.meru/usage-report.jsonl, and the one HTTP client
                      that sends it
   render/            web_fetch's page reader: a fresh headless Chrome per page that needs

@@ -46,7 +46,8 @@ loopback endpoint, and `merud` refuses to start with any other. An MCP server ov
 Streamable HTTP or an A2A agent may reach another machine only when its config entry
 says `remote = true`. `web_fetch` and `web_search` are the other exceptions, and #2
 covers them. The anonymous daily usage report is the one thing Meru sends about
-itself (#251): one fixed body of seven fields, with no ID and no text, posted only
+itself (#251, #260): one fixed body of thirteen fields, with no ID, no text and no
+time of day, posted only
 by `internal/usagereport` to the collector, over HTTPS, with no proxy and no
 redirects. It goes only when `[usage_report] send = "on"`, `DO_NOT_TRACK` is unset,
 the build is a release, and a client showed the notice on an earlier day. Code
@@ -78,7 +79,7 @@ fails when another package names the collector, and `TestModelCantSetUsageReport
 when a built-in tool can change `[usage_report]`.
 
 **What to check (usage report).** A new field or value without a new `v`, or
-anything in the body beyond the seven fields: an ID, a path, a setting, a time of
+anything in the body beyond the thirteen fields: an ID, a path, a setting, a time of
 day. A send that skips `blocked`, or a path that marks the notice seen without a
 client showing it. A second package that posts the report or names the collector.
 A proxy, a redirect, or a read of the answer beyond its status.

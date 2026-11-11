@@ -25,6 +25,10 @@ func (zeroQuestions) QuestionsBetween(context.Context, time.Time, time.Time) (in
 	return 0, nil
 }
 
+func (zeroQuestions) ActiveDaysBetween(context.Context, time.Time, time.Time) (int, error) {
+	return 0, nil
+}
+
 // newReportTest returns a reportService over a config.toml with no
 // [usage_report] table, as a config from before the report has.
 func newReportTest(t *testing.T) *reportService {
