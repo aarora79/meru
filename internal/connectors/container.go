@@ -546,7 +546,7 @@ func (c *Container) start(ctx context.Context, docker string) error {
 		return c.runNew(ctx, docker)
 	case info.label != c.m.ID:
 		return errForeign
-	case info.image != c.m.Install.Image:
+	case !sameImage(info.image, c.m.Install.Image):
 		c.log.Info("connector image changed; replacing the container", "old", info.image)
 		if _, err := c.docker(ctx, docker, "rm", "--force", c.name); err != nil {
 			return err
@@ -558,6 +558,26 @@ func (c *Container) start(ctx context.Context, docker string) error {
 	}
 	_, err = c.docker(ctx, docker, "start", c.name)
 	return err
+}
+
+// sameImage reports whether got, the image docker inspect names, is the
+// pinned image want. Docker names it as docker run got it. Podman names
+// an image run as name:tag@digest without the tag, as name@digest, so
+// that form counts too: the digest alone fixes the image.
+func sameImage(got, want string) bool {
+	if got == want {
+		return true
+	}
+	name, digest, ok := strings.Cut(want, "@")
+	if !ok {
+		return false
+	}
+	// A tag follows the last ":" after the last "/"; a ":" before that
+	// "/" belongs to a registry's port, as in localhost:5000/searxng.
+	if i := strings.LastIndex(name, ":"); i > strings.LastIndex(name, "/") {
+		name = name[:i]
+	}
+	return got == name+"@"+digest
 }
 
 // runNew runs prepare, then starts a new container from the pinned image.

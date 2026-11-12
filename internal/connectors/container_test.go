@@ -82,7 +82,10 @@ type fakeDocker struct {
 	// listening says whether something answers at the URL at all when
 	// serves is false.
 	listening bool
-	calls     []string
+	// podman makes inspect name the image as Podman does: an image run
+	// as name:tag@digest comes back as name@digest.
+	podman bool
+	calls  []string
 }
 
 // run is the fake Runner.
@@ -115,6 +118,9 @@ func (d *fakeDocker) run(_ context.Context, c Cmd, _ func(string)) (string, erro
 			}
 		}
 		d.image = c.Args[len(c.Args)-1]
+		if name, digest, ok := strings.Cut(d.image, "@"); ok && d.podman {
+			d.image = name[:strings.LastIndex(name, ":")] + "@" + digest
+		}
 		d.serves = d.startServes
 	case "start", "restart":
 		d.running = true
@@ -311,6 +317,43 @@ func TestContainerRestartsAfterItStops(t *testing.T) {
 	waitStatus(t, c, StateOK, "running in the container")
 	if got := d.commands(); got[len(got)-1] != "start" {
 		t.Errorf("last docker command = %v, want start", got)
+	}
+}
+
+// TestContainerRestartsUnderPodman: Podman names the pinned image
+// without its tag, and the supervisor still starts the stopped container
+// rather than removing it as one of another image.
+func TestContainerRestartsUnderPodman(t *testing.T) {
+	d := &fakeDocker{startServes: true, podman: true}
+	c, clock, _ := testContainer(t, d, false)
+	c.Configure(runTable, searxURL, true)
+	waitStatus(t, c, StateOK, "running in the container")
+
+	d.set(func(d *fakeDocker) { d.running, d.serves = false, false })
+	advance(t, clock, containerCheckEvery)
+	advance(t, clock, time.Second)
+	waitStatus(t, c, StateOK, "running in the container")
+	if got := d.commands(); slices.Contains(got, "rm") || got[len(got)-1] != "start" {
+		t.Errorf("docker commands = %v, want start and no rm", got)
+	}
+}
+
+// TestSameImage checks the image names that count as the pin.
+func TestSameImage(t *testing.T) {
+	const pin = "docker.io/searxng/searxng:2026.9.29-4e2c1ea7f@sha256:abc"
+	for _, tc := range []struct {
+		got  string
+		want bool
+	}{
+		{pin, true}, // Docker keeps the name as given
+		{"docker.io/searxng/searxng@sha256:abc", true},  // Podman drops the tag
+		{"docker.io/searxng/searxng@sha256:def", false}, // another digest
+		{"docker.io/other/searxng@sha256:abc", false},   // another image
+		{"docker.io/searxng/searxng:latest", false},
+	} {
+		if got := sameImage(tc.got, pin); got != tc.want {
+			t.Errorf("sameImage(%q) = %v, want %v", tc.got, got, tc.want)
+		}
 	}
 }
 
