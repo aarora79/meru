@@ -910,7 +910,12 @@ Leaving `ModeRun` first stops Meru's own container with `docker stop`.
 
 `start` reads `inspect` and picks: `runNew` when no container exists, `docker
 rm --force` then `runNew` when the image is an older pin, `docker restart` when
-it runs, and `docker start` when it is stopped. `runArgs` builds `docker run`'s
+it runs, and `docker start` when it is stopped. `sameImage` decides "an older
+pin". Docker names the image as `docker run` got it,
+`name:tag@sha256:<digest>`, but Podman drops the tag and says
+`name@sha256:<digest>`. `sameImage` accepts both forms, since the digest alone
+fixes the image; without it, Podman's container went and came back new at
+every start. `runArgs` builds `docker run`'s
 arguments from the manifest: the name, the label, `--restart no`, `--publish`
 from the URL's host and port and `launch.port`, each volume with `{meru_dir}`
 filled in, and the environment in sorted order.
@@ -935,12 +940,29 @@ keeps one container's state and records each command, and a fake check.
 `TestContainerStartsMeruContainer` checks the pull, the settings, and every
 `docker run` argument. `TestContainerStartFailsBacksOff` moves the fake clock
 through the 1, 2, 4 and 8 second waits to `failed`.
-`TestContainerRestartsAfterItStops` stops Meru's container at a minute's check.
+`TestContainerRestartsAfterItStops` stops Meru's container at a minute's check,
+and `TestContainerRestartsUnderPodman` does the same with Podman's image name.
+`TestSameImage` lists the names that count as the pin.
 `TestContainerDocker` covers Docker missing and stopped. `TestContainerExternal`
 checks that a server Meru doesn't own, working or not, in run or watch mode,
 and a foreign `meru-searxng` never see a `pull`, `run`, `start`, `restart`,
 `stop` or `rm`. `TestContainerOffStopsOurs` checks that turning the connector
 off stops Meru's container and nothing else.
+
+`TestIntegrationContainer` (`container_integration_test.go`, build tag
+`integration`) runs the real SearXNG connector twice, once with only
+`docker` in `DockerPaths` and once with only `podman`:
+
+```sh
+go test -tags integration -run TestIntegrationContainer -v ./internal/connectors/
+```
+
+Each run pulls the pinned image, starts the container, and runs one search.
+It then stops the container by hand, has `Recheck` start the same one again,
+and turns the connector off. The test names its container
+`meru-searxng_itest` and uses `127.0.0.1:18888`, so a real Meru's
+`meru-searxng`, or your own SearXNG on 8888, stays as it is. A runtime that
+isn't installed, or whose engine doesn't answer, is skipped; `-v` says which.
 
 ### service.go: a program that speaks plain HTTP
 
