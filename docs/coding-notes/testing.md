@@ -1,6 +1,6 @@
 # testing
 
-**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`, `render_test.go`),
+**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`, `render_test.go`, `vault_test.go`),
 `internal/testutil/fakeollama/` (`fake.go`, `api.go`, `wire.go`), `cmd/fakeollama/` (`main.go`)
 **Milestone:** v0.1
 **Architecture:** [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -188,6 +188,15 @@ only the user turns the report on or off. `layout_test.go` keeps
 `internal/usagereport` out of both clients and the Mac installer, which reach
 the report only through the `usage_report` op or by writing the choice to
 config.
+
+`vault_test.go` guards the made-up Obsidian vault in `testdata/vault`, which
+holds no Go and so no rule above covers it. `TestVaultNamesAreMadeUp` reads
+every file there and fails when one names an entry of
+`testdata/vault_old_names.txt`: the real hotel, its street address and the
+other real-sounding businesses an earlier draft of the vault used. It reads
+the Markdown, text, CSV and PDF files as bytes, since the vault's PDFs keep
+their text uncompressed. A Word file is a ZIP of compressed parts, so
+`vaultText` opens it with `archive/zip` and reads each XML part.
 
 `pins_test.go` checks that every program Meru installs, or tells you to install,
 names one exact version. It reads the connector manifests, the string literals in

@@ -10,30 +10,30 @@ allergy plan, which we left with them).
 
 ## Flights
 - Example Air, booked 2026-05-20, confirmation XXX999, $2,486.60 for two, economy comfort
-- Out: PDX 2026-09-11 13:40, AMS 2026-09-12 08:55 (seats 22A, 22B)
-- Back: AMS 2026-09-19 17:05, PDX 2026-09-19 18:50 (seats 23C, 23D)
+- Out: PDX 2026-09-11 10:05, AMS 2026-09-12 07:20, one stop (seats 31E, 31F)
+- Back: AMS 2026-09-19 16:20, PDX 2026-09-19 21:45, one stop (seats 30E, 30F)
 - Known Traveler Number on both bookings (mine 99999999)
 
 ## Hotel
-**Example Hotel Amsterdam Centraal Station**, Oosterdokstraat 4, next to
-Centraal station, on the IJ waterfront.
+**Example Hotel Amsterdam Oost**, Examplestraat 1, a made-up street by a
+park in Amsterdam-Oost.
 - Confirmation 9999999999; Example Rewards number 999999999 (Gold)
 - 7 nights, check-in Sat 2026-09-12, check-out Sat 2026-09-19 (late checkout 14:00)
-- **Room 914, 9th floor**, King Deluxe with IJ river view. Booked a standard
+- **Room 707, 7th floor**, King Deluxe with a park view. Booked a standard
   king; Gold status upgraded us. Corner room at the end of the hall, away from
   the lifts, as I asked in the booking note ("quiet room, high floor").
-- First room offered was 512 on the 5th floor, facing the station tracks; we
+- First room offered was 304 on the 3rd floor, facing the car park; we
   swapped within the hour, before unpacking.
 - Room safe PIN we set: 9999 (Priya's anniversary gift hid in there until the 17th).
 - Wi-Fi: network "ExampleHotel-Guest", room number and surname to log in.
-- FakeLounge bar on the 11th floor: sunset view over the IJ, went three times.
+- FakeLounge, the rooftop bar: sunset view over the park, went three times.
 - Rate EUR 289 a night plus 12.5% tourist tax. Hotel total EUR 2,824.24, see
-  the folio: `Receipts/hotel-folio-example-hotel-room-914.pdf`.
+  the folio: `Receipts/hotel-folio-example-hotel-room-707.pdf`.
 
 ## Itinerary
 | Day | What |
 | --- | --- |
-| Sat 12 | Land 08:55, train to Centraal, room 914 ready at 13:00 thanks to Gold. Walk along the IJ, FakeLounge at sunset |
+| Sat 12 | Land 07:20, train and tram to the hotel, room 707 ready at 13:00 thanks to Gold. Walk in the park, FakeLounge at sunset |
 | Sun 13 | Notreal food walk in the Jordaan (10:30-13:30), Rijksmuseum 15:00 slot |
 | Mon 14 | Anne Frank House 09:15 slot (booked six weeks ahead), evening canal cruise, rijsttafel at Warung Example |
 | Tue 15 | Bikes to De Pijp and Albert Cuyp Market, ferry to Noord, cheese and beer tasting at Fake Kaasbar. Champagne at FakeLounge |

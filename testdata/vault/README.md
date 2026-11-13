@@ -30,6 +30,11 @@ mistakes them for a real person's data:
   `example-password-1`.
 - Cities, museums and parks keep their real names, as do the card networks
   on the receipts.
+- The hotel, its rooftop bar and the flights are made up too; only the city,
+  its museums and its markets are real.
+
+`TestVaultNamesAreMadeUp` in `internal/policy` fails the build if a name from
+an earlier draft of this vault, such as a real hotel, comes back.
 
 What the indexer should do with each kind of file:
 

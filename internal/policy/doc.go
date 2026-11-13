@@ -3,7 +3,7 @@
 // AGENTS.md, so the rules hold on every run, not only when a reviewer spots a
 // problem.
 //
-// The tests check six things:
+// The tests check seven things:
 //
 //   - No Go file imports a cloud-model SDK, and go.mod requires none
 //     (non-negotiable 1, ARCHITECTURE.md "Privacy boundary").
@@ -28,6 +28,8 @@
 //     scripts/, deploy/ and the code blocks in docs/. A short list names
 //     the places that break the rule today, until the connectors replace
 //     them (issue #87). No client or installer imports internal/connectors.
+//   - The made-up vault in testdata/vault names none of the real places
+//     and businesses an earlier draft used (vault_test.go).
 //
 // The deny-lists live in testdata/*.txt, one entry per line, so that no Go
 // string literal in this package names a provider host. The URL check reads
