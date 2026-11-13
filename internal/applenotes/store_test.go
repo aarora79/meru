@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -272,8 +273,10 @@ func TestOpenErrors(t *testing.T) {
 		t.Errorf("missing file: err = %v, want ErrNoDatabase", err)
 	}
 	// A file merud may not read stands in for a missing Full Disk Access
-	// grant. root reads anything, so the case means nothing there.
-	if os.Geteuid() != 0 {
+	// grant. root reads anything, so the case means nothing there. On
+	// Windows, chmod 0 only sets the read-only flag, so the file stays
+	// readable; Apple Notes exists only on macOS anyway.
+	if os.Geteuid() != 0 && runtime.GOOS != "windows" {
 		path := makeDB(t, modern, sample)
 		if err := os.Chmod(path, 0); err != nil {
 			t.Fatal(err)

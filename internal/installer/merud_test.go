@@ -25,12 +25,16 @@ func TestMerudPlistIsDeployCopy(t *testing.T) {
 	}
 }
 
-// TestMerudPlist checks the paths the installer fills in.
+// TestMerudPlist checks the paths the installer fills in. MerudPlist builds
+// merud's path with filepath, so the test does too: on Windows, where the
+// Mac installer never runs, it comes out with "\". The log paths come from
+// the template with "/".
 func TestMerudPlist(t *testing.T) {
-	plist := MerudPlist(Paths{Home: "/Users/dana"})
+	home := "/Users/dana"
+	plist := MerudPlist(Paths{Home: home})
 	for _, want := range []string{
 		"<string>com.meru.merud</string>",
-		"<string>/Users/dana/.local/bin/merud</string>",
+		"<string>" + filepath.Join(home, ".local", "bin", "merud") + "</string>",
 		"<string>/Users/dana/.meru/merud.out.log</string>",
 		"<string>/Users/dana/.meru/merud.err.log</string>",
 	} {

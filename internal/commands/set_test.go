@@ -117,8 +117,15 @@ func TestAuditArgs(t *testing.T) {
 // TestCallRefusesBadArgs checks that a value outside its limits comes back
 // as a result the model reads, with no program run.
 func TestCallRefusesBadArgs(t *testing.T) {
-	s, _ := testSet(t)
-	res, err := s.Call(context.Background(), "cmd.git-log", json.RawMessage(`{"repo":"/etc","count":5}`))
+	s, home := testSet(t)
+	// The home folder itself: absolute on every system, and outside
+	// ~/repos, which /etc isn't on Windows, where it has no drive.
+	// json.Marshal escapes a Windows path's backslashes.
+	args, err := json.Marshal(map[string]any{"repo": home, "count": 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Call(context.Background(), "cmd.git-log", args)
 	if err != nil || !res.IsError || !strings.Contains(res.Text, "outside") || !strings.Contains(res.Text, "didn't run") {
 		t.Errorf("Call = %+v, %v", res, err)
 	}

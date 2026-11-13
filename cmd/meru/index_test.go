@@ -87,6 +87,10 @@ func TestIndexCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Absolute paths from t.TempDir are absolute on every system; "/home/u"
+	// isn't on Windows, where it has no drive.
+	notes := filepath.Join(t.TempDir(), "notes")
+	outside := filepath.Join(t.TempDir(), "outside")
 	tests := []struct {
 		name       string
 		args       []string
@@ -96,9 +100,9 @@ func TestIndexCommand(t *testing.T) {
 		wantErrOut string
 	}{
 		{"rescan", []string{"index"}, 0, "", "1 file indexed (2 chunks), 2 unchanged, 0 removed, 0 failed, 0 skipped, in 40ms\n", "scanning 1 folder"},
-		{"one folder", []string{"index", "/home/u/notes"}, 0, "/home/u/notes", "1 file indexed", ""},
+		{"one folder", []string{"index", notes}, 0, notes, "1 file indexed", ""},
 		{"relative folder", []string{"index", "notes"}, 0, filepath.Join(cwd, "notes"), "1 file indexed", ""},
-		{"outside", []string{"index", "/tmp/outside"}, 1, "/tmp/outside", "", "restart merud"},
+		{"outside", []string{"index", outside}, 1, outside, "", "restart merud"},
 		{"status", []string{"index", "-status"}, 0, "", "Folders:    ~/notes\n" +
 			"Index:      3 files, 7 chunks, 5 vectors\n" +
 			"            re-indexing with the search model: 5 of 7 chunks done; keyword search covers the rest until then\n" +

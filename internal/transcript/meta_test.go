@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -154,9 +155,14 @@ func TestFoldersFile(t *testing.T) {
 	if got, err = LoadFolders(dir); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("LoadFolders = %v, %v", got, err)
 	}
+	// Windows has no mode bits and Go reports its files as 0666, so the
+	// mode check runs only where modes exist.
 	info, err := os.Stat(filepath.Join(dir, FoldersFile))
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Errorf("folders.json mode = %v, %v", info.Mode(), err)
+	if err != nil {
+		t.Fatalf("folders.json: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("folders.json mode = %v", info.Mode())
 	}
 	if err := os.WriteFile(filepath.Join(dir, FoldersFile), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)

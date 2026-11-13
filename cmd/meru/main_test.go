@@ -17,6 +17,15 @@ import (
 	"github.com/aarora79/meru/internal/rpc"
 )
 
+// setHome points the home folder at dir for the rest of the test:
+// os.UserHomeDir reads $HOME on macOS and Linux and %USERPROFILE% on
+// Windows, so it sets both.
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 // startServer serves h on a short socket path until the test ends.
 func startServer(t *testing.T, h rpc.Handler) string {
 	t.Helper()

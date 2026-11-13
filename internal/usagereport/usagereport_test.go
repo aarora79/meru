@@ -292,6 +292,11 @@ func TestTickRecordsFailure(t *testing.T) {
 // TestAppendEntryMode checks that the file ends up 0600, whether
 // appendEntry creates it or finds it with a looser mode.
 func TestAppendEntryMode(t *testing.T) {
+	// Windows has no mode bits: Go reports its files as 0666, and the
+	// access list on the user's profile folder guards the file instead.
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes")
+	}
 	path := filepath.Join(t.TempDir(), FileName)
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatal(err)

@@ -83,7 +83,10 @@ func TestIndexerWithStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Paths sorts by byte, and Windows' "\" sorts after "2", so notes2's
+	// file comes first there; sorting want gives the order on any system.
 	want := []string{filepath.Join(notes, "a.md"), filepath.Join(notes, "empty.md"), filepath.Join(notes2, "c.md")}
+	slices.Sort(want)
 	if len(paths) != len(want) {
 		t.Fatalf("paths = %v, want %v", paths, want)
 	}
