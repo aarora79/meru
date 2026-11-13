@@ -492,14 +492,9 @@ func missingFiles(text string) []string {
 	var out []string
 	for _, link := range fileLink.FindAllString(withoutCode(text), -1) {
 		// A link at the end of a sentence may carry its stop.
-		u, err := url.Parse(strings.TrimRight(link, ".,;:!?"))
-		if err != nil || u.Path == "" {
+		path, ok := linkPath(strings.TrimRight(link, ".,;:!?"))
+		if !ok {
 			continue
-		}
-		path := u.Path
-		// A Windows link, file:///C:/Users/…, parses to the path /C:/Users/….
-		if len(path) > 2 && path[0] == '/' && path[2] == ':' {
-			path = path[1:]
 		}
 		path = filepath.FromSlash(path)
 		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && !slices.Contains(out, path) {
@@ -507,6 +502,40 @@ func missingFiles(text string) []string {
 		}
 	}
 	return out
+}
+
+// linkPath returns the path a file:// link names, with forward slashes,
+// and false when the link doesn't parse or names no path. Windows links
+// come in two forms, and both keep their drive:
+//
+//   - file:///C:/Users/x parses to the path /C:/Users/x, so the leading
+//     slash goes.
+//   - file://C:/Users/x, which Go's url.URL writes for a path that starts
+//     with a drive, and which models write too, parses with the drive as
+//     the host: host C: and path /Users/x. The drive goes back in front.
+func linkPath(link string) (string, bool) {
+	u, err := url.Parse(link)
+	if err != nil || u.Path == "" {
+		return "", false
+	}
+	path := u.Path
+	switch {
+	case isDrive(u.Host):
+		path = u.Host + path
+	case len(path) > 2 && path[0] == '/' && isDrive(path[1:3]):
+		path = path[1:]
+	}
+	return path, true
+}
+
+// isDrive reports whether s is a Windows drive, a letter and a colon such
+// as "C:".
+func isDrive(s string) bool {
+	if len(s) != 2 || s[1] != ':' {
+		return false
+	}
+	c := s[0] | 0x20 // 0x20 turns an upper-case ASCII letter into lower case
+	return c >= 'a' && c <= 'z'
 }
 
 // missingNotice returns the warning a client shows under an answer that

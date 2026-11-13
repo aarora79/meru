@@ -434,6 +434,30 @@ func TestMissingFiles(t *testing.T) {
 	}
 }
 
+// TestLinkPath checks the path linkPath reads from each form of file://
+// link, the Windows ones included, on every system.
+func TestLinkPath(t *testing.T) {
+	tests := []struct {
+		link   string
+		want   string
+		wantOK bool
+	}{
+		{"file:///home/dana/plan.html", "/home/dana/plan.html", true},
+		{"file:///C:/Users/dana/plan.html", "C:/Users/dana/plan.html", true},
+		{"file://C:/Users/dana/plan.html", "C:/Users/dana/plan.html", true},
+		{"file://d:/notes/my%20plan.html", "d:/notes/my plan.html", true},
+		{"file://", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.link, func(t *testing.T) {
+			got, ok := linkPath(tt.link)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("linkPath(%q) = %q, %v; want %q, %v", tt.link, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 // TestMissingFileNotice checks a whole turn: an answer that links a file
 // no tool wrote gets the notice, even though it claims nothing in words
 // and the turn called a tool.

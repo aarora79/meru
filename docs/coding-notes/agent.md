@@ -1217,13 +1217,18 @@ if missing := missingFiles(rep.text); len(missing) > 0 {
 
 `missingFiles` finds each `file://` URL with the regular expression `fileLink`,
 outside code blocks, trims a stop that ends the sentence, and parses it with
-`net/url`, which turns `%20` back into a space. `filepath.FromSlash` turns the
-URL's `/` into the system's separator, and a Windows link such as
-`file:///C:/Users/…` loses the `/` before its drive letter. `os.Stat` then
+`net/url`, which turns `%20` back into a space. `linkPath` reads the path
+from the parsed URL and keeps a Windows drive in either of its two forms.
+`file:///C:/Users/…` parses to the path `/C:/Users/…`, so the `/` before the
+drive goes. `file://C:/Users/…`, which Go's `url.URL` writes and models write
+too, parses with `C:` as the host and `/Users/…` as the path, so the drive
+goes back in front. `filepath.FromSlash` turns the URL's `/` into the
+system's separator. `os.Stat` then
 asks for the file. Only `fs.ErrNotExist` counts, checked with `errors.Is`,
 so a folder the user can't open doesn't raise a false alarm. The notice names
 the path: "The answer links …/dashboard.html, which doesn't exist on this
-computer." `TestMissingFiles` covers links that are there, missing, bare,
+computer." `TestLinkPath` checks each form of link, the Windows ones
+included, on every system. `TestMissingFiles` covers links that are there, missing, bare,
 with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.
