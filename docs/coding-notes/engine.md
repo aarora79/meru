@@ -224,8 +224,13 @@ on its own if the model isn't there (#211).
 
 **Ollama stopped.** When nothing listens at Ollama's address, the operating
 system refuses the connection. `do` tests the error from `client.Do` with
-`errors.Is(err, syscall.ECONNREFUSED)` and then wraps it in `ErrOllamaDown`
-too. `fmt.Errorf` takes two `%w` verbs, so `errors.Is` finds either error in
+`errors.Is(err, connRefused)` and then wraps it in `ErrOllamaDown`
+too. `connRefused` differs by system, so two short files hold it, picked by
+build tag: `refused_other.go` sets it to `syscall.ECONNREFUSED` on macOS and
+Linux, and `refused_windows.go` to `syscall.Errno(10061)`, Windows Sockets'
+`WSAECONNREFUSED`. On Windows, `syscall.ECONNREFUSED` is a stand-in value
+that no socket call returns, so the old test never matched there and `merud`
+never saw that Ollama had stopped. `fmt.Errorf` takes two `%w` verbs, so `errors.Is` finds either error in
 the chain. `merud` tests for `ErrOllamaDown` and tells the user to start
 Ollama.
 
