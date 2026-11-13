@@ -1,0 +1,17 @@
+# Names that must never come back into the test vault in testdata/vault.
+# Each is a real place or business, or a name from an earlier draft of the
+# vault: a real hotel and its street address, a real-sounding clinic, bank
+# and companies, and an old accountant's name. The vault's README says every
+# name in it is made up, and TestVaultNamesAreMadeUp holds it to that. The
+# match is a case-insensitive substring. Text after "#" is a comment.
+
+DoubleTree
+Hilton
+Oosterdok
+Hawthorne Family
+Brightline
+Cedar Ridge
+Canal & Crumb
+Lindengracht 41
+leeortiz
+Willamette

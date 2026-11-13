@@ -1,6 +1,6 @@
 date,vendor,category,eur,usd_posted,paid_with,business
 2026-09-12,NS train Schiphol to Centraal (2),transport,12.80,15.00,joint visa 1111,no
-2026-09-12,"Example Supermarkt Centraal (snacks, water)",groceries,18.65,21.86,joint visa 1111,no
+2026-09-12,"Example Supermarkt Oost (snacks, water)",groceries,18.65,21.86,joint visa 1111,no
 2026-09-13,"Notreal Food Tours, Jordaan walk (2)",food tour,178.00,208.62,joint visa 1111,no
 2026-09-13,Rijksmuseum tickets (2),sightseeing,50.00,58.60,joint visa 1111,no
 2026-09-14,Anne Frank House tickets (2),sightseeing,32.00,37.50,joint visa 1111,no
@@ -18,6 +18,6 @@ date,vendor,category,eur,usd_posted,paid_with,business
 2026-09-17,"Restaurant Example 41, anniversary dinner",dining,312.00,365.66,joint visa 1111,no
 2026-09-18,Fakemarkt West food hall,dining,46.80,54.85,joint visa 1111,no
 2026-09-18,"Fake Souvenirs (Delft blue vase, tiles)",shopping,84.00,98.45,joint visa 1111,no
-2026-09-19,"Example Hotel Amsterdam Centraal Station, folio 99999999",lodging,2824.24,3310.01,joint visa 1111,no
+2026-09-19,"Example Hotel Amsterdam Oost, folio 99999999",lodging,2824.24,3310.01,joint visa 1111,no
 2026-09-19,NS train Centraal to Schiphol (2),transport,12.80,15.00,joint visa 1111,no
 2026-05-20,Example Air PDX-AMS round trip (2),flights,,2486.60,joint visa 1111,no

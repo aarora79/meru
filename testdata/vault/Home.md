@@ -20,7 +20,7 @@ My second brain. Everything personal and everything for [[Testbed Consulting]].
 - [[2026-10-20]], [[2026-10-22]], [[2026-10-24]], [[2026-10-27]]
 
 ## Travel
-- [[Amsterdam trip 2026]] (10th anniversary, Example Hotel room 914), [[Amsterdam food notes]]
+- [[Amsterdam trip 2026]] (10th anniversary, Example Hotel room 707), [[Amsterdam food notes]]
 
 ## Health (private)
 - [[Medications and history]], [[Therapy notes]], [[Mateo - allergy plan]]
