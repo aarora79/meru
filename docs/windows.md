@@ -89,3 +89,75 @@ setting off:
 ```powershell
 git clone -c core.autocrlf=false https://github.com/aarora79/meru.git
 ```
+
+## 3. Web search without containers
+
+Meru searches the web through SearXNG, which ships as a Linux container. On
+Windows, Docker and Podman run Linux containers inside a small Linux virtual
+machine, through WSL2 or Hyper-V, so the computer must let Windows start a
+virtual machine. A desktop PC with virtualization turned on can. An EC2
+instance can only on the types with nested virtualization, and the GPU types,
+such as the `g6e.xlarge`, aren't among them
+([AWS docs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/amazon-ec2-nested-virtualization.html)).
+Docker Engine on Windows Server runs only Windows containers.
+
+On such a machine, SearXNG can run on Python instead. It isn't a setup
+SearXNG supports, and Meru doesn't start or restart it, so use it for
+testing. The steps take the commit Meru pins in
+`internal/connectors/manifests/searxng.toml`:
+
+```powershell
+winget install --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
+$py = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+$sx = "$env:USERPROFILE\searxng"
+
+# Git for Windows can't check out SearXNG: a few Linux server templates
+# have ":" in their names. GitHub's archive of the commit, minus those
+# templates, unpacks fine.
+New-Item -ItemType Directory -Force $sx | Out-Null
+curl.exe -fsSL -o "$sx.tar.gz" https://github.com/searxng/searxng/archive/4e2c1ea7f.tar.gz
+tar -xzf "$sx.tar.gz" -C $sx --strip-components=1 --exclude='*/utils/templates/*'
+Remove-Item "$sx.tar.gz"
+
+& $py -m venv "$sx\.venv"
+& "$sx\.venv\Scripts\python.exe" -m pip install -r "$sx\requirements.txt"
+```
+
+`searx/valkeydb.py` imports `pwd`, a module only Unix has, to name the user
+in one error message about the Valkey database, which this setup doesn't
+use. Make the import optional:
+
+```python
+try:
+    import pwd
+except ImportError:
+    pwd = None
+```
+
+and further down, where it reads `_pw = pwd.getpwuid(os.getuid())`, write
+`_pw = pwd.getpwuid(os.getuid()) if pwd else None`, and in the log line after
+it, `_pw.pw_name if _pw else "?"`.
+
+Write `%USERPROFILE%\.meru\searxng\settings.yml` with Meru's settings, from
+`SearXNGSettings` in `internal/catalog/searxngsettings.go`, and add these two
+lines under `server:`, which the container sets up otherwise:
+
+```yaml
+  bind_address: "127.0.0.1"
+  port: 8888
+```
+
+Then start SearXNG, check that it answers, and restart `merud`, which looks
+for SearXNG only when it starts:
+
+```powershell
+$env:SEARXNG_SETTINGS_PATH = "$env:USERPROFILE\.meru\searxng\settings.yml"
+Start-Process "$sx\.venv\Scripts\python.exe" -ArgumentList '-m','searx.webapp' -WorkingDirectory $sx -WindowStyle Hidden
+Invoke-RestMethod "http://127.0.0.1:8888/search?q=test&format=json" | Select-Object -ExpandProperty results | Select-Object -First 3 title
+Stop-Process -Name merud; Start-Process merud -WindowStyle Hidden
+```
+
+The `merud` log then says "Web search uses the SearXNG already running at
+http://127.0.0.1:8888." After a reboot, run the last block again. From a
+cloud machine, some engines, such as Brave, DuckDuckGo and Wikipedia, refuse
+searches as too many; the rest answer.
