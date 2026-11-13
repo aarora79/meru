@@ -58,9 +58,12 @@ func tableTools(t *testing.T) (*Tools, string) {
 }
 
 // callTable calls analyze_table with args, where %s stands for the folder.
+// The folder goes in with forward slashes: a Windows path such as
+// C:\Users\… would put \U, a bad escape, inside the JSON string, and Windows
+// reads / as a separator too.
 func callTable(t *testing.T, tools *Tools, root, args string) dispatch.Result {
 	t.Helper()
-	return callTool(t, tools, context.Background(), AnalyzeTable, strings.ReplaceAll(args, "%s", root))
+	return callTool(t, tools, context.Background(), AnalyzeTable, strings.ReplaceAll(args, "%s", filepath.ToSlash(root)))
 }
 
 func TestAnalyzeTableOffered(t *testing.T) {

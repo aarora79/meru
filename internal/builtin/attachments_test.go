@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,15 @@ func TestAttachmentText(t *testing.T) {
 	}
 	const folio = "Dana_Reyes_folio_3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f.pdf"
 	pages := []string{"--- Meru read " + folio, "--- page 1 ---\nHarvest report for the orchard", "--- page 2 ---\nThe pear crop doubled"}
+	// att is the end of the attachments folder's path with the system's
+	// separator on both sides: /attachments/ or \attachments\.
+	att := string(filepath.Separator) + attachmentsFolder + string(filepath.Separator)
+	// quotedTail returns the end of a path as the result quotes it, with a
+	// Windows backslash doubled and the closing quote, but not the opening
+	// one, since the path's start isn't known here.
+	quotedTail := func(tail string) string {
+		return strconv.Quote(tail)[1:]
+	}
 	// result is what the google server says after it saves a file.
 	result := func(name string) string {
 		return "Attachment downloaded successfully!\nFilename: folio.pdf\nSaved filename: " + name + "\nSize: 82.6 KB\n\nThe file will expire after 1 hour."
@@ -82,18 +92,18 @@ func TestAttachmentText(t *testing.T) {
 		count int               // how many "Saved at" lines; 0 means 1 unless none
 	}{
 		{name: "a fresh pdf", files: map[string]string{folio: string(pdf)}, text: result(folio),
-			want: append([]string{"Saved at ", "/attachments/" + folio + ". Meru read all of it"}, pages...)},
+			want: append([]string{"Saved at ", att + folio + ". Meru read all of it"}, pages...)},
 		{name: "an old pdf", files: map[string]string{folio: string(pdf)}, old: true, text: result(folio), none: true},
 		{name: "a name not in the folder", files: map[string]string{folio: string(pdf)}, text: result("Dana_Reyes_receipt.pdf"), none: true},
 		{name: "a symlink", link: "folio_link.md", text: result("folio_link.md"),
-			want: []string{"/attachments/folio_link.md. Meru can't read it: symbolic link."}},
+			want: []string{att + "folio_link.md. Meru can't read it: symbolic link."}},
 		{name: "a picture", files: map[string]string{"IMG_0584_d4d0.jpeg": "\xff\xd8\xff"}, text: result("IMG_0584_d4d0.jpeg"),
-			want: []string{"/attachments/IMG_0584_d4d0.jpeg. It's a picture: look at it with view_image", `<img src="`}},
+			want: []string{att + "IMG_0584_d4d0.jpeg. It's a picture: look at it with view_image", `<img src="`}},
 		{name: "a file type Meru doesn't read", files: map[string]string{"folio.zip": "PK"}, text: result("folio.zip"),
-			want: []string{"/attachments/folio.zip. Meru can't read it: "}},
+			want: []string{att + "folio.zip. Meru can't read it: "}},
 		{name: "a long file is cut", files: map[string]string{"folio.md": longText()}, text: result("folio.md"),
 			want: []string{"Read it with read_file; the text below is its first part.", "--- Meru read folio.md (12000 of 30000 characters) ---",
-				"[18000 more characters. To read on, call read_file with path ", "/attachments/folio.md\" and offset 12000.]"}},
+				"[18000 more characters. To read on, call read_file with path ", quotedTail(att+"folio.md") + " and offset 12000.]"}},
 		{name: "a long result leaves less room", files: map[string]string{"folio.md": longText()},
 			// Words, not one long run of letters: dispatch would take a
 			// run that long for base64 and swap it for a short note.

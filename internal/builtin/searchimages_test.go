@@ -75,7 +75,9 @@ func TestSearchImagesTool(t *testing.T) {
 	if s.got.Text != "garden beds" || s.got.Image != nil || s.limit != defaultImageLimit {
 		t.Errorf("searched %+v with limit %d", s.got, s.limit)
 	}
-	if !strings.Contains(res.Text, "[1] "+filepath.Join(dir, "beds.png")+" (image)") || len(res.Sources) != 1 || res.Sources[0].Kind != "image" {
+	// show writes the path as the tool does: ~/... when the folder is under
+	// the home folder, as a temp folder is on Windows.
+	if !strings.Contains(res.Text, "[1] "+tools.show(filepath.Join(dir, "beds.png"))+" (image)") || len(res.Sources) != 1 || res.Sources[0].Kind != "image" {
 		t.Errorf("result = %q, sources %+v", res.Text, res.Sources)
 	}
 
@@ -104,15 +106,22 @@ func TestSearchImagesRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	tools := imageTools(t, dir, &fakeImageSearcher{})
+	// image returns the JSON arguments for a search like the picture at p.
+	// json.Marshal escapes the path, so a Windows path's backslashes stay
+	// valid JSON.
+	image := func(p string) string {
+		b, _ := json.Marshal(map[string]string{"image": p})
+		return string(b)
+	}
 	tests := []struct {
 		name, args, want string
 	}{
 		{"nothing to search for", `{}`, "pass query"},
-		{"outside the folders", `{"image":"` + filepath.Join(away, "outside.png") + `"}`, "outside the folders"},
-		{"a secret's name", `{"image":"` + filepath.Join(dir, "credentials.png") + `"}`, "off limits"},
-		{"a link", `{"image":"` + filepath.Join(dir, "link.png") + `"}`, "off limits"},
-		{"not an image by name", `{"image":"` + filepath.Join(dir, "notes.md") + `"}`, "isn't a PNG"},
-		{"not an image by content", `{"image":"` + filepath.Join(dir, "fake.png") + `"}`, "isn't an image"},
+		{"outside the folders", image(filepath.Join(away, "outside.png")), "outside the folders"},
+		{"a secret's name", image(filepath.Join(dir, "credentials.png")), "off limits"},
+		{"a link", image(filepath.Join(dir, "link.png")), "off limits"},
+		{"not an image by name", image(filepath.Join(dir, "notes.md")), "isn't a PNG"},
+		{"not an image by content", image(filepath.Join(dir, "fake.png")), "isn't an image"},
 		{"limit out of range", `{"query":"x","limit":99}`, "out of range"},
 	}
 	for _, tt := range tests {

@@ -4,6 +4,7 @@
 package rpc
 
 import (
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -56,6 +57,28 @@ func TestCited(t *testing.T) {
 	}
 	if got := Cited("[1]", nil); got != nil {
 		t.Errorf("Cited with no sources = %v, want nil", got)
+	}
+}
+
+// TestURLPath checks the path URLPath reads from each form of file://
+// URL, the Windows ones included, on every system.
+func TestURLPath(t *testing.T) {
+	tests := []struct{ link, want string }{
+		{"file:///home/dana/plan.html", "/home/dana/plan.html"},
+		{"file:///C:/Users/dana/plan.html", "C:/Users/dana/plan.html"},
+		{"file://C:/Users/dana/plan.html", "C:/Users/dana/plan.html"},
+		{"file://d:/notes/my%20plan.html", "d:/notes/my plan.html"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.link, func(t *testing.T) {
+			u, err := url.Parse(tt.link)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := URLPath(u); got != tt.want {
+				t.Errorf("URLPath(%q) = %q, want %q", tt.link, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -136,6 +137,11 @@ func TestNotesTools(t *testing.T) {
 func TestNotesNoAccess(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads any file")
+	}
+	// On Windows chmod only sets the read-only flag, so the file stays
+	// readable. The Notes app runs only on macOS, so the skip loses nothing.
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod can't make a file unreadable on Windows")
 	}
 	path := notesDB(t)
 	// A file merud may not read stands in for a missing Full Disk Access

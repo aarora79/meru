@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // maxPictureBytes caps one picture put into a page, and maxPageBytes the
@@ -154,16 +156,18 @@ func (t *Tools) localPicture(rel, ref string) (pic, why string) {
 		if err != nil {
 			return "", "not a file:// URL Meru can read"
 		}
-		ref = u.Path
+		// rpc.URLPath keeps a Windows drive in either form of link,
+		// file:///C:/x or file://C:/x.
+		ref = rpc.URLPath(u)
 	} else if p, err := url.PathUnescape(ref); err == nil {
 		ref = p // "my%20photo.jpg" names "my photo.jpg"
 	}
 	ref = strings.SplitN(ref, "?", 2)[0]
 	var inside string
-	if abs := t.insideOutput(ref); abs != ref || filepath.IsAbs(ref) || strings.HasPrefix(ref, "~") {
+	if abs := t.insideOutput(ref); abs != ref || rooted(ref) || strings.HasPrefix(ref, "~") {
 		// insideOutput turns a path that names the output folder into one
 		// relative to it, and leaves any other absolute path alone.
-		if filepath.IsAbs(abs) || strings.HasPrefix(abs, "~") {
+		if rooted(abs) || strings.HasPrefix(abs, "~") {
 			return "", "outside " + t.outputDir
 		}
 		inside = abs
@@ -176,4 +180,12 @@ func (t *Tools) localPicture(rel, ref string) (pic, why string) {
 		return "", "outside " + t.outputDir
 	}
 	return clean, ""
+}
+
+// rooted reports whether p starts at the top of a disk: an absolute path,
+// or one that starts with / or \. On Windows /etc/x has no drive, so
+// filepath.IsAbs says no, but a browser reads it from the top of the
+// page's drive, outside the output folder, never relative to the page.
+func rooted(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`)
 }

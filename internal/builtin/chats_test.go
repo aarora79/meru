@@ -75,7 +75,8 @@ func newChatTree(t *testing.T) (*Tools, chatTree) {
 
 // TestChatsListed checks list_folder: with no path it names the sessions
 // folder with its label, and on the folder it lists the chats but not the
-// hidden file.
+// hidden file. The folders appear as tools.show writes them, ~/... when they
+// sit under the home folder, as a temp folder does on Windows.
 func TestChatsListed(t *testing.T) {
 	tools, tr := newChatTree(t)
 	tests := []struct {
@@ -87,7 +88,7 @@ func TestChatsListed(t *testing.T) {
 		{
 			name: "no path lists the sessions folder with its label",
 			args: `{}`,
-			want: []string{tr.notes + "/", tr.sessions + "/  (" + sessionsLabel + ")"},
+			want: []string{tools.show(tr.notes) + "/", tools.show(tr.sessions) + "/  (" + sessionsLabel + ")"},
 		},
 		{
 			name:    "the sessions folder lists the chats",
@@ -207,7 +208,7 @@ func TestChatsInDescriptions(t *testing.T) {
 		if s.Name != ReadFile && s.Name != ListFolder && s.Name != Grep {
 			continue
 		}
-		if !strings.Contains(s.Description, tr.sessions+" holds your past chats") {
+		if !strings.Contains(s.Description, tools.show(tr.sessions)+" holds your past chats") {
 			t.Errorf("%s's description doesn't name the sessions folder:\n%s", s.Name, s.Description)
 		}
 		if s.Name == Grep && !strings.Contains(s.Description, "but the past chats") {

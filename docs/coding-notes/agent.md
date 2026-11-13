@@ -1218,11 +1218,9 @@ if missing := missingFiles(rep.text); len(missing) > 0 {
 `missingFiles` finds each `file://` URL with the regular expression `fileLink`,
 outside code blocks, trims a stop that ends the sentence, and parses it with
 `net/url`, which turns `%20` back into a space. `linkPath` reads the path
-from the parsed URL and keeps a Windows drive in either of its two forms.
-`file:///C:/Users/…` parses to the path `/C:/Users/…`, so the `/` before the
-drive goes. `file://C:/Users/…`, which Go's `url.URL` writes and models write
-too, parses with `C:` as the host and `/Users/…` as the path, so the drive
-goes back in front. `filepath.FromSlash` turns the URL's `/` into the
+from the parsed URL with `rpc.URLPath`, which keeps a Windows drive in
+either form of link, `file:///C:/Users/…` or `file://C:/Users/…` (see
+[rpc.md](rpc.md)). `filepath.FromSlash` turns the URL's `/` into the
 system's separator. `os.Stat` then
 asks for the file. Only `fs.ErrNotExist` counts, checked with `errors.Is`,
 so a folder the user can't open doesn't raise a false alarm. The notice names

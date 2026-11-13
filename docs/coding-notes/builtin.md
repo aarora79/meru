@@ -462,10 +462,16 @@ the output folder, or a reason it can't use the reference:
   a name that doesn't end in `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp` or `.svg`
   count as "not local". The page keeps them, and the result says nothing.
 - A `file://` URL becomes its path, and `%20` and the like decode, so
-  `my%20photo.jpg` names `my photo.jpg`. A `?` and what follows go.
-- A path that starts with `~`, or an absolute one, goes through `insideOutput`,
+  `my%20photo.jpg` names `my photo.jpg`. A `?` and what follows go. A Windows
+  URL keeps its drive: `rpc.URLPath` reads both `file:///C:/x` and
+  `file://C:/x` as `C:/x` (see [rpc.md](rpc.md)). Without that, a picture in
+  the output folder named by a Windows file URL counted as outside it.
+- A path that starts with `~`, or a rooted one, goes through `insideOutput`,
   the same helper `write_file` uses. When it names the output folder it comes
-  back relative; otherwise the reason is "outside ~/meru-output".
+  back relative; otherwise the reason is "outside ~/meru-output". `rooted`
+  counts an absolute path and any path that starts with `/` or `\`: on
+  Windows `/etc/x` has no drive, so `filepath.IsAbs` says no, but a browser
+  reads it from the top of the drive, never relative to the page.
 - Any other path is relative to the page, as a browser reads it, so
   `cards/birthday.html` naming `photo.jpg` means `cards/photo.jpg`.
 - `cleanRelPath` then refuses a path that climbs out with `..`.
@@ -1124,7 +1130,12 @@ The sets live in `knownURLs`, a map from session to set with a `sync.Mutex`,
 because one round's calls run side by side. `merud` runs for weeks and every
 chat leaves a set, so the map has a cap: at most 256 sessions, and when a new
 one would pass that, `dropOldest` removes the session used longest ago. A walk
-over 256 entries costs less than keeping a second structure in order. One
+over 256 entries costs less than keeping a second structure in order. Each
+use stamps its session with the next value of a counter, `knownURLs.uses`,
+through `touch`. An earlier version stamped `time.Now()`, but on Windows the
+clock can return one value for many calls in a row, so stamps tied and the
+walk picked among them in Go's random map order, sometimes the session just
+used. One
 session holds at most 2,000 URLs. The sets end with `merud`, as session
 approvals do; after a restart the user's questions come back through the
 history, and a search-result URL asks once.

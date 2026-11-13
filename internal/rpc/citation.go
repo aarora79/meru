@@ -125,6 +125,38 @@ func FileURL(path, home string) string {
 	return u.String()
 }
 
+// URLPath returns the path a parsed file:// URL names, with forward
+// slashes, the reverse of FileURL. A Windows drive can land in two places,
+// and both keep it:
+//
+//   - file:///C:/Users/x, which FileURL writes, parses to the path
+//     /C:/Users/x, so the leading slash goes.
+//   - file://C:/Users/x, which Go's url.URL writes for a path that starts
+//     with a drive, and which models write too, parses with the drive as
+//     the host: host C: and path /Users/x. The drive goes back in front.
+//
+// The caller turns the slashes into the system's with filepath.FromSlash.
+func URLPath(u *url.URL) string {
+	p := u.Path
+	switch {
+	case isDrive(u.Host):
+		p = u.Host + p
+	case len(p) > 2 && p[0] == '/' && isDrive(p[1:3]):
+		p = p[1:]
+	}
+	return p
+}
+
+// isDrive reports whether s is a Windows drive, a letter and a colon such
+// as "C:".
+func isDrive(s string) bool {
+	if len(s) != 2 || s[1] != ':' {
+		return false
+	}
+	c := s[0] | 0x20 // 0x20 turns an upper-case ASCII letter into lower case
+	return c >= 'a' && c <= 'z'
+}
+
 // ShortPath writes p under the home folder as ~/..., using the OS's path
 // separator, the way merud shows a source's path. Any other path, or any
 // path when home is "", stays as it is. FileURL undoes it.
