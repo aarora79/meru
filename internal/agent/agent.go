@@ -575,7 +575,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		}
 		// An answer that links a file with file:// needs the file to be
 		// there, whatever the turn called. See missingFiles.
-		if missing := missingFiles(rep.text); len(missing) > 0 {
+		// os.UserHomeDir fails only when the system names no home
+		// folder; then a ~ link can't be checked and missingFiles skips it.
+		home, _ := os.UserHomeDir()
+		if missing := missingFiles(rep.text, home); len(missing) > 0 {
 			unbacked = true
 			notice = strings.TrimSpace(notice + " " + missingNotice(missing))
 		}

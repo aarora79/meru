@@ -82,6 +82,35 @@ func TestURLPath(t *testing.T) {
 	}
 }
 
+// TestLinkPath checks the path LinkPath finds for each kind of file://
+// link, the ~ links models write included, on every system.
+func TestLinkPath(t *testing.T) {
+	home := filepath.FromSlash("/Users/sam")
+	tests := []struct {
+		link, home, want string
+		wantOK           bool
+	}{
+		{"file:///Users/sam/a.md", home, filepath.FromSlash("/Users/sam/a.md"), true},
+		{"file:///C:/Users/sam/a.md", home, filepath.FromSlash("C:/Users/sam/a.md"), true},
+		{"file://C:/Users/sam/a.md", home, filepath.FromSlash("C:/Users/sam/a.md"), true},
+		{"file:///~/repos/my%20notes/a.md", home, filepath.Join(home, "repos", "my notes", "a.md"), true},
+		{"file://~/repos/a.md", home, filepath.Join(home, "repos", "a.md"), true},
+		{"file:///~", home, home, true},
+		{"file:///~/a.md", "", "", false},
+		{"file:///~notes/a.md", home, filepath.FromSlash("/~notes/a.md"), true},
+		{"https://example.com/a.md", home, "", false},
+		{"file://", home, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.link, func(t *testing.T) {
+			got, ok := LinkPath(tt.link, tt.home)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("LinkPath(%q, %q) = %q, %v; want %q, %v", tt.link, tt.home, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestFileURL(t *testing.T) {
 	home := filepath.FromSlash("/Users/sam")
 	tests := []struct {

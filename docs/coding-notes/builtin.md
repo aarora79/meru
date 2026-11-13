@@ -463,9 +463,10 @@ the output folder, or a reason it can't use the reference:
   count as "not local". The page keeps them, and the result says nothing.
 - A `file://` URL becomes its path, and `%20` and the like decode, so
   `my%20photo.jpg` names `my photo.jpg`. A `?` and what follows go. A Windows
-  URL keeps its drive: `rpc.URLPath` reads both `file:///C:/x` and
-  `file://C:/x` as `C:/x` (see [rpc.md](rpc.md)). Without that, a picture in
-  the output folder named by a Windows file URL counted as outside it.
+  URL keeps its drive, and a `~` becomes the home folder: `rpc.LinkPath`
+  reads `file:///C:/x`, `file://C:/x` and `file:///~/x` (see
+  [rpc.md](rpc.md)). Without that, a picture in the output folder named by a
+  Windows file URL counted as outside it.
 - A path that starts with `~`, or a rooted one, goes through `insideOutput`,
   the same helper `write_file` uses. When it names the output folder it comes
   back relative; otherwise the reason is "outside ~/meru-output". `rooted`

@@ -424,35 +424,16 @@ func TestMissingFiles(t *testing.T) {
 		{"the same file twice", "[A](" + toURL(gone) + ") and " + toURL(gone), []string{gone}},
 		{"a link in a code block", "```\nopen " + toURL(gone) + "\n```", nil},
 		{"a web link", "See [the docs](https://example.com/dashboard.html).", nil},
+		// dir stands in for the home folder, so ~ names it. A real
+		// Windows turn linked file:///~/repos/... to files that were
+		// there, and got a false warning.
+		{"a ~ link to a file that is there", "[Plan](file:///~/plan.html)", nil},
+		{"a ~ link to a missing file", "[Dashboard](file:///~/dashboard.html)", []string{gone}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := missingFiles(tt.text); !slices.Equal(got, tt.want) {
+			if got := missingFiles(tt.text, dir); !slices.Equal(got, tt.want) {
 				t.Errorf("missingFiles(%q) = %q, want %q", tt.text, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestLinkPath checks the path linkPath reads from each form of file://
-// link, the Windows ones included, on every system.
-func TestLinkPath(t *testing.T) {
-	tests := []struct {
-		link   string
-		want   string
-		wantOK bool
-	}{
-		{"file:///home/dana/plan.html", "/home/dana/plan.html", true},
-		{"file:///C:/Users/dana/plan.html", "C:/Users/dana/plan.html", true},
-		{"file://C:/Users/dana/plan.html", "C:/Users/dana/plan.html", true},
-		{"file://d:/notes/my%20plan.html", "d:/notes/my plan.html", true},
-		{"file://", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.link, func(t *testing.T) {
-			got, ok := linkPath(tt.link)
-			if got != tt.want || ok != tt.wantOK {
-				t.Errorf("linkPath(%q) = %q, %v; want %q, %v", tt.link, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}

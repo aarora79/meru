@@ -147,6 +147,35 @@ func URLPath(u *url.URL) string {
 	return p
 }
 
+// LinkPath returns the file a file:// link names, as a path on this
+// system, and false when the link isn't a file:// URL or names nothing
+// Meru can find. Past URLPath, it puts home in place of a leading ~.
+// Models write such links, file:///~/notes/a.md or file://~/notes/a.md,
+// because merud shows them paths as ~/notes/a.md (~\notes\a.md on
+// Windows), and no system opens a ~ in a URL. It returns false for a ~
+// link when home is "".
+func LinkPath(link, home string) (string, bool) {
+	u, err := url.Parse(link)
+	if err != nil || !strings.EqualFold(u.Scheme, "file") {
+		return "", false
+	}
+	p := URLPath(u)
+	if u.Host == "~" {
+		p = "/~" + p // file://~/notes/a.md parses with ~ as the host
+	}
+	// A ~ link's path is now /~ or /~/ and the rest.
+	if rest, ok := strings.CutPrefix(p, "/~"); ok && (rest == "" || rest[0] == '/') {
+		if home == "" {
+			return "", false
+		}
+		return filepath.Join(home, filepath.FromSlash(rest)), true
+	}
+	if p == "" {
+		return "", false
+	}
+	return filepath.FromSlash(p), true
+}
+
 // isDrive reports whether s is a Windows drive, a letter and a colon such
 // as "C:".
 func isDrive(s string) bool {

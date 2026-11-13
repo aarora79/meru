@@ -152,13 +152,16 @@ func (t *Tools) localPicture(rel, ref string) (pic, why string) {
 		return "", "not local"
 	}
 	if strings.HasPrefix(lower, "file:") {
-		u, err := url.Parse(ref)
-		if err != nil {
+		// rpc.LinkPath keeps a Windows drive in either form of link,
+		// file:///C:/x or file://C:/x, and puts the home folder in place
+		// of a ~, as in file:///~/meru-output/a.jpg. os.UserHomeDir fails
+		// only when the system names no home folder; then a ~ link fails.
+		home, _ := os.UserHomeDir()
+		p, ok := rpc.LinkPath(ref, home)
+		if !ok {
 			return "", "not a file:// URL Meru can read"
 		}
-		// rpc.URLPath keeps a Windows drive in either form of link,
-		// file:///C:/x or file://C:/x.
-		ref = rpc.URLPath(u)
+		ref = p
 	} else if p, err := url.PathUnescape(ref); err == nil {
 		ref = p // "my%20photo.jpg" names "my photo.jpg"
 	}
