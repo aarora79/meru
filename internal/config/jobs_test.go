@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -120,6 +121,12 @@ name = "j"
 schedule = "0 7 * * *"
 prompt = "hi"
 output = "/tmp/brief.md"`},
+		{name: "output from the drive's root", wantErr: "must be a path inside", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = '\briefs\brief.md'`},
 		{name: "output placeholder", wantErr: "{month} isn't one of", body: `
 [[jobs]]
 name = "j"
@@ -142,6 +149,20 @@ name = "brief"
 schedule = "0 7 * * *"
 prompt = "hi"
 skill = "explainer"`},
+	}
+	// C:brief.md names a drive only on Windows; elsewhere it is a file
+	// name like any other.
+	if runtime.GOOS == "windows" {
+		tests = append(tests, struct {
+			name    string
+			body    string
+			wantErr string
+		}{name: "output on a drive", wantErr: "must be a path inside", body: `
+[[jobs]]
+name = "j"
+schedule = "0 7 * * *"
+prompt = "hi"
+output = 'C:brief.md'`})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

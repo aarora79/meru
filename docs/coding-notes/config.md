@@ -579,9 +579,12 @@ each problem with the job's name and key:
 - a skill with a command, or one `[skills] disabled` turns off;
 - a command that isn't a `[[commands]]` entry, or `args` without a command;
 - `configure` or `schedule_job` in `allow`, which change Meru itself;
-- an `output` that is absolute, starts with `~`, leaves the folder with `..`, or
-  holds a placeholder other than `{date}`, `{time}` and `{job}`
-  (`checkOutput`), or `output` with `write_file` off in `[builtin] tools`;
+- an `output` that is absolute, starts with `~`, `/` or `\`, names a drive
+  such as `C:`, leaves the folder with `..`, or holds a placeholder other than
+  `{date}`, `{time}` and `{job}` (`checkOutput`), or `output` with
+  `write_file` off in `[builtin] tools`. `filepath.IsAbs` alone misses
+  `/tmp/brief.md` and `C:brief.md` on Windows, which counts a path as
+  absolute only with both a drive and a slash;
 - more than `MaxJobs` (50) jobs, which keeps the metric's `job` attribute a
   small set.
 
