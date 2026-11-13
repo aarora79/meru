@@ -149,7 +149,9 @@ func TestLaunchCommandPip(t *testing.T) {
 	if path != filepath.Join(venvBin, "mail-mcp") || !slices.Equal(args, []string{"--transport", "streamable-http"}) {
 		t.Errorf("path %s, args %q", path, args)
 	}
-	if env["MAIL_SECRET"] != "s3" || env["OUT"] != filepath.Join(in.MeruDir, "out") {
+	// The manifest writes {meru_dir}/out with a slash, so on Windows OUT
+	// mixes separators, which Windows accepts; Clean evens them out.
+	if env["MAIL_SECRET"] != "s3" || filepath.Clean(env["OUT"]) != filepath.Join(in.MeruDir, "out") {
 		t.Errorf("env = %v", env)
 	}
 	if !strings.HasPrefix(env["PATH"], venvBin+string(os.PathListSeparator)) {

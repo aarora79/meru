@@ -174,7 +174,10 @@ func unpackTarGz(archive, dest string) error {
 			if err := root.MkdirAll(path.Dir(name), 0o750); err != nil {
 				return fmt.Errorf("unpack %s: %w", archive, err)
 			}
-			if err := root.Symlink(hdr.Linkname, name); err != nil {
+			// The target uses "/", as archives do; FromSlash gives it
+			// Windows' "\", without which a Windows link leads nowhere.
+			// linkInside has already checked it in its "/" form.
+			if err := root.Symlink(filepath.FromSlash(hdr.Linkname), name); err != nil {
 				return fmt.Errorf("unpack %s: %w", archive, err)
 			}
 		case tar.TypeXGlobalHeader:
@@ -285,7 +288,8 @@ func unpackZip(archive, dest string) error {
 			if err := root.MkdirAll(path.Dir(name), 0o750); err != nil {
 				return fmt.Errorf("unpack %s: %w", archive, err)
 			}
-			if err := root.Symlink(target, name); err != nil {
+			// FromSlash, as in unpackTarGz: a Windows link needs "\".
+			if err := root.Symlink(filepath.FromSlash(target), name); err != nil {
 				return fmt.Errorf("unpack %s: %w", archive, err)
 			}
 		default:

@@ -324,7 +324,10 @@ func TestHTTPTransportPortBusy(t *testing.T) {
 	endpoint := "http://" + l.Addr().String() + "/mcp"
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, _, err = httpTransport(ctx, ctx, Cmd{Path: "/no/such/program"}, &bytes.Buffer{}, endpoint)
+	// A missing program under a temp folder: absolute on every system,
+	// where /no/such/program has no drive and isn't absolute on Windows.
+	missing := filepath.Join(t.TempDir(), "no-such-program")
+	_, _, err = httpTransport(ctx, ctx, Cmd{Path: missing}, &bytes.Buffer{}, endpoint)
 	if !errors.Is(err, ErrPortBusy) {
 		t.Errorf("httpTransport = %v, want ErrPortBusy", err)
 	}

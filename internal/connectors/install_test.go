@@ -540,7 +540,7 @@ func TestInstallBinary(t *testing.T) {
 				t.Fatalf("Install: %v", err)
 			}
 			info, err := os.Stat(filepath.Join(got.Dir, "tool-bin"))
-			if err != nil || info.Mode()&0o100 == 0 {
+			if err != nil || !ownerCanRun(info) {
 				t.Fatalf("tool-bin: %v; want a file the owner can run", err)
 			}
 			path, _, _, err := in.LaunchCommand(m, got, nil)

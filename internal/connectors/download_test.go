@@ -12,10 +12,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -194,7 +196,7 @@ func TestUnpackTarGz(t *testing.T) {
 				t.Fatalf("unpack: %v", err)
 			}
 			info, err := os.Stat(filepath.Join(dest, "bin", "node"))
-			if err != nil || info.Mode()&0o100 == 0 {
+			if err != nil || !ownerCanRun(info) {
 				t.Fatalf("bin/node: %v, mode %v; want a file the owner can run", err, info)
 			}
 			if got, err := os.ReadFile(filepath.Join(dest, "bin", "npm")); err != nil || string(got) != "// npm" {
@@ -205,4 +207,11 @@ func TestUnpackTarGz(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ownerCanRun reports whether info's mode lets its owner run the file.
+// Windows has no execute bit, and runs a program by its extension, so
+// every file counts there.
+func ownerCanRun(info fs.FileInfo) bool {
+	return runtime.GOOS == "windows" || info.Mode()&0o100 != 0
 }
