@@ -2304,6 +2304,8 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **macOS:** a `launchd` agent.
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
+  [windows.md](windows.md) has the Windows steps that work so far, such as
+  installing the NVIDIA driver.
 
 ## 10. See how you use Meru
 

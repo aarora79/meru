@@ -404,6 +404,8 @@ docs/
                      ARCHITECTURE.md, which stays the contract
   lld.md             the low-level design
   running.md         how to build and run Meru
+  windows.md         the Windows steps that work so far (#85): the NVIDIA driver, building
+                     from source
   faq/               one page per "how do I…" question, listed in index.md
   benchmarks/        the benchmark: README.md (how it works, how to build your own dataset) and
                      results.md, which `make bench-report` writes; the dataset stays in bench/
