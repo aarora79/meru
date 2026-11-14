@@ -766,6 +766,17 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 			"confidence", dec.Confidence)
 		dec.Route = "direct"
 	}
+	// A short message of thanks or greeting needs nothing from the files or
+	// the tools, and the rules below leave it direct too. See thanksOnly.
+	chatter := thanksOnly(question)
+	if chatter && dec.Route != "direct" {
+		a.log.DebugContext(ctx, "route changed to direct: the message is thanks or a greeting",
+			"from", dec.Route, "confidence", dec.Confidence)
+		dec.Route = "direct"
+	}
+	// The two rules below skip a message that gives its own text, and
+	// thanks with them.
+	givenText = givenText || chatter
 	// The router can't always tell that a question names one of the user's
 	// own projects: "what database does meru use" can look like general
 	// knowledge. When a direct question names an indexed folder, search
@@ -790,12 +801,12 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// the route lacks the full set of tools, add them. A wrong guess costs
 	// a prompt that holds the tool schemas, and the model need not call any.
 	var target string
-	if a.tools != nil {
+	if a.tools != nil && !chatter {
 		target = toolTarget(question, a.tools.Tools())
 	}
 	// A reply that carries on from a turn that used a server's tools keeps
-	// them; see followsServerTurn.
-	if target == "" && a.tools != nil && followsServerTurn(history) {
+	// them; see followsServerTurn. Thanks after such a turn doesn't.
+	if target == "" && a.tools != nil && !chatter && followsServerTurn(history) {
 		target = signFollowsServer
 	}
 	if r, ok := withTools(dec.Route); ok && target != "" {
@@ -816,7 +827,7 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	// prompt. See skillTools.
 	var skillTools []string
 	picked.names, skillTools = a.skillTools(ctx, picked)
-	if missing := notOffered(skillTools, a.toolSpecs(dec.Route)); len(missing) > 0 {
+	if missing := notOffered(skillTools, a.toolSpecs(dec.Route)); len(missing) > 0 && !chatter {
 		if r, ok := withTools(dec.Route); ok {
 			a.log.DebugContext(ctx, "route changed: a picked skill uses tools the route lacks",
 				"skills", strings.Join(picked.names, ","), "tools", strings.Join(missing, ","),

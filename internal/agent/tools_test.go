@@ -191,7 +191,7 @@ func TestToolsOfferedByRoute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"ok"}}
-			if _, err := run(context.Background(), toolsAgent(t, tt.route, eng, tt.tools), rpc.Request{Text: "hi"}); err != nil {
+			if _, err := run(context.Background(), toolsAgent(t, tt.route, eng, tt.tools), rpc.Request{Text: "sow basil"}); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
 			c := eng.lastCall()

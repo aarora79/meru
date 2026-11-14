@@ -2459,6 +2459,18 @@ and a new example to 0.839, so the fix is a rule that leaves the router alone.
 A question that quotes a file name, such as `edit "plan.md" in my notes`, goes
 `direct` by mistake (`writingOnText`).
 
+A second rule sends a short message of thanks or greeting `direct` from any
+route. The message has no question mark, ten words at most, and every word on a
+short list of thanks, praise and greeting words, such as "great job Meru! Yay!!!"
+or "thanks, that worked". No rule below widens it, so with `answers = "routed"`
+the fast model replies. The router scored "great job Meru! Yay!!!" at 0.391 for
+`search+tools` against 0.357 for `direct`, under `min_confidence`, so the turn
+took the fallback: a search and every tool's schema made a 39,844-token prompt
+that the main model read for 52 seconds before a 57-token thank-you. "yes" and
+"ok" aren't on the list, since they often answer a question Meru asked, and one
+word off the list, as in "thanks, now read the other one", leaves the message
+to the router (`thanksOnly`).
+
 Five rules override the router, in this order. The first: when it picks `direct` and
 the question names an indexed folder as a whole word, such as "meru" for
 `~/repos/meru`, the agent loop changes the route to `search`. Even with the folders
