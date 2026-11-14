@@ -66,6 +66,16 @@ func Describe(ctx context.Context) Machine {
 		m.MemoryGB = memInfo(readFile("/proc/meminfo"))
 		m.GPU, m.GPUMemoryGB = nvidiaSMI(run(ctx, "nvidia-smi",
 			"--query-gpu=name,memory.total", "--format=csv,noheader,nounits"))
+	case "windows":
+		// Windows has no /proc or sysctl; machine_windows.go asks its API.
+		// NVIDIA's driver puts nvidia-smi in the system folder, so it
+		// answers as it does on Linux, and setup picks the answer model by
+		// the GPU's memory there too.
+		m.OS = For(runtime.GOOS).Name
+		m.CPU = windowsCPU()
+		m.MemoryGB = windowsMemoryGB()
+		m.GPU, m.GPUMemoryGB = nvidiaSMI(run(ctx, "nvidia-smi",
+			"--query-gpu=name,memory.total", "--format=csv,noheader,nounits"))
 	default:
 		m.OS = For(runtime.GOOS).Name
 	}

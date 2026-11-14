@@ -3628,7 +3628,7 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
   <thead><tr><th>Question</th><th>Decision</th></tr></thead>
   <tbody>
     <tr><td>Language</td><td>Go, for a small footprint, easy distribution, room to scale, built-in concurrency and fewer dependencies (see <a href="#why-go">Why Go</a>).</td></tr>
-    <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers count as "a machine you control". <code>internal/platform</code> holds what differs by system in one table, one row per system, which tests check on any machine, and reads the machine, an NVIDIA GPU on Linux included.</td></tr>
+    <tr><td>Platforms</td><td>macOS on Apple silicon first, Linux supported, Windows untested at first. Cloud servers count as "a machine you control". <code>internal/platform</code> holds what differs by system in one table, one row per system, which tests check on any machine, and reads the machine, an NVIDIA GPU on Linux and Windows included.</td></tr>
     <tr><td>Agent harness</td><td>Our own loop plus the official MCP and A2A Go SDKs. We looked at Eino and ADK Go. ADK Go pulls a cloud-model client into the dependency tree, and neither saves much once the allowlist, audit and budget logic are ours.</td></tr>
     <tr><td>Model runtime</td><td>Ollama on loopback for now (see open question 4).</td></tr>
     <tr><td>Models</td><td>The <code>lite</code> profile by default (MiniCPM5-2B + <code>embeddinggemma-2:440m</code>), and <code>full</code> for Apple silicon with 64 GB or more (<code>qwen3.6:35b-a3b-mxfp8</code> + <code>embeddinggemma-2:440m</code>).</td></tr>

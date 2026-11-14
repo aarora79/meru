@@ -87,7 +87,19 @@ the GPU with its memory. A `switch` on `runtime.GOOS` picks where to read:
 | --- | --- |
 | macOS | `sw_vers -productVersion`, and `sysctl` for the chip and memory |
 | Linux | `/etc/os-release`, `/proc/cpuinfo`, `/proc/meminfo`, and `nvidia-smi` for the GPU |
-| Windows | the name only, for now |
+| Windows | the registry for the processor, kernel32's `GlobalMemoryStatusEx` for memory, and `nvidia-smi` for the GPU |
+
+Windows has no `/proc` files and no `sysctl`, so `machine_windows.go` asks the
+system's API through Go's `syscall` package. `windowsCPU` reads
+`ProcessorNameString` under `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`.
+`windowsMemoryGB` calls `GlobalMemoryStatusEx`, which fills a structure Go
+declares field for field, `memoryStatusEx`. Both hand the API memory to write
+into with `unsafe.Pointer`, Go's way of passing an address to a system call.
+The build tag `//go:build windows` keeps the file out of other systems'
+builds, and `machine_other.go` holds stand-ins that return nothing, so
+`Describe` compiles everywhere. On the EC2 test machine it reads `AMD EPYC 7R13
+Processor`, 31 GB and an `NVIDIA L40S` with 45 GB, so `meru setup` offers the
+same answer model as on Linux.
 
 Each source has its own small parser that takes text and returns a value, such as
 `nvidiaSMI`:
@@ -114,6 +126,9 @@ three-second timeout, and returns its output, or `""` when anything goes wrong.
 `Describe` never fails: a fact it can't read stays empty, because every caller
 works without it. `internal/policy` checks that `run.go` is the only file here
 that imports `os/exec`, and that the package imports only the standard library.
+`syscall` can start programs too, so only `machine_windows.go` may import it,
+and the policy checks that it calls nothing in `syscall` that starts one and
+loads no Windows function but `GlobalMemoryStatusEx`.
 
 ## Go ideas used here
 
