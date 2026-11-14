@@ -29,7 +29,9 @@ graphics card.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.7.8.** Answers from local models, your own files and
+> **Status: pre-alpha, v0.8.0.** Meru now runs on Windows too, with the desktop
+> app, an NVIDIA GPU and a one-line installer for PowerShell.
+> Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
 > folders, by words or like one you attach, and a model that can see reads them.
@@ -137,7 +139,8 @@ curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh 
 The script downloads the latest release and checks it against `SHA256SUMS`. It
 puts `meru` and `merud` in `~/.local/bin` and Meru.app in `/Applications`, then
 offers Ollama, the models, `meru setup` and starting `merud` at login, asking
-before each step. [docs/running.md](docs/running.md) covers Windows and
+before each step. Windows has [its own installer](#install-on-windows), and
+[docs/running.md](docs/running.md) covers
 [building from source](docs/running.md#build-from-source).
 
 Meru.app talks to `merud`, and `merud` to Ollama, so all three run together.
@@ -309,7 +312,10 @@ Meru runs wherever Ollama and Go do:
 - **macOS on Apple silicon:** supported and tested. Developed on a Mac Studio, M4 Max,
   64 GB.
 - **Linux:** supported, including home servers and cloud virtual machines.
-- **Windows 10 and later:** should work; not tested at first.
+- **Windows:** supported on x86-64, tested on Windows Server 2025 with an NVIDIA
+  L40S. Windows 10 and 11 should work but are untested. Web search needs Docker
+  or Podman through WSL2, and the connectors Meru runs for you, such as Obsidian
+  and Google, don't run on Windows yet ([#85](https://github.com/aarora79/meru/issues/85)).
 
 Two model profiles ship with it (see [ARCHITECTURE.md](ARCHITECTURE.md#model-tiers)):
 
