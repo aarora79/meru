@@ -36,13 +36,16 @@ jobs:
       VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      # The tag must be a release that exists and lacks the archive.
+      # The tag must be a release that exists and lacks the Linux archive.
+      # From v0.8.0 a release also holds the Windows desktop app,
+      # meru-desktop-VERSION-windows-amd64.zip, so the check looks for the
+      # Linux one by name.
       - name: Check the release
         run: |
           case "$VERSION" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::$VERSION isn't a version tag"; exit 1 ;; esac
           assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name') ||
             { echo "::error::no release $VERSION; run make release first"; exit 1; }
-          if echo "$assets" | grep -q '^meru-desktop-'; then
+          if echo "$assets" | grep -q '^meru-desktop-.*-linux-'; then
             echo "::error::release $VERSION already has the Linux desktop app; a published file never changes"
             exit 1
           fi
