@@ -4,6 +4,7 @@ One file per release, newest first. The `release-notes` skill in
 `.claude/skills/` writes each one, and `make release` uses it as the GitHub
 release's text ([releasing.md](../releasing.md)).
 
+- [v0.8.1](v0.8.1.md): Meru reads your files when you attach a picture, and a short thanks gets a quick reply from the fast model
 - [v0.8.0](v0.8.0.md): Meru on Windows, with the desktop app, an NVIDIA GPU and a one-line installer for PowerShell
 - [v0.7.8](v0.7.8.md): web search keeps its container under Podman, and a test runs it under Docker and Podman
 - [v0.7.7](v0.7.7.md): the daily count adds six fields, so installs count per week, per month and in total, still with no ID
