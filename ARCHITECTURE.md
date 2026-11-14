@@ -2462,9 +2462,12 @@ A question that quotes a file name, such as `edit "plan.md" in my notes`, goes
 `direct` by mistake (`writingOnText`).
 
 A second rule sends a short message of thanks or greeting `direct` from any
-route. The message has no question mark, ten words at most, and every word on a
-short list of thanks, praise and greeting words, such as "great job Meru! Yay!!!"
-or "thanks, that worked". No rule below widens it, so with `answers = "routed"`
+route. The message has no question mark and ten words at most. Every word is on
+a short list of thanks, praise and greeting words or of filler such as "you",
+"did" and "is", and at least one is thanks, praise or a greeting, such as "great
+job Meru! Yay!!!" or "thanks, that worked". A typo of a thanks word counts when
+it keeps the first letter and sits one edit away, or two for a word of six letters
+or more, so "you did a greewat job meru" counts and "create a job" doesn't. No rule below widens it, so with `answers = "routed"`
 the fast model replies. The router scored "great job Meru! Yay!!!" at 0.391 for
 `search+tools` against 0.357 for `direct`, under `min_confidence`, so the turn
 took the fallback: a search and every tool's schema made a 39,844-token prompt

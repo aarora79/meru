@@ -1434,8 +1434,16 @@ says direct.
 `thanks.go` adds a second rule of the same kind. `thanksOnly` takes a message of
 thanks, praise or greeting, such as "great job Meru! Yay!!!", and `respond`
 sends it direct from any route. The regular expression `\p{L}+` pulls out each
-run of letters, so punctuation and emoji drop out, and every word must be in
-`thanksWords`, with no question mark and at most `maxThanksWords` words.
+run of letters, so punctuation and emoji drop out. Every word must be in
+`thanksCore` or `thanksFiller`, or be a typo of a core word, and at least one
+must be core, with no question mark and at most `maxThanksWords` words. `typoOf`
+takes a word that keeps a core word's first letter and sits one edit away, or two
+for a word of six letters or more. `editDistance` counts the edits with the usual
+table: `d[i][j]` holds the distance between the first `i` letters of one word and
+the first `j` of the other, and a swap of two neighbours counts as one edit, so
+"thnaks" is one from "thanks". The typos came from a second real turn: "you did a
+greewat job meru" missed the first, exact-word version on the typo and on "did",
+and took 47 seconds.
 `chatter` then joins `givenText`, so the folder and past-chat rules skip the
 turn, and it also stops `toolTarget`, `followsServerTurn` and a picked skill's
 tools from widening it. With `answers = "routed"`, the fast model replies.
@@ -1444,7 +1452,8 @@ that turn needs the tools. The rule came from a real turn: the router scored
 "great job Meru! Yay!!!" below `min_confidence`, the turn took the
 `search+tools` fallback, and the main model read a 39,844-token prompt for 52
 seconds before a short thank-you. `TestThanksOnly` in `thanks_test.go` is a
-table of messages, and `TestThanksGoesDirect` runs that turn with the fake
+table of messages, typos and near misses such as "create a job" included,
+`TestEditDistance` checks the edit count, and `TestThanksGoesDirect` runs that turn with the fake
 router's low-confidence fallback and checks it goes direct, searches nothing
 and offers no file tool.
 

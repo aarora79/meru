@@ -13,12 +13,37 @@ import (
 	"github.com/aarora79/meru/internal/rpc"
 )
 
+func TestEditDistance(t *testing.T) {
+	for _, tt := range []struct {
+		a, b string
+		want int
+	}{
+		{"great", "great", 0},
+		{"thnaks", "thanks", 1}, // a swap is one edit
+		{"greewat", "great", 2},
+		{"grant", "great", 2},
+		{"", "abc", 3},
+	} {
+		if got := editDistance(tt.a, tt.b); got != tt.want {
+			t.Errorf("editDistance(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
 func TestThanksOnly(t *testing.T) {
 	tests := []struct {
 		message string
 		want    bool
 	}{
-		{"great job Meru! Yay!!!", true}, // the real turn
+		{"great job Meru! Yay!!!", true},     // the real turn
+		{"you did a greewat job meru", true}, // the second real turn: a typo and "did"
+		{"thnaks!", true},                    // two letters swapped
+		{"awsome work", true},
+		{"you are the best", false}, // "best" isn't on the list
+		{"create a job", false},     // "create" isn't "great": another first letter
+		{"grant it", false},         // one edit too many for a short word
+		{"you did it", false},       // no word of thanks
+		{"great job, now schedule the next one", false},
 		{"thanks!", true},
 		{"Thank you so much 🙏", true},
 		{"perfect, that worked", true},
