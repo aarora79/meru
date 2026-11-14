@@ -1,9 +1,19 @@
 # Meru on Windows
 
-Meru has no Windows installer yet, and nobody has run it end to end on
-Windows. [Issue #85](https://github.com/aarora79/meru/issues/85) tracks the
-work. This page records the steps that worked so far, so the installer can
-repeat them.
+`scripts/install.ps1` installs Meru on Windows, in PowerShell:
+
+```powershell
+irm https://github.com/aarora79/meru/releases/latest/download/install.ps1 | iex
+```
+
+It does the steps on this page that a script can: NVIDIA's driver on Windows
+Server, Ollama, Meru itself with the desktop app, `meru setup`, and a Task
+Scheduler task that starts `merud` at sign-in, through `conhost --headless` so
+no window shows. `MERU_FROM` points it at a folder of release files, such as a
+build of your own, instead of GitHub. This page records the same steps by hand,
+and web search on a machine that can't run containers, which the script leaves
+to you. [Issue #85](https://github.com/aarora79/meru/issues/85) tracks the rest
+of the Windows work.
 
 The steps ran on an Amazon EC2 `g6e.xlarge`: Windows Server 2025 Datacenter,
 an AMD EPYC with 4 threads, 32 GB of memory and an NVIDIA L40S with 48 GB of

@@ -161,6 +161,21 @@ offers the largest answer model that fits it;
 The desktop app needs GTK 4 and WebKitGTK 6.0, which the script installs with
 `apt`.
 
+## Install on Windows
+
+Tested on Windows Server 2025, in PowerShell:
+
+```powershell
+irm https://github.com/aarora79/meru/releases/latest/download/install.ps1 | iex
+```
+
+The script checks the release against `SHA256SUMS` and puts `meru` and `merud`
+in `%LOCALAPPDATA%\Programs\Meru`, on your PATH. It then offers the desktop app,
+NVIDIA's driver on Windows Server, Ollama, `meru setup`, and a Task Scheduler
+task that starts `merud` at sign-in, asking before each step. Web search needs
+Docker or Podman, which on Windows run through WSL2;
+[docs/windows.md](docs/windows.md) covers a machine that can't run them.
+
 ## Install with a coding agent
 
 If you use Claude Code or Codex, the `meru-install` skill can do the install
