@@ -29,7 +29,7 @@ graphics card.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.8.0.** Meru now runs on Windows too, with the desktop
+> **Status: pre-alpha, v0.8.1.** Meru now runs on Windows too, with the desktop
 > app, an NVIDIA GPU and a one-line installer for PowerShell.
 > Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
