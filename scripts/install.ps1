@@ -174,7 +174,7 @@ function Install-Meru {
   $cli = "meru-$version-windows-amd64.zip"
   $desktop = "meru-desktop-$version-windows-amd64.zip"
 
-  # The desktop app comes in releases from v0.7.9 on; an older one lacks it.
+  # The desktop app comes in releases from v0.8.0 on; an older one lacks it.
   if ($from) {
     $hasDesktop = Test-Path (Join-Path $from $desktop)
   } else {
