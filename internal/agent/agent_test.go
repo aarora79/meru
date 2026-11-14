@@ -228,7 +228,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	router := &fakeRouter{dec: Decision{Route: "search", Confidence: 0.8, Outcome: "ok"}}
 	a := New(cfg, eng, router, nil, nil, nil, nil, quietLog())
 
-	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "  hi  ", Source: rpc.SourceCLI})
+	evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "  sow basil  ", Source: rpc.SourceCLI})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("transcript has %d lines, want 2", len(lines))
 	}
-	if l := lines[0]; l.Type != "user" || l.Text != "hi" {
+	if l := lines[0]; l.Type != "user" || l.Text != "sow basil" {
 		t.Errorf("line 1 = %+v, want the user question", l)
 	}
 	if l := lines[1]; l.Type != "assistant" || l.Text != "Hello!" || l.TokensIn != 42 || l.TokensOut != 3 ||
@@ -280,7 +280,7 @@ func TestTurnEventsAndTranscript(t *testing.T) {
 	}
 	wantMsgs := []engine.Message{
 		{Role: engine.RoleSystem, Content: DefaultSystemPrompt + "\n\n" + whoIsWho + "\n\n" + honestyRule + "\n\n" + selfLine(cfg.Models.Main) + "\n\n" + today(time.Now()) + "\n\n" + filesNote(nil, false) + "\n\n" + canDoNote(nil, "")},
-		{Role: engine.RoleUser, Content: "hi"},
+		{Role: engine.RoleUser, Content: "sow basil"},
 	}
 	if !slices.EqualFunc(call.msgs, wantMsgs, sameMessage) {
 		t.Errorf("prompt = %+v\nwant %+v", call.msgs, wantMsgs)
@@ -422,7 +422,7 @@ func TestRouteFallbackFlag(t *testing.T) {
 			eng := &fakeEngine{pieces: []string{"x"}}
 			router := &fakeRouter{dec: Decision{Route: "search+tools", Confidence: 0.3, Outcome: tt.outcome}}
 			a := New(testConfig(t), eng, router, nil, nil, nil, nil, quietLog())
-			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "hi"})
+			evs, err := run(context.Background(), a, rpc.Request{Op: rpc.OpAsk, Text: "sow basil"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
 			}

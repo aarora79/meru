@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1430,6 +1430,23 @@ fix sits here instead. `TestWritingOnText` in `rewrite_test.go` is a table of
 questions that do and don't give their text, and `TestGivenTextGoesDirect`
 runs a turn the fake router sends to search and checks that the `route` event
 says direct.
+
+`thanks.go` adds a second rule of the same kind. `thanksOnly` takes a message of
+thanks, praise or greeting, such as "great job Meru! Yay!!!", and `respond`
+sends it direct from any route. The regular expression `\p{L}+` pulls out each
+run of letters, so punctuation and emoji drop out, and every word must be in
+`thanksWords`, with no question mark and at most `maxThanksWords` words.
+`chatter` then joins `givenText`, so the folder and past-chat rules skip the
+turn, and it also stops `toolTarget`, `followsServerTurn` and a picked skill's
+tools from widening it. With `answers = "routed"`, the fast model replies.
+"yes" and "ok" stay off the list: they often answer a question Meru asked, and
+that turn needs the tools. The rule came from a real turn: the router scored
+"great job Meru! Yay!!!" below `min_confidence`, the turn took the
+`search+tools` fallback, and the main model read a 39,844-token prompt for 52
+seconds before a short thank-you. `TestThanksOnly` in `thanks_test.go` is a
+table of messages, and `TestThanksGoesDirect` runs that turn with the fake
+router's low-confidence fallback and checks it goes direct, searches nothing
+and offers no file tool.
 
 The next rule: when the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
