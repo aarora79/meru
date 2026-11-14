@@ -4,7 +4,7 @@
 resident daemon (`merud`) that keeps open-weight models warm in Ollama, plus a thin CLI
 (`meru`) that talks to it over a Unix socket. It is written in **Go**, so it ships as
 native binaries you can redistribute. macOS on Apple silicon is the primary platform;
-Linux is supported; Windows should work but isn't tested at first.
+Linux is supported; Windows runs since v0.8.0, tested on Windows Server 2025 (#85).
 
 Write every piece of code so that a developer new to Go can follow it, and explain
 it in `docs/coding-notes/` (see [Explaining the code](#explaining-the-code)). Many
@@ -35,7 +35,7 @@ easier to review.
 
 ## Status
 
-Pre-alpha, with releases up to **v0.7.8**. ROADMAP.md ticks every item from v0.1
+Pre-alpha, with releases up to **v0.8.0**. ROADMAP.md ticks every item from v0.1
 to v0.6:
 
 - **v0.1:** `merud` and `meru` answer with local models, stream the answer, keep
@@ -94,6 +94,8 @@ when there is no Docker (#228). Since v0.7.3 `merud` hides every stored
 secret in `merud.log`, in spans and in server errors (#238). Since v0.7.4 Meru
 signs in to remote MCP servers with OAuth from either client (#237), and a
 question about the user's own life checks every connected source (#241).
+Since v0.8.0 Meru runs on Windows: `platform` reads the GPU there, the
+desktop app builds without cgo, and `scripts/install.ps1` installs it (#271).
 Outside the milestones,
 Meru switches between named model sets at run time, searches the web first when a
 question needs it, warms the answer model in the background, and ships

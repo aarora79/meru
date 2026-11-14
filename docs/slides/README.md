@@ -16,7 +16,7 @@ code for the repository and close with it. The developer, organization and indiv
 Open a deck in a browser and scroll, or use the back and forward buttons at the bottom right of each slide; each slide fills the window. The buttons are plain links, and printing leaves them out. GitHub Pages
 serves them at `aarora79.github.io/meru/slides/`.
 
-**To print the PDF again** after an edit, with Chrome:
+**To print the PDF again** after an edit, with Chrome (on Windows, Edge takes the same flags):
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
@@ -25,5 +25,5 @@ serves them at `aarora79.github.io/meru/slides/`.
 ```
 
 Each slide is 1280 by 720 pixels, and the page's print styles give each one a page
-of that size. All four decks date from v0.7.4, November 2026; update
+of that size. All four decks date from v0.8.0, November 2026; update
 them with a release that changes what a slide says.

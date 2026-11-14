@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="author" content="Amit Arora">
-<meta name="description" content="Meru is a personal AI assistant that runs on your own computer. Install it on a Mac or on Linux with one command.">
+<meta name="description" content="Meru is a personal AI assistant that runs on your own computer. Install it on a Mac, on Linux or on Windows with one command.">
 <title>Meru: a personal AI assistant that runs on your own computer</title>
 <style>
   /* One file, no external fonts, scripts or trackers, so it opens from disk and
@@ -267,15 +267,15 @@
   <!-- The latest release. The release-notes skill sets the version, the link
        and the datetime with each release; the script below turns the date
        into "3 days ago". -->
-  <a class="release" id="release" href="https://github.com/aarora79/meru/releases/tag/v0.7.8">
+  <a class="release" id="release" href="https://github.com/aarora79/meru/releases/tag/v0.8.0">
     <span class="dot" aria-hidden="true"></span>
-    <span><b>v0.7.8</b> · released <time id="released" datetime="2026-11-12T02:34:25Z">on 12 November 2026</time></span>
+    <span><b>v0.8.0</b> · released <time id="released" datetime="2026-11-14T01:03:34Z">on 14 November 2026</time></span>
   </a>
   <h1><span class="meru-name">Meru</span> <span class="deva" lang="hi">मेरु</span></h1>
   <p class="origin">In some Eastern traditions, <i>Meru</i> (<span lang="hi">मेरु</span>) is the cosmic mountain that the sun, moon and stars turn around.</p>
   <p class="tagline">A personal AI assistant that runs on your own computer.</p>
   <div class="actions">
-    <a class="cta" href="#install">Try it on your Mac
+    <a class="cta" href="#install">Try it on your computer
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></a>
     <a class="ghost" href="#how-it-works">How it works</a>
   </div>
@@ -470,7 +470,19 @@
   <li>With an NVIDIA card, setup offers the largest model that fits the card's memory.</li>
   <li>Run it again to update; it keeps your settings.</li>
 </ul>
-<p>On Windows, see the <a href="https://github.com/aarora79/meru/blob/main/docs/running.md">running guide</a>.</p>
+<h3 id="windows">On Windows</h3>
+<p>Open PowerShell and paste this line:</p>
+<div class="cmd">
+  <pre><code><span class="prompt" aria-hidden="true">&gt; </span><span class="install-cmd">irm https://github.com/aarora79/meru/releases/latest/download/install.ps1 | iex</span></code></pre>
+  <button class="copy" type="button" hidden aria-label="Copy the Windows install command">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg><span>Copy</span></button>
+</div>
+<ul class="notes">
+  <li>Tested on Windows Server 2025 with an NVIDIA card; Windows 10 and 11 should work too.</li>
+  <li>It installs <code>meru</code>, <code>merud</code> and the desktop app, then offers Ollama, setup and starting <code>merud</code> at each sign-in, asking before each step.</li>
+  <li>With an NVIDIA card, setup offers the largest model that fits the card's memory.</li>
+  <li>Web search needs Docker or Podman; the <a href="https://github.com/aarora79/meru/blob/main/docs/windows.md">Windows guide</a> covers a machine without them.</li>
+</ul>
 </section>
 
 <section aria-labelledby="project">
