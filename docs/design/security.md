@@ -32,11 +32,13 @@ The new rule in this design is simple to say. **Once a chat has read something f
 
 | Counts as outside content | Doesn't count |
 | --- | --- |
-| an answer from an MCP server, such as your mail, calendar, Drive or Slack | your own messages |
-| an answer from another agent (A2A) | your indexed files and folders |
+| what a server's tool that reads returns, such as your mail, calendar, Drive or Slack | your own messages |
+| another agent's (A2A) answer | your indexed files and folders |
 | the output of a `[[commands]]` entry | your Apple Notes |
 | `web_search` results and pages `web_fetch` read | the date, Meru's own facts |
-| a mail attachment or a download saved in `~/meru-output` | |
+| a mail attachment or a download saved in `~/meru-output` | a send or other action you approved |
+
+A tool that asks before it runs, such as a send, doesn't mark the chat: you saw that call and said yes, and its result is the server saying it ran. If it did, the first send you approved would mark the chat, and "for this chat" could never hold for any server's tool.
 
 In a chat that read outside content:
 
