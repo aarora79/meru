@@ -160,7 +160,9 @@ func TestAttach(t *testing.T) {
 	m, cmd = update(t, m, typeText("Plan it"), press(tea.KeyEnter))
 	finishTurn(cmd)
 	r := lastReq(t, merud)
-	if want := "Plan it\n\nRead this file: ~/garden-plan.pdf"; r.Text != want || r.Images == nil || r.Images.Paths[0] != "/up/bed.png" {
+	// The line names the copy as ShortPath writes it, with the system's
+	// separator: "~\garden-plan.pdf" on Windows.
+	if want := "Plan it\n\nRead this file: " + filepath.Join("~", "garden-plan.pdf"); r.Text != want || r.Images == nil || r.Images.Paths[0] != "/up/bed.png" {
 		t.Errorf("request text %q, images %+v; want %q and the image", r.Text, r.Images, want)
 	}
 	if len(m.attached) != 0 {
@@ -344,10 +346,16 @@ func TestFoldersKeys(t *testing.T) {
 		t.Errorf("request = %+v, want folder_remove ~/Notes", r)
 	}
 	// /folders add takes a path of the user's own.
-	m.home = "/Users/dana"
+	// filepath.Abs gives the home folder a drive on Windows, as a real one
+	// has; fullPath makes every path absolute the same way.
+	home, err := filepath.Abs("/Users/dana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.home = home
 	_, cmd = update(t, m, press(tea.KeyEsc), typeText("/folders add ~/Garden"), press(tea.KeyEnter))
 	cmd()
-	if r := lastReq(t, merud); r.Op != rpc.OpFolderAdd || r.Path != filepath.Join("/Users/dana", "Garden") {
+	if r := lastReq(t, merud); r.Op != rpc.OpFolderAdd || r.Path != filepath.Join(home, "Garden") {
 		t.Errorf("request = %+v", r)
 	}
 }

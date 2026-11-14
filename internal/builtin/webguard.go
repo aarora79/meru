@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
@@ -46,12 +45,18 @@ type knownURLs struct {
 	sessions map[string]*sessionURLs
 	// always holds the hosts trusted in every session, by host name.
 	always map[string]bool
+	// uses counts every add, trust and has that finds its session. Each
+	// use stamps the session with the next count, so dropOldest can tell
+	// the order apart. time.Now could not: on Windows its clock can return
+	// one value for many calls in a row, and ties made the eviction pick at
+	// random.
+	uses uint64
 }
 
-// sessionURLs is one session's set, and when it was last used.
+// sessionURLs is one session's set, and the count of its last use.
 type sessionURLs struct {
 	urls map[string]bool
-	used time.Time
+	used uint64
 }
 
 // newKnownURLs returns an empty set.
@@ -94,7 +99,7 @@ func (k *knownURLs) trust(session, host string) {
 		s = &sessionURLs{urls: map[string]bool{}}
 		k.sessions[session] = s
 	}
-	s.used = time.Now()
+	k.touch(s)
 	s.urls[trustKey(host)] = true
 }
 
@@ -143,7 +148,7 @@ func (k *knownURLs) add(session string, urls ...string) {
 		s = &sessionURLs{urls: map[string]bool{}}
 		k.sessions[session] = s
 	}
-	s.used = time.Now()
+	k.touch(s)
 	for _, raw := range urls {
 		if len(s.urls) >= maxURLsPerSession {
 			return
@@ -160,13 +165,19 @@ func (k *knownURLs) add(session string, urls ...string) {
 // structure in order.
 func (k *knownURLs) dropOldest() {
 	var oldest string
-	var at time.Time
+	var at uint64
 	for id, s := range k.sessions {
-		if oldest == "" || s.used.Before(at) {
+		if oldest == "" || s.used < at {
 			oldest, at = id, s.used
 		}
 	}
 	delete(k.sessions, oldest)
+}
+
+// touch marks s as the session used last. The caller holds mu.
+func (k *knownURLs) touch(s *sessionURLs) {
+	k.uses++
+	s.used = k.uses
 }
 
 // has reports whether raw may be fetched without asking in session: the
@@ -194,7 +205,7 @@ func (k *knownURLs) has(session, raw string) bool {
 	if !s.urls[n] && (u.RawQuery != "" || !s.urls[hostKey(n)]) {
 		return false
 	}
-	s.used = time.Now()
+	k.touch(s)
 	return true
 }
 

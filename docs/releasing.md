@@ -176,7 +176,7 @@ strings bin/darwin-arm64/merud | grep -x v0.4.1
   gh release create v0.4.1 --repo aarora79/meru --title "Meru v0.4.1" \
     --verify-tag --notes-file docs/release-notes/v0.4.1.md \
     dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh \
-    scripts/install-linux.sh
+    scripts/install-linux.sh scripts/install.ps1
   ```
 
   To start over instead, delete the tag in both places with
@@ -197,8 +197,16 @@ Linux has its own line:
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
 ```
 
-`make release` attaches `scripts/install.sh` and `scripts/install-linux.sh` to
-every release, so those URLs always serve the latest copy. The Linux desktop
+Windows has one for PowerShell:
+
+```powershell
+irm https://github.com/aarora79/meru/releases/latest/download/install.ps1 | iex
+```
+
+`make release` attaches `scripts/install.sh`, `scripts/install-linux.sh` and
+`scripts/install.ps1` to every release, so those URLs always serve the latest
+copy. It also builds the Windows desktop app, which needs no cgo there, into
+`meru-desktop-VERSION-windows-amd64.zip`, listed in `SHA256SUMS` with the rest. The Linux desktop
 app comes from the `desktop-linux` workflow, step 2 of
 [the release in two steps](#the-release-in-two-steps) ([ci.md](ci.md#desktop-linux)). A plain `curl -LO` of any file's URL works too. People
 who'd rather not use Terminal download `Meru-v0.4.1-macos-arm64.dmg`, open it and

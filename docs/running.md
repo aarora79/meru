@@ -265,6 +265,16 @@ On Linux (tested on Ubuntu 24.04), `install-linux.sh` does the same. It puts
 curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install-linux.sh | bash
 ```
 
+On Windows (tested on Windows Server 2025), `install.ps1` does the same in
+PowerShell. It puts `meru` and `merud` in `%LOCALAPPDATA%\Programs\Meru`, then
+offers the desktop app, NVIDIA's driver on Windows Server, Ollama, `meru setup`
+and a Task Scheduler task that starts `merud` at sign-in;
+[windows.md](windows.md) has the same steps by hand:
+
+```powershell
+irm https://github.com/aarora79/meru/releases/latest/download/install.ps1 | iex
+```
+
 To install by hand instead, follow the steps below; `curl -LO` or `gh release
 download` both fetch the files.
 
@@ -2304,6 +2314,8 @@ your system. [deploy/README.md](../deploy/README.md) has the exact commands:
 - **macOS:** a `launchd` agent.
 - **Linux:** a `systemd` user unit, including how to start it at boot on a server.
 - **Windows:** no service wrapper yet; start `merud.exe` from Task Scheduler.
+  [windows.md](windows.md) has the Windows steps that work so far, such as
+  installing the NVIDIA driver.
 
 ## 10. See how you use Meru
 

@@ -10,9 +10,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,6 +19,7 @@ import (
 	"github.com/aarora79/meru/internal/config"
 	"github.com/aarora79/meru/internal/dispatch"
 	"github.com/aarora79/meru/internal/engine"
+	"github.com/aarora79/meru/internal/rpc"
 	"github.com/aarora79/meru/internal/transcript"
 )
 
@@ -488,20 +487,19 @@ var fileLink = regexp.MustCompile("file://[^\\s()<>\"'`\\[\\]]+")
 // A path os.Stat can't read for another reason, such as a folder the user
 // can't open, counts as there: the check warns only about a file it knows
 // is missing.
-func missingFiles(text string) []string {
+//
+// home replaces a leading ~ in a link, as in file:///~/notes/a.md, which
+// models write because merud shows them paths as ~/notes/a.md. Without
+// it, every such link counted as missing, and the user saw a false
+// warning (a real turn on Windows). rpc.LinkPath reads each link.
+func missingFiles(text, home string) []string {
 	var out []string
 	for _, link := range fileLink.FindAllString(withoutCode(text), -1) {
 		// A link at the end of a sentence may carry its stop.
-		u, err := url.Parse(strings.TrimRight(link, ".,;:!?"))
-		if err != nil || u.Path == "" {
+		path, ok := rpc.LinkPath(strings.TrimRight(link, ".,;:!?"), home)
+		if !ok {
 			continue
 		}
-		path := u.Path
-		// A Windows link, file:///C:/Users/…, parses to the path /C:/Users/….
-		if len(path) > 2 && path[0] == '/' && path[2] == ':' {
-			path = path[1:]
-		}
-		path = filepath.FromSlash(path)
 		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) && !slices.Contains(out, path) {
 			out = append(out, path)
 		}

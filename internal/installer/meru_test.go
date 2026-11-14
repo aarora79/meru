@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -68,7 +69,9 @@ func TestInstallMeru(t *testing.T) {
 			if got := readFile(t, filepath.Join(p.Bin(), "merud")); got != "merud v2" {
 				t.Errorf("merud = %q", got)
 			}
-			if info, _ := os.Stat(filepath.Join(p.Bin(), "meru")); info.Mode().Perm() != 0o755 {
+			// Windows has no execute bit, and Go reports its files as 0666,
+			// so the mode check runs only where modes exist.
+			if info, _ := os.Stat(filepath.Join(p.Bin(), "meru")); runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
 				t.Errorf("meru mode = %v", info.Mode().Perm())
 			}
 			if _, err := os.Stat(filepath.Join(apps, "Meru.app", "Contents", "old")); err == nil {

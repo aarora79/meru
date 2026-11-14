@@ -177,6 +177,18 @@ for platform in $platforms; do
   fi
 done
 
+# The Windows desktop app. On Windows, Wails draws through WebView2 with
+# no cgo, so it cross-builds here like meru and merud. -H windowsgui marks
+# it a window program, so opening it starts no console window beside it.
+# install.ps1 installs it from this zip.
+desktop_win="meru-desktop-$version-windows-amd64"
+mkdir -p "dist/stage/$desktop_win"
+echo "release: build the Windows desktop app"
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -tags desktop \
+  -ldflags "$ldflags -H windowsgui" -o "dist/stage/$desktop_win/meru-desktop.exe" ./cmd/meru-desktop
+cp LICENSE "dist/stage/$desktop_win/"
+(cd dist/stage && zip -q -r -X "../$desktop_win.zip" "$desktop_win")
+
 # ditto is the Mac's own copier. -c -k writes a zip, and --keepParent puts
 # Meru.app itself in the zip, not only what it holds. The --no options
 # leave out this Mac's extended attributes and resource data, which would
@@ -216,6 +228,6 @@ gh release create "$version" \
   --title "Meru $version" \
   --verify-tag \
   "${notes_args[@]}" \
-  dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh scripts/install-linux.sh
+  dist/*.tar.gz dist/*.zip dist/*.dmg dist/SHA256SUMS scripts/install.sh scripts/install-linux.sh scripts/install.ps1
 
 echo "release: published https://github.com/$repo/releases/tag/$version"

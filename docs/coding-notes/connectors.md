@@ -352,6 +352,10 @@ that leaves it, even through a link (see [go-basics/os-root.md](go-basics/os-roo
 The name checks give a clear error; `os.Root` catches anything they miss.
 Node's archive holds relative links such as `bin/npm ->
 ../lib/node_modules/npm/bin/npm-cli.js`, which stay inside and pass.
+`linkInside` checks a target in the archive's `/` form, and
+`filepath.FromSlash` then turns it into the system's form before
+`root.Symlink` makes the link: a Windows link whose target holds `/` leads
+nowhere.
 
 The third pin, `RuntimeChrome`, is `chrome-headless-shell` 154.0.8037.92 from
 Chrome for Testing, which web_fetch's page reader runs (see

@@ -388,7 +388,8 @@ test/e2e/            end-to-end tests: real binaries against the fake Ollama and
 testdata/vault/      a made-up Obsidian vault for trying and testing Meru without personal files
 deploy/              launchd/ and systemd/ service files, and linux/meru.desktop for the app menu
 scripts/             release.sh, which `make release` runs; install.sh, the one-line
-                     installer, and install-linux.sh, Linux's; dmg-readme.txt, the read-me
+                     installer, install-linux.sh, Linux's, and install.ps1, Windows';
+                     dmg-readme.txt, the read-me
                      on the installer's disk image;
                      bench.sh, which `make bench` runs
 dist/                git-ignored; `make release` packs a release here
@@ -404,6 +405,8 @@ docs/
                      ARCHITECTURE.md, which stays the contract
   lld.md             the low-level design
   running.md         how to build and run Meru
+  windows.md         Windows (#85): install.ps1, and its steps by hand: the NVIDIA driver,
+                     building from source, web search without containers
   faq/               one page per "how do I…" question, listed in index.md
   benchmarks/        the benchmark: README.md (how it works, how to build your own dataset) and
                      results.md, which `make bench-report` writes; the dataset stays in bench/

@@ -24,8 +24,9 @@ import (
 // setting no op touches, to check both survive each edit.
 const settingsHeader = "# my own note, keep me\n[agent]\nhistory_turns = 3 # three is plenty\n\n[index]\nwatch = false\n"
 
-// meruHome makes a home folder, points $HOME at it (os.UserHomeDir reads
-// it), and makes merud's home inside it, as ~/.meru. It returns both.
+// meruHome makes a home folder, points $HOME and %USERPROFILE% at it
+// (os.UserHomeDir reads the first on macOS and Linux, the second on
+// Windows), and makes merud's home inside it, as ~/.meru. It returns both.
 func meruHome(t *testing.T) (meru, home string) {
 	t.Helper()
 	home = shortDir(t)
@@ -34,6 +35,7 @@ func meruHome(t *testing.T) (meru, home string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	return meru, home
 }
 

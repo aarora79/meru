@@ -164,7 +164,11 @@ var placeholder = regexp.MustCompile(`\{[^}]*\}`)
 func checkOutput(path string) error {
 	clean := filepath.ToSlash(filepath.Clean(path))
 	switch {
-	case filepath.IsAbs(path) || strings.HasPrefix(path, "~"):
+	// On Windows, IsAbs is false for /tmp/brief.md, which has no drive, and
+	// for C:brief.md, which has no slash after its drive; both still name a
+	// place outside output_dir, so they're refused on every system.
+	case filepath.IsAbs(path) || strings.HasPrefix(path, "~") ||
+		strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) || filepath.VolumeName(path) != "":
 		return fmt.Errorf("%q must be a path inside [skills] output_dir, such as \"briefs/{date}.md\"", path)
 	case clean == ".." || strings.HasPrefix(clean, "../"):
 		return fmt.Errorf("%q leaves [skills] output_dir", path)

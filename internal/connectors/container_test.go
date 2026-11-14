@@ -269,7 +269,10 @@ func TestContainerStartsMeruContainer(t *testing.T) {
 	m := searxngManifest(t)
 	for _, want := range []string{
 		"--name meru-searxng", "--label meru.connector=searxng", "--restart no",
-		"--publish 127.0.0.1:8888:8080", "/meru/searxng:/etc/searxng",
+		// The manifest joins {meru_dir} and /searxng with a slash, so on
+		// Windows the host side reads C:\...\meru/searxng, which Docker
+		// Desktop accepts.
+		"--publish 127.0.0.1:8888:8080", c.in.MeruDir + "/searxng:/etc/searxng",
 		"--env SEARXNG_BASE_URL=http://127.0.0.1:8888/", m.Install.Image,
 	} {
 		if !strings.Contains(run, want) {

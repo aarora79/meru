@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aarora79/meru/internal/platform"
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // timeout bounds how long the opener may run. open, xdg-open and rundll32
@@ -70,10 +71,18 @@ func Open(u string) error {
 	// A file link to nothing makes macOS's open exit 1, which the app
 	// showed as "open: exit status 1". Saying which file is missing tells
 	// the user what went wrong: often a model made up the name.
-	if p, ok := filePath(u); ok {
+	//
+	// rpc.LinkPath also puts the home folder in place of a ~, as in
+	// file:///~/notes/a.md, which models write because merud shows them
+	// paths as ~/notes/a.md. No system opener reads a ~ in a URL, so such a
+	// link opens as the full URL rpc.FileURL writes for the path.
+	// os.UserHomeDir fails only when the system names no home folder.
+	home, _ := os.UserHomeDir()
+	if p, ok := rpc.LinkPath(u, home); ok {
 		if _, err := os.Stat(p); err != nil {
 			return fmt.Errorf("can't open %s: there's no such file on this computer", p)
 		}
+		u = rpc.FileURL(p, "")
 	}
 	argv := command(runtime.GOOS, u)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -89,21 +98,6 @@ func Open(u string) error {
 		return fmt.Errorf("%s: %w", argv[0], err)
 	}
 	return nil
-}
-
-// filePath returns the path a file:// link names, with its escaping undone,
-// and false for any other link. A Windows link, file:///C:/x, parses to
-// /C:/x, so the "/" before the drive letter goes.
-func filePath(u string) (string, bool) {
-	parsed, err := url.Parse(u)
-	if err != nil || !strings.EqualFold(parsed.Scheme, "file") || parsed.Path == "" {
-		return "", false
-	}
-	p := parsed.Path
-	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
-		p = p[1:]
-	}
-	return p, true
 }
 
 // command returns the program, with its arguments, that opens u on goos,

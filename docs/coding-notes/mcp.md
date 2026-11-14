@@ -597,7 +597,12 @@ client secret stays in `secrets.toml`, and the file never holds it. `save` write
 a temp file in the same folder, which `os.CreateTemp` makes at 0600, then renames
 it over the old file, in a folder at 0700. A rename replaces the file in one step,
 so a crash leaves the old file or the new one, never half of either. `load`
-refuses a file other users can read, as the `secrets.toml` loader does, and
+refuses a file other users can read, as the `secrets.toml` loader does. The
+check, `checkTokenMode`, sits in two files picked by build tag:
+`mode_unix.go` tests the mode bits, and `mode_windows.go` accepts every file,
+because Windows has no mode bits and Go reports each of its files as 0666.
+Without that, Windows refused every saved sign-in. The access list on the
+user's profile folder guards the file there instead. Then
 `newSignIn` ignores a file saved for another URL, since the user changed the
 entry.
 
@@ -894,7 +899,7 @@ token, and an authorization server with its metadata, `/register`, `/authorize`
 and `/token`. The `browse` helper plays the browser: it opens the link, follows
 the redirect to the callback, and reads the page. `TestSignInWithRegistration`
 signs in with dynamic registration, calls a tool, checks for the PKCE verifier and
-the file at 0600, and then opens a second pool, which connects with the saved
+the file at 0600 (on macOS and Linux only), and then opens a second pool, which connects with the saved
 token and no sign-in. `TestSignInWithAConfiguredClient` signs in with a client ID,
 a secret and a scope, against a fake that offers no registration, and checks the
 file holds no secret. A fake with neither gets the sentence about

@@ -107,8 +107,9 @@ func (s *tokenStore) load(server string) (storedSignIn, bool, error) {
 	if err != nil {
 		return si, false, err
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return si, false, fmt.Errorf("%s: other users can read it; run chmod 600", s.path(server))
+	// checkTokenMode differs by system: see mode_unix.go and mode_windows.go.
+	if err := checkTokenMode(s.path(server), info); err != nil {
+		return si, false, err
 	}
 	b, err := os.ReadFile(s.path(server)) // #nosec G304 -- a file merud writes under ~/.meru/oauth
 	if err != nil {

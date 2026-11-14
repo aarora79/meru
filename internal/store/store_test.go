@@ -337,7 +337,9 @@ func TestPaths(t *testing.T) {
 		prefix string
 		want   []string
 	}{
-		{"", []string{all[3], all[0], all[1], all[2]}},
+		// Paths sorts by byte, so the order of a full list depends on the
+		// separator: "/" sorts before "2", but Windows' "\" sorts after it.
+		{"", slices.Sorted(slices.Values(all))},
 		{sep + filepath.Join("home", "notes"), []string{all[0], all[1]}},
 		{sep + filepath.Join("home", "notes") + sep, []string{all[0], all[1]}},
 		{sep + filepath.Join("home", "100%_x"), []string{all[3]}},

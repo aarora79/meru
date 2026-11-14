@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -203,7 +204,9 @@ func TestCallResults(t *testing.T) {
 					if string(res.Structured) != tt.wantStructured {
 						t.Errorf("Structured = %s, want %s", res.Structured, tt.wantStructured)
 					}
-					if res.Duration <= 0 {
+					// Go's clock on Windows ticks in steps of up to
+					// 15.6 ms, so a fast call there can measure 0.
+					if res.Duration < 0 || (res.Duration == 0 && runtime.GOOS != "windows") {
 						t.Errorf("Duration = %v, want > 0", res.Duration)
 					}
 				})

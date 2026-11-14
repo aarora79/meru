@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -115,10 +116,13 @@ func TestExit(t *testing.T) {
 func TestSourceLinks(t *testing.T) {
 	m := testModel(nil, newFakeSender())
 	m.look.links = true
-	m.home = "/Users/u"
+	// merud writes a source's path with the system's separator, "~\..." on
+	// Windows, and FileURL looks for "~" plus that separator, so the test
+	// builds both paths with filepath.
+	m.home = filepath.FromSlash("/Users/u")
 	ex := &exchange{
 		answer: "On 12 April [1].",
-		sources: []rpc.Citation{{N: 1, Path: "~/notes/a long folder name/garden plan notes.md",
+		sources: []rpc.Citation{{N: 1, Path: filepath.Join("~", "notes", "a long folder name", "garden plan notes.md"),
 			Heading: "Planting the vegetable garden", StartLine: 3, EndLine: 5}},
 	}
 	const width = 40

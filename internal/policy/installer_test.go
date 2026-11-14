@@ -7,7 +7,7 @@
 package policy
 
 import (
-	"path/filepath"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -53,7 +53,9 @@ func TestInstallerRunsOnlyThroughRun(t *testing.T) {
 }
 
 // TestInstallerAllowlist fails when the allowlist names a shell, an
-// interpreter or a downloader, or a path that isn't absolute. With no shell
+// interpreter or a downloader, or a path that isn't absolute. The paths are
+// macOS paths written with "/", so the test reads them with package path,
+// the same on every system, not filepath. With no shell
 // on the list, no argument can grow into a second command.
 func TestInstallerAllowlist(t *testing.T) {
 	denied := []string{
@@ -69,11 +71,11 @@ func TestInstallerAllowlist(t *testing.T) {
 			t.Errorf("the installer's allowlist names %s; no shell, interpreter or downloader belongs there", name)
 		}
 		for _, p := range paths {
-			if !filepath.IsAbs(p) && !strings.HasPrefix(p, "~/") {
+			if !path.IsAbs(p) && !strings.HasPrefix(p, "~/") {
 				t.Errorf("the allowlist's %s path %q isn't absolute; the installer never searches PATH", name, p)
 			}
-			if slices.Contains(denied, filepath.Base(p)) {
-				t.Errorf("the allowlist's %s path %q runs %s", name, p, filepath.Base(p))
+			if slices.Contains(denied, path.Base(p)) {
+				t.Errorf("the allowlist's %s path %q runs %s", name, p, path.Base(p))
 			}
 		}
 	}

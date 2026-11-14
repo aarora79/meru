@@ -10,6 +10,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -152,8 +153,13 @@ func TestConnectorSetSecret(t *testing.T) {
 	if err != nil || !strings.Contains(string(raw), "connector_google_client_secret") || !strings.Contains(string(raw), secret) {
 		t.Errorf("secrets.toml = %q, %v", raw, err)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Errorf("secrets.toml mode = %v, %v; want 0600", info.Mode().Perm(), err)
+	// Windows has no mode bits, and Go reports its files as 0666, so the
+	// mode check runs only where modes exist.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Errorf("secrets.toml: %v", err)
+	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("secrets.toml mode = %v; want 0600", info.Mode().Perm())
 	}
 	cfgRaw, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
 	if strings.Contains(string(cfgRaw), secret) {

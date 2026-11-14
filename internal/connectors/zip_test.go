@@ -78,7 +78,7 @@ func TestUnpackZip(t *testing.T) {
 		t.Fatalf("unpack: %v", err)
 	}
 	info, err := os.Stat(filepath.Join(dest, "chrome-headless-shell"))
-	if err != nil || info.Mode()&0o100 == 0 {
+	if err != nil || !ownerCanRun(info) {
 		t.Fatalf("the program is missing or not executable: %v %v", info, err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dest, "resources", "a.pak")); string(got) != "pak" {

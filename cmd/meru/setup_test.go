@@ -211,11 +211,14 @@ func TestSetupWithMain(t *testing.T) {
 // ones, and skips every server.
 func TestSetupFirstRun(t *testing.T) {
 	dir := t.TempDir()
+	// An absolute path from t.TempDir is absolute on every system;
+	// "/srv/papers" has no drive, so Windows doesn't count it as one.
+	papers := filepath.Join(dir, "papers")
 	input := "\n" + // Ollama is down: press Enter to check again
 		"full\n" + // profile
 		"\n" + // download: yes, the default
 		"notes\n" + // not absolute: asked again
-		"~/notes, /srv/papers\n" +
+		"~/notes, " + papers + "\n" +
 		"n\n" // the daily count: no
 	c, out, ran := scripted(input)
 	checks := 0
@@ -240,7 +243,7 @@ func TestSetupFirstRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", "/srv/papers"}) {
+	if cfg.Profile != "full" || !slices.Equal(cfg.Index.Folders, []string{"~/notes", papers}) {
 		t.Errorf("config = profile %q, folders %q", cfg.Profile, cfg.Index.Folders)
 	}
 	if cfg.UsageReport.Send != config.ReportOff {
@@ -252,7 +255,7 @@ func TestSetupFirstRun(t *testing.T) {
 		t.Errorf("models = %+v, want the full profile's %+v", cfg.Models, full)
 	}
 	written, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
-	if !strings.Contains(string(written), "[[mcp.servers]]") || !strings.Contains(string(written), "\nfolders = [\"~/notes\", \"/srv/papers\"]\n") {
+	if !strings.Contains(string(written), "[[mcp.servers]]") || !strings.Contains(string(written), "\nfolders = [\"~/notes\", "+tomlString(papers)+"]\n") {
 		t.Errorf("setup didn't write the filled-in template:\n%s", written)
 	}
 	for _, want := range []string{"Ollama isn't answering", "must be an absolute path", "meru setup user", "merud isn't running"} {

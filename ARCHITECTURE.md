@@ -146,17 +146,22 @@ let a test see only the system it runs on. Adding a system means adding a row.
 
 `platform.Describe` reads the machine merud runs on: the system's name and
 version, the processor, main memory, and the GPU with its memory. On a Mac the
-GPU shares main memory. On Linux it reads an NVIDIA card through `nvidia-smi`.
-`platform.ModelMemoryGB` turns that into the memory a model can load into: main
-memory on a Mac, the GPU's memory on Linux with an NVIDIA card, main memory
-without one. `meru setup` sizes the answer model from it with the same table
+GPU shares main memory. On Linux and Windows it reads an NVIDIA card through
+`nvidia-smi`, which NVIDIA's driver installs on both. Windows has no `/proc`, so
+the processor's name comes from the registry and main memory from kernel32's
+`GlobalMemoryStatusEx`. `platform.ModelMemoryGB` turns that into the memory a
+model can load into: main memory on a Mac, the GPU's memory with an NVIDIA card,
+main memory without one. `meru setup` sizes the answer model from it with the same table
 the Mac installer uses (see [Model sets](#model-sets)), and the system prompt
 names the GPU, so a model answers a question about GPU use on Linux with
 `nvidia-smi`.
 
 `platform` imports only the standard library, so any package may use it. It
 starts programs, all read-only and with no shell, only from `run.go`, and
-`internal/policy` holds it to that. What exists on one system only, such as
+`internal/policy` holds it to that. One other file, `machine_windows.go`, may
+import `syscall` for the registry and memory reads; the policy lets it call
+nothing that starts a program and load no Windows function but
+`GlobalMemoryStatusEx`. What exists on one system only, such as
 Apple Notes, Meru.app and the Mac installer, stays in its own package; the
 code checks the row's field instead of the system's name.
 

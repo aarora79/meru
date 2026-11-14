@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aarora79/meru/internal/rpc"
 )
 
 // photo is a picture's bytes for the tests; base64 of it is what a page
@@ -41,6 +43,10 @@ func TestWritePagePutsPicturesIn(t *testing.T) {
 		{"from a subfolder", "cards/diwali.html", `<img src='../attachments/IMG_0584.jpeg'>`,
 			[]string{`src='` + data + `'`}, nil, "Put 1 picture"},
 		{"the output folder's own path", "card2.html", fmt.Sprintf(`<img src="%s">`, filepath.Join(out, "attachments", "IMG_0584.jpeg")),
+			[]string{data}, nil, "Put 1 picture"},
+		// rpc.FileURL writes file:///Users/... on macOS and
+		// file:///C:/Users/... on Windows, where the drive must survive.
+		{"a file URL into the output folder", "card2b.html", fmt.Sprintf(`<img src="%s">`, rpc.FileURL(filepath.Join(out, "attachments", "IMG_0584.jpeg"), "")),
 			[]string{data}, nil, "Put 1 picture"},
 		{"a CSS background, named twice", "card3.html", `<div style="background:url('attachments/IMG_0584.jpeg')"></div><img src="attachments/IMG_0584.jpeg">`,
 			[]string{`url("` + data + `")`, `src="` + data + `"`}, nil, "Put 1 picture"}, // one photo, read once

@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -110,7 +111,9 @@ func TestUpload(t *testing.T) {
 			if copied, err := os.ReadFile(got.Path); err != nil || string(copied) != string(src) {
 				t.Errorf("the copy holds %q, %v", copied, err)
 			}
-			if info, err := os.Stat(got.Path); err != nil || info.Mode().Perm() != 0o600 {
+			// Windows has no mode bits and Go reports its files as 0666,
+			// so the 0600 check runs only where modes exist.
+			if info, err := os.Stat(got.Path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 				t.Errorf("the copy's mode = %v, %v; want 0600", info.Mode(), err)
 			}
 		})

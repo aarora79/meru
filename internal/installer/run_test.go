@@ -9,14 +9,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"path"
 	"slices"
 	"strings"
 	"testing"
 )
 
 // TestProgramsAllowlist checks every entry: an absolute path or one under
-// "~/", and no shell or interpreter among the programs.
+// "~/", and no shell or interpreter among the programs. The entries are
+// macOS paths written with "/", so the test reads them with package path:
+// filepath would read them as Windows paths on Windows, where "/usr/bin/open"
+// has no drive and so isn't absolute.
 func TestProgramsAllowlist(t *testing.T) {
 	shells := []string{"sh", "bash", "zsh", "fish", "env", "python", "python3", "perl", "ruby", "node", "osascript", "curl"}
 	for name, paths := range Programs() {
@@ -24,10 +27,10 @@ func TestProgramsAllowlist(t *testing.T) {
 			t.Errorf("the allowlist names %s", name)
 		}
 		for _, p := range paths {
-			if !filepath.IsAbs(p) && !strings.HasPrefix(p, "~/") {
+			if !path.IsAbs(p) && !strings.HasPrefix(p, "~/") {
 				t.Errorf("%s: path %q isn't absolute", name, p)
 			}
-			if base := filepath.Base(p); base != name {
+			if base := path.Base(p); base != name {
 				t.Errorf("%s: path %q runs %s", name, p, base)
 			}
 		}

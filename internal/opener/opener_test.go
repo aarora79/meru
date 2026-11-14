@@ -65,18 +65,16 @@ func TestOpenMissingFile(t *testing.T) {
 	}
 }
 
-func TestFilePath(t *testing.T) {
-	tests := map[string]string{
-		"file:///Users/dana/a%20b.md": "/Users/dana/a b.md",
-		"file:///C:/Users/dana/a.md":  "C:/Users/dana/a.md",
-	}
-	for in, want := range tests {
-		if got, ok := filePath(in); !ok || got != want {
-			t.Errorf("filePath(%q) = %q, %v; want %q", in, got, ok, want)
-		}
-	}
-	if _, ok := filePath("https://example.com/a"); ok {
-		t.Error("filePath took an https link")
+// TestOpenMissingHomeFile checks a ~ link, as models write them: Open
+// reads ~ as the home folder and names the full path of the missing file.
+func TestOpenMissingHomeFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)        // where os.UserHomeDir looks on macOS and Linux
+	t.Setenv("USERPROFILE", home) // and on Windows
+	err := Open("file:///~/made%20up.html")
+	want := filepath.Join(home, "made up.html")
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Open = %v, want it to name %s", err, want)
 	}
 }
 

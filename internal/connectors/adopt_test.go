@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -104,10 +105,17 @@ confirm = ["obsidian_create_note"]
 
 [index]
 folders = []
-`, vault)
+`, tomlEscape(vault))
 }
 
-// TestAdoptObsidian adopts an npx obsidian-mcp entry, checks the table it
+// tomlEscape doubles each backslash in s, so a Windows path such as
+// C:\Users\dana fits inside a TOML basic string in the hand-written entries
+// below. Meru itself writes TOML through catalog, which escapes it.
+func tomlEscape(s string) string {
+	return strings.ReplaceAll(s, `\`, `\\`)
+}
+
+// TESTADOPTOBSIDIAN ADOPTS an npx obsidian-mcp entry, checks the table it
 // writes and that the supervisor accepts it, and undoes it.
 func TestAdoptObsidian(t *testing.T) {
 	vault := t.TempDir()
@@ -125,7 +133,7 @@ func TestAdoptObsidian(t *testing.T) {
 	for _, want := range []string{
 		"Comment out the obsidian entry",
 		"[connectors.obsidian]",
-		`vault_path = "` + vault + `"`,
+		`vault_path = "` + tomlEscape(vault) + `"`,
 		`vault_name = "notes"`,
 		`allow = ["obsidian_list_vaults", "obsidian_search_vault", "obsidian_read_note", "obsidian_create_note"]`,
 		`confirm = ["obsidian_create_note"]`,
@@ -215,14 +223,14 @@ func TestAdoptObsidianRefusals(t *testing.T) {
 	tests := []struct{ name, body, want string }{
 		{"the REST API server", entry("command = \"uvx\"\nargs = [\"mcp-obsidian\"]\nenv = { OBSIDIAN_API_KEY = \"secret:obsidian_api_key\" }\n"),
 			"runs mcp-obsidian, which reaches Obsidian through its Local REST API plugin"},
-		{"two vaults", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"a=%s\", \"--vault\", \"b=%s\"]\n", vault, vault)),
+		{"two vaults", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"a=%s\", \"--vault\", \"b=%s\"]\n", tomlEscape(vault), tomlEscape(vault))),
 			"names 2 vaults"},
 		{"no vault", entry("command = \"npx\"\nargs = [\"-y\", \"obsidian-mcp\", \"serve\"]\n"), "names no vault"},
 		{"a vault folder that isn't there", entry("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"notes=/no/such/folder\"]\n"),
 			"the vault folder /no/such/folder doesn't exist"},
-		{"a vault name obsidian-mcp refuses", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"My Notes=%s\"]\n", vault)),
+		{"a vault name obsidian-mcp refuses", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"My Notes=%s\"]\n", tomlEscape(vault))),
 			`the vault name "My Notes" doesn't fit`},
-		{"env", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"n=%s\"]\nenv = { DEBUG = \"1\" }\n", vault)),
+		{"env", entry(fmt.Sprintf("command = \"npx\"\nargs = [\"obsidian-mcp\", \"serve\", \"--vault\", \"n=%s\"]\nenv = { DEBUG = \"1\" }\n", tomlEscape(vault))),
 			"sets env (DEBUG)"},
 		{"some other program", entry("command = \"/usr/local/bin/notes-server\"\n"), "not obsidian-mcp through npx or node"},
 		{"an entry and a table both", obsidianEntry(vault) + "\n[connectors.obsidian]\nenabled = false\n", "has both the obsidian entry"},
@@ -347,7 +355,9 @@ func TestAdoptGoogle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	// Windows has no mode bits, and Go reports its files as 0666, so the
+	// mode check runs only where modes exist.
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Errorf("secrets.toml has mode %o, want 600", perm)
 	}
 	sec, err := secrets.Load(a.SecretsPath)

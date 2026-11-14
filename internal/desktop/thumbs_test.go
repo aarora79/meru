@@ -199,7 +199,8 @@ func TestAttachImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := r.waitFor(t, "start", func(u Update) bool { return u.Kind == KindStart })
-	if want := "Which plant is this?\n\nRead this file: ~/meru-output/uploads/seeds.md"; start.Question != want {
+	// The line names the copy in the "~" form with the system's separator.
+	if want := "Which plant is this?\n\nRead this file: " + filepath.Join("~", "meru-output", "uploads", "seeds.md"); start.Question != want {
 		t.Errorf("question = %q, want %q", start.Question, want)
 	}
 	if len(start.Images) != 1 || start.Images[0].Thumb == "" {

@@ -424,10 +424,15 @@ func TestMissingFiles(t *testing.T) {
 		{"the same file twice", "[A](" + toURL(gone) + ") and " + toURL(gone), []string{gone}},
 		{"a link in a code block", "```\nopen " + toURL(gone) + "\n```", nil},
 		{"a web link", "See [the docs](https://example.com/dashboard.html).", nil},
+		// dir stands in for the home folder, so ~ names it. A real
+		// Windows turn linked file:///~/repos/... to files that were
+		// there, and got a false warning.
+		{"a ~ link to a file that is there", "[Plan](file:///~/plan.html)", nil},
+		{"a ~ link to a missing file", "[Dashboard](file:///~/dashboard.html)", []string{gone}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := missingFiles(tt.text); !slices.Equal(got, tt.want) {
+			if got := missingFiles(tt.text, dir); !slices.Equal(got, tt.want) {
 				t.Errorf("missingFiles(%q) = %q, want %q", tt.text, got, tt.want)
 			}
 		})

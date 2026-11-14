@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -283,7 +284,7 @@ func TestInstallOllamaDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 		calls := strings.Join(r.called(), "|")
-		if !strings.Contains(calls, "ditto -x -k ") || !strings.Contains(calls, "codesign --verify --deep --strict "+apps+"/Ollama.app") {
+		if !strings.Contains(calls, "ditto -x -k ") || !strings.Contains(calls, "codesign --verify --deep --strict "+filepath.Join(apps, "Ollama.app")) {
 			t.Errorf("calls = %q", calls)
 		}
 		if !strings.Contains(strings.Join(*lines, "\n"), OllamaDownloadURL) {

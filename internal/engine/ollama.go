@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -723,8 +722,9 @@ func (e *OllamaEngine) do(ctx context.Context, span trace.Span, method, path str
 	resp, err := e.client.Do(req)
 	if err != nil {
 		// A refused connection gets ErrOllamaDown as well. Two %w verbs
-		// wrap both errors, so errors.Is finds either one.
-		if errors.Is(err, syscall.ECONNREFUSED) {
+		// wrap both errors, so errors.Is finds either one. connRefused
+		// differs by system: see refused_windows.go.
+		if errors.Is(err, connRefused) {
 			return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: %w: %w", path, ErrOllamaDown, err))
 		}
 		return nil, e.fail(ctx, span, start, path, fmt.Errorf("ollama %s: %w", path, err))

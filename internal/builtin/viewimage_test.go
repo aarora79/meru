@@ -72,7 +72,10 @@ func TestViewImage(t *testing.T) {
 			if len(res.Images) != 1 || !bytes.Equal(res.Images[0], data) {
 				t.Errorf("Images = %d pictures; want the file's bytes", len(res.Images))
 			}
-			if len(res.Sources) != 1 || res.Sources[0].Kind != "image" || res.Sources[0].Path != filepath.Join(dir, "shot.png") {
+			// show writes the path as the tool does: ~/... when the
+			// folder is under the home folder, as a temp folder is on
+			// Windows.
+			if len(res.Sources) != 1 || res.Sources[0].Kind != "image" || res.Sources[0].Path != tools.show(filepath.Join(dir, "shot.png")) {
 				t.Errorf("Sources = %+v; want the picture as an image source", res.Sources)
 			}
 		})

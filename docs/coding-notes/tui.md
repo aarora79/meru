@@ -25,6 +25,14 @@ the `/about` box. If the file doesn't load, the header
 leaves them out and mouse copying stays on, its default; `merud` reports config
 errors itself.
 
+First of all, `chatTerminal` checks that standard input and standard output
+are both terminals, with `term.IsTerminal`. When either is a pipe or a file,
+`meru chat` stops with an error that points to `meru "question"`, which works
+from a script. Bubble Tea would decide this on its own, but not the same way
+on every system: macOS and Linux fail to open `/dev/tty`, while Windows opens
+the console even when input comes from a pipe, and the chat then waits for
+keys no one types.
+
 ## Matching the desktop app
 
 The chat does what the desktop app does wherever a terminal can, with the ops the

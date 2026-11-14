@@ -140,12 +140,13 @@ func TestAttach(t *testing.T) {
 		t.Error("Detach with no attachments went ahead")
 	}
 
-	// The chip shows the copy's path in the "~" form and its size.
+	// The chip shows the copy's path in the "~" form, with the system's
+	// separator ("~\meru-output\..." on Windows), and its size.
 	picked = []string{plan}
 	_ = b.AttachFile(ctx)
 	r.waitFor(t, "attachments", isAttachments(r, len(steps)+1))
 	a := lastAttachments(r).Attachments
-	if len(a) != 1 || a[0].Path != "~/meru-output/uploads/garden-plan.pdf" || a[0].Size != "2.5 KB" {
+	if len(a) != 1 || a[0].Path != filepath.Join("~", "meru-output", "uploads", "garden-plan.pdf") || a[0].Size != "2.5 KB" {
 		t.Fatalf("attachment = %+v", a)
 	}
 
@@ -155,7 +156,7 @@ func TestAttach(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := r.waitFor(t, "start", func(u Update) bool { return u.Kind == KindStart })
-	want := "What goes in the north bed?\n\nRead this file: ~/meru-output/uploads/garden-plan.pdf"
+	want := "What goes in the north bed?\n\nRead this file: " + filepath.Join("~", "meru-output", "uploads", "garden-plan.pdf")
 	if start.Question != want {
 		t.Errorf("question = %q, want %q", start.Question, want)
 	}

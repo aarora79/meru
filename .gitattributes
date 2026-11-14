@@ -1,0 +1,12 @@
+# Text files keep LF line endings in every checkout, Windows included. Git
+# for Windows turns on core.autocrlf, which would check them out with CRLF;
+# Go embeds the config template, the skills and the desktop app's page in
+# the binaries, and gofmt and the golden tests expect LF (#85).
+* text=auto eol=lf
+
+# Binary files never change.
+*.png   binary
+*.pdf   binary
+*.docx  binary
+*.icns  binary
+*.woff2 binary

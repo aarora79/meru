@@ -4,6 +4,7 @@
 package rpc
 
 import (
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -56,6 +57,57 @@ func TestCited(t *testing.T) {
 	}
 	if got := Cited("[1]", nil); got != nil {
 		t.Errorf("Cited with no sources = %v, want nil", got)
+	}
+}
+
+// TestURLPath checks the path URLPath reads from each form of file://
+// URL, the Windows ones included, on every system.
+func TestURLPath(t *testing.T) {
+	tests := []struct{ link, want string }{
+		{"file:///home/dana/plan.html", "/home/dana/plan.html"},
+		{"file:///C:/Users/dana/plan.html", "C:/Users/dana/plan.html"},
+		{"file://C:/Users/dana/plan.html", "C:/Users/dana/plan.html"},
+		{"file://d:/notes/my%20plan.html", "d:/notes/my plan.html"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.link, func(t *testing.T) {
+			u, err := url.Parse(tt.link)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := URLPath(u); got != tt.want {
+				t.Errorf("URLPath(%q) = %q, want %q", tt.link, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLinkPath checks the path LinkPath finds for each kind of file://
+// link, the ~ links models write included, on every system.
+func TestLinkPath(t *testing.T) {
+	home := filepath.FromSlash("/Users/sam")
+	tests := []struct {
+		link, home, want string
+		wantOK           bool
+	}{
+		{"file:///Users/sam/a.md", home, filepath.FromSlash("/Users/sam/a.md"), true},
+		{"file:///C:/Users/sam/a.md", home, filepath.FromSlash("C:/Users/sam/a.md"), true},
+		{"file://C:/Users/sam/a.md", home, filepath.FromSlash("C:/Users/sam/a.md"), true},
+		{"file:///~/repos/my%20notes/a.md", home, filepath.Join(home, "repos", "my notes", "a.md"), true},
+		{"file://~/repos/a.md", home, filepath.Join(home, "repos", "a.md"), true},
+		{"file:///~", home, home, true},
+		{"file:///~/a.md", "", "", false},
+		{"file:///~notes/a.md", home, filepath.FromSlash("/~notes/a.md"), true},
+		{"https://example.com/a.md", home, "", false},
+		{"file://", home, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.link, func(t *testing.T) {
+			got, ok := LinkPath(tt.link, tt.home)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("LinkPath(%q, %q) = %q, %v; want %q, %v", tt.link, tt.home, got, ok, tt.want, tt.wantOK)
+			}
+		})
 	}
 }
 

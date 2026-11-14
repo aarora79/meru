@@ -441,7 +441,7 @@ func TestCheckErrors(t *testing.T) {
 // check alone while the next one still runs.
 func TestCheckImage(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	if err := os.WriteFile(filepath.Join(home, "receipt.png"), []byte("png"), 0o600); err != nil {
 		t.Fatal(err)
 	}

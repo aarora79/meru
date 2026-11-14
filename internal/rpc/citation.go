@@ -125,6 +125,67 @@ func FileURL(path, home string) string {
 	return u.String()
 }
 
+// URLPath returns the path a parsed file:// URL names, with forward
+// slashes, the reverse of FileURL. A Windows drive can land in two places,
+// and both keep it:
+//
+//   - file:///C:/Users/x, which FileURL writes, parses to the path
+//     /C:/Users/x, so the leading slash goes.
+//   - file://C:/Users/x, which Go's url.URL writes for a path that starts
+//     with a drive, and which models write too, parses with the drive as
+//     the host: host C: and path /Users/x. The drive goes back in front.
+//
+// The caller turns the slashes into the system's with filepath.FromSlash.
+func URLPath(u *url.URL) string {
+	p := u.Path
+	switch {
+	case isDrive(u.Host):
+		p = u.Host + p
+	case len(p) > 2 && p[0] == '/' && isDrive(p[1:3]):
+		p = p[1:]
+	}
+	return p
+}
+
+// LinkPath returns the file a file:// link names, as a path on this
+// system, and false when the link isn't a file:// URL or names nothing
+// Meru can find. Past URLPath, it puts home in place of a leading ~.
+// Models write such links, file:///~/notes/a.md or file://~/notes/a.md,
+// because merud shows them paths as ~/notes/a.md (~\notes\a.md on
+// Windows), and no system opens a ~ in a URL. It returns false for a ~
+// link when home is "".
+func LinkPath(link, home string) (string, bool) {
+	u, err := url.Parse(link)
+	if err != nil || !strings.EqualFold(u.Scheme, "file") {
+		return "", false
+	}
+	p := URLPath(u)
+	if u.Host == "~" {
+		p = "/~" + p // file://~/notes/a.md parses with ~ as the host
+	}
+	// A ~ link's path is now /~ or /~/ and the rest.
+	if rest, ok := strings.CutPrefix(p, "/~"); ok && (rest == "" || rest[0] == '/') {
+		if home == "" {
+			return "", false
+		}
+		return filepath.Join(home, filepath.FromSlash(rest)), true
+	}
+	if p == "" {
+		return "", false
+	}
+	return filepath.FromSlash(p), true
+}
+
+// isDrive reports whether s is a Windows drive, a letter and a colon such
+// as "C:".
+func isDrive(s string) bool {
+	if len(s) != 2 || s[1] != ':' {
+		return false
+	}
+	c := s[0] | 0x20 // 0x20 turns an upper-case ASCII letter into lower case
+	return c >= 'a' && c <= 'z'
+}
+
 // ShortPath writes p under the home folder as ~/..., using the OS's path
 // separator, the way merud shows a source's path. Any other path, or any
 // path when home is "", stays as it is. FileURL undoes it.

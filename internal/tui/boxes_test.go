@@ -7,6 +7,7 @@ package tui
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -152,6 +153,12 @@ func TestBoxesGolden(t *testing.T) {
 					if w := ansi.StringWidth(l); w > width {
 						t.Errorf("line %d is %d wide, want at most %d: %q", i+1, w, width, l)
 					}
+				}
+				// The /about box shows Meru's folder as ShortPath writes it,
+				// with the system's separator: "~\.meru" on Windows. The
+				// golden files hold the "/" form, and none holds a "\".
+				if runtime.GOOS == "windows" && tt.name == "about" {
+					view = strings.ReplaceAll(view, `\`, "/")
 				}
 				golden(t, name, view)
 			})

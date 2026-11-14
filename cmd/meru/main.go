@@ -49,6 +49,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/aarora79/meru/internal/tui"
 
 	"github.com/aarora79/meru/internal/config"
@@ -179,6 +181,10 @@ flags:`)
 	case flags.NArg() == 1 && flags.Arg(0) == "ping":
 		err = ping(ctx, *socket, stdout)
 	case flags.Arg(0) == "chat" && isChatArgs(flags.Args()[1:]):
+		if !chatTerminal() {
+			err = errors.New(`chat: needs a terminal for its input and output; to ask one question from a script, use meru "your question"`)
+			break
+		}
 		// tui.Run starts the Bubble Tea terminal UI (internal/tui).
 		info := chatInfo()
 		info.Incognito = len(flags.Args()) == 2
@@ -259,6 +265,21 @@ func chatInfo() tui.Info {
 		return fallback
 	}
 	return tui.Info{Profile: cfg.Profile, Model: cfg.Models.Main, MouseCopy: cfg.Chat.MouseCopy, Dir: dir}
+}
+
+// chatTerminal reports whether standard input and standard output are both
+// terminals, which the chat screen needs: it reads keys and draws the
+// whole screen. Without this check, Bubble Tea decides, and the systems
+// differ: on macOS and Linux it fails to open /dev/tty when there is none,
+// but on Windows it opens the console even when input comes from a pipe,
+// and then waits for keys no one types.
+//
+// term.IsTerminal asks the system itself (the console mode on Windows), so
+// a pipe, a file or NUL each count as not a terminal.
+func chatTerminal() bool {
+	in := int(os.Stdin.Fd())   // #nosec G115 -- a file descriptor fits in an int
+	out := int(os.Stdout.Fd()) // #nosec G115 -- a file descriptor fits in an int
+	return term.IsTerminal(in) && term.IsTerminal(out)
 }
 
 // isChatArgs reports whether args, the words after "chat", are ones the

@@ -56,11 +56,18 @@ so nothing in the URL can run as a command. The context carries a ten-second
 timeout, so an opener stuck without a display doesn't wait for ever. Standard
 output stays unset, so `Run` doesn't wait on a browser the opener leaves running.
 
-Before it runs anything, `Open` checks a `file://` link: `filePath` undoes
-the URL's escaping, and `os.Stat` asks for the file. A link to nothing fails
-with "can't open … there's no such file on this computer". Without the check,
-macOS's `open` exits 1 and the app showed "open: exit status 1", which said
-nothing about a file name the model had made up.
+Before it runs anything, `Open` checks a `file://` link: `rpc.LinkPath`
+turns it into a path on this system (see [rpc.md](rpc.md)), and `os.Stat`
+asks for the file. A link to nothing fails with "can't open … there's no such
+file on this computer". Without the check, macOS's `open` exits 1 and the app
+showed "open: exit status 1", which said nothing about a file name the model
+had made up.
+
+Models often write a link that starts with `~`, such as
+`file:///~/notes/a.md`, because `merud` shows them paths that way. No
+system's opener reads a `~` in a URL, so `LinkPath` puts the home folder in
+its place, and `Open` hands the opener the full URL that `rpc.FileURL`
+writes for the path, such as `file:///C:/Users/dana/notes/a.md`.
 
 `command` takes the system's name as a parameter and reads the opener from that
 system's row in [platform](platform.md), so one test checks all three systems on

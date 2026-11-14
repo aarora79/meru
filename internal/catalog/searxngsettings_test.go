@@ -6,6 +6,7 @@ package catalog
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,9 @@ func TestSearXNGSettings(t *testing.T) {
 	if len(secret) != 64 {
 		t.Errorf("secret %q isn't 64 hex digits", secret)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+	// Windows has no mode bits, and Go reports its files as 0666, so the
+	// mode check runs only where modes exist.
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("settings.yml mode = %v, want 0600", info.Mode().Perm())
 	}
 

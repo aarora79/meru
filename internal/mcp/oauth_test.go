@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -196,9 +197,15 @@ func TestSignInWithRegistration(t *testing.T) {
 	f.mu.Unlock()
 
 	// The sign-in is saved at 0600, and a new pool connects with it.
+	// Windows has no mode bits, and Go reports its files as 0666, so the
+	// mode check runs only where modes exist; the new pool's connection
+	// below checks on every system that the saved file loads.
 	info, err := os.Stat(filepath.Join(dir, "gh.json"))
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("token file: %v, mode %v", err, info)
+	if err != nil {
+		t.Fatalf("token file: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("token file mode %v, want 0600", info.Mode().Perm())
 	}
 	p.Close()
 	p2 := oauthPool(t, f, dir, OAuthConfig{})

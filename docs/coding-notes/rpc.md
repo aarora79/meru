@@ -404,6 +404,17 @@ way:
   marks means no sources: the model decides when a source matters.
 - **`FileURL(path, home)`** turns a source's path into a `file://` URL, putting
   `home` back in place of a leading `~`. `url.URL` escapes spaces as `%20`.
+- **`URLPath(u)`** goes the other way, from a parsed `file://` URL to its path
+  with `/` separators. A Windows drive can land in two places:
+  `file:///C:/x`, which `FileURL` writes, parses to the path `/C:/x`, and
+  `file://C:/x`, which Go's `url.URL` and models write, parses with `C:` as
+  the host. `URLPath` returns `C:/x` for both.
+- **`LinkPath(link, home)`** builds on `URLPath`: it parses a `file://` link
+  and returns a path on this system, with `home` in place of a leading `~`.
+  Models write `file:///~/notes/a.md` because merud shows them paths as
+  `~/notes/a.md`, and no system opens a `~` in a URL. The agent's
+  missing-file check, `write_file`'s pictures and the opener all use it, so
+  the three read a link the same way.
 - **`ShortPath(home, path)`** does the reverse: it writes a path under `home` as
   `~/...`. `merud` uses it for the sources of a live turn and of a past one, so
   both read the same.

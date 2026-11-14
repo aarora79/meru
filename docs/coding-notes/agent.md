@@ -1216,14 +1216,18 @@ if missing := missingFiles(rep.text); len(missing) > 0 {
 ```
 
 `missingFiles` finds each `file://` URL with the regular expression `fileLink`,
-outside code blocks, trims a stop that ends the sentence, and parses it with
-`net/url`, which turns `%20` back into a space. `filepath.FromSlash` turns the
-URL's `/` into the system's separator, and a Windows link such as
-`file:///C:/Users/…` loses the `/` before its drive letter. `os.Stat` then
+outside code blocks, trims a stop that ends the sentence, and turns it into
+a path with `rpc.LinkPath` (see [rpc.md](rpc.md)). That undoes `%20`, keeps
+a Windows drive in either form of link, and puts the home folder, the
+`home` argument, in place of a `~`. Models write `file:///~/repos/…`
+because merud shows them paths as `~/repos/…`; before `LinkPath`, every
+such link counted as missing, and a real Windows turn warned about five
+files that were there. `os.Stat` then
 asks for the file. Only `fs.ErrNotExist` counts, checked with `errors.Is`,
 so a folder the user can't open doesn't raise a false alarm. The notice names
 the path: "The answer links …/dashboard.html, which doesn't exist on this
-computer." `TestMissingFiles` covers links that are there, missing, bare,
+computer." `TestLinkPath` checks each form of link, the Windows ones
+included, on every system. `TestMissingFiles` covers links that are there, missing, bare,
 with a space, repeated, in a code block and on the web; `TestMissingFileNotice`
 replays the real turn with a fake model, a `web_search` call and a link to a
 file in a temporary folder.

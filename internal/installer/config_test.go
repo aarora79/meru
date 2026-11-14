@@ -8,6 +8,7 @@ package installer
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -131,12 +132,16 @@ func TestSampleCommands(t *testing.T) {
 // each lands once, uncommented, with the comments kept, and that disabled
 // built-in skills come back on while other disabled skills stay off.
 func TestSaveSkillsAndCommands(t *testing.T) {
+	// disk-free (df) and uptime run from /bin and /usr/bin on macOS and
+	// Linux alike, so this test runs in CI on both. Windows has neither
+	// program, and the Mac installer never runs there.
+	if runtime.GOOS == "windows" {
+		t.Skip("the sample commands need df and uptime, which Windows lacks")
+	}
 	p := tempHome(t)
 	if err := catalog.SetTableLists(p.Config(), "skills", map[string][]string{"disabled": {"explainer", "my-own"}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	// disk-free (df) and uptime run from /bin and /usr/bin on macOS and
-	// Linux alike, so this test runs in CI on both.
 	chosen := []string{"disk-free", "uptime"}
 	for range 2 {
 		if _, err := SaveSkillsAndCommands(p, chosen); err != nil {

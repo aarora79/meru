@@ -77,8 +77,10 @@ func TestWriteFile(t *testing.T) {
 // file and give a link the user can click.
 func TestWriteFileNamesTheOutputFolder(t *testing.T) {
 	tools, out := writeTools(t)
-	// os.UserHomeDir reads HOME, so "~" is the folder above the output folder.
+	// os.UserHomeDir reads HOME, or USERPROFILE on Windows, so "~" is the
+	// folder above the output folder.
 	t.Setenv("HOME", filepath.Dir(out))
+	t.Setenv("USERPROFILE", filepath.Dir(out))
 	want := filepath.Join(out, "uploads", "page.html")
 	paths := []string{
 		"uploads/page.html",
