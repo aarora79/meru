@@ -78,6 +78,41 @@ func TestScopedTurns(t *testing.T) {
 	}
 }
 
+// TestImageTurnOffersFileTools checks the tools a question with images
+// gets in auto, which skips the router: the search route's, so the model
+// can read a file such as a PDF the chat already found, with the web tools
+// and no command that asks first.
+func TestImageTurnOffersFileTools(t *testing.T) {
+	all := []engine.ToolSpec{
+		spec("google.search_gmail_messages"), spec("web_search"), spec("web_fetch"),
+		spec("read_file"), spec("grep"), spec("datetime"), spec("about_meru"), spec("cmd.git-log"),
+	}
+	tools := &fakeTools{specs: all}
+	a := New(testConfig(t), &fakeEngine{}, &fakeRouter{}, &fakeSearcher{}, tools, nil, nil, quietLog())
+	var got []string
+	for _, s := range a.scopeSpecs(context.Background(), rpc.ScopeAuto) {
+		got = append(got, s.Name)
+	}
+	if !slices.Contains(got, "read_file") || !slices.Contains(got, "grep") {
+		t.Errorf("image turn tools = %v, want the file tools", got)
+	}
+	if !slices.Equal(got, specNames(a.toolSpecs("search"))) {
+		t.Errorf("image turn tools = %v, want the search route's %v", got, specNames(a.toolSpecs("search")))
+	}
+	if slices.Contains(got, "google.search_gmail_messages") {
+		t.Errorf("image turn tools = %v; a mail tool waits for a tools route", got)
+	}
+}
+
+// specNames returns the names of specs, in order.
+func specNames(specs []engine.ToolSpec) []string {
+	var out []string
+	for _, s := range specs {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
 // TestScopeFence checks that a scoped turn hands dispatch the round's
 // offer as the fence, so a call to an allowed tool the scope didn't offer
 // is denied there, and that an auto turn fences nothing.

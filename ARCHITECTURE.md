@@ -464,7 +464,9 @@ the line as its tooltip.
 files, Mail and calendar, Web or Just talk. A new chat starts on Auto, in the
 app and after `/new` in `meru chat`. Auto runs the router as every other
 client does, except for a question with images, which takes the `direct` route
-because the router's model reads text alone. Any other scope skips the router, the route rules that widen a route
+because the router's model reads text alone. That turn still offers the tools
+the `search` route offers, so the model can read a file the picture is about,
+such as a PDF the chat already found. Any other scope skips the router, the route rules that widen a route
 and a picked skill's tools, because a scope is a promise about what the turn may
 touch. `dispatch` keeps the promise: on a scoped turn, a call to a tool the round
 didn't offer is denied and logged, even when config allows that tool, so a model

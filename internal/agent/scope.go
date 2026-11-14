@@ -41,8 +41,8 @@ func scopeRoute(scope string) string {
 // search no files. A "web" turn goes to the web first: see askedCalls.
 //
 // A question with images comes here in auto too, since the router's fast
-// model can't see them. It takes the "direct" route and the tools that
-// route offers; see scopeSpecs.
+// model can't see them. It takes the "direct" route, with the tools the
+// search route offers; see scopeSpecs.
 func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
 	var picked pickedSkills
@@ -118,8 +118,14 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 //   - web: web_search and web_fetch, with datetime and about_meru;
 //   - talk: none at all;
 //   - auto, which reaches here only for a question with images: what
-//     the direct route offers, datetime and about_meru, and the web tools
-//     while web_search is on.
+//     the search route offers, the file tools, the local commands that
+//     don't ask, datetime and about_meru, and the web tools while
+//     web_search is on. The file tools came after a real turn: the user
+//     attached a screenshot of a form and asked Meru to read a PDF that
+//     the turn before had found. The direct route offered no read_file,
+//     so the model tried web_fetch on a file:// link, failed, and said it
+//     couldn't open PDFs. The turn still searches nothing first; the file
+//     tools only read what search could reach.
 //
 // builtin.EveryRoute names the two tools every scope but talk carries.
 // The web tools go with every route in auto (see everyRoute), but of the
@@ -151,7 +157,7 @@ func (a *Agent) scopeSpecs(ctx context.Context, scope string) []engine.ToolSpec 
 			return !builtin.EveryRoute(s.Name) && s.Name != builtin.WebSearch && s.Name != builtin.WebFetch
 		})
 	case rpc.ScopeAuto:
-		return a.toolSpecs("direct")
+		return a.toolSpecs("search")
 	}
 	return nil
 }
