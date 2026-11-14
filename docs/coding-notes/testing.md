@@ -1,6 +1,6 @@
 # testing
 
-**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`, `render_test.go`, `vault_test.go`),
+**Code:** `internal/policy/` (`doc.go`, `scan_test.go`, `privacy_test.go`, `layout_test.go`, `pins_test.go`, `connectors_test.go`, `render_test.go`, `vault_test.go`, `catalog_test.go`),
 `internal/testutil/fakeollama/` (`fake.go`, `api.go`, `wire.go`), `cmd/fakeollama/` (`main.go`)
 **Milestone:** v0.1
 **Architecture:** [Privacy boundary](../../ARCHITECTURE.md#privacy-boundary)
@@ -197,6 +197,17 @@ other real-sounding businesses an earlier draft of the vault used. It reads
 the Markdown, text, CSV and PDF files as bytes, since the vault's PDFs keep
 their text uncompressed. A Word file is a ZIP of compressed parts, so
 `vaultText` opens it with `archive/zip` and reads each XML part.
+
+`catalog_test.go` holds the catalog to the rule that a tool which acts asks
+first. `TestCatalogActionsAsk` walks `catalog.Entries()` and fails when an
+`Allow` entry matches `actionWord`, a regular expression for words such as
+send, share, delete, create, update, manage, import and append between
+underscores, dots or dashes, and is missing from both `Confirm` and
+`AlwaysConfirm`. A user who adds a catalog server trusts its lists, and a send that runs
+unasked would act on any instruction a hostile email slips to the model
+([docs/design/security.md](../design/security.md)).
+`TestCatalogActionsAskCatches` runs the same check on made-up entries, so a
+pattern that matched nothing couldn't pass the real catalog.
 
 `pins_test.go` checks that every program Meru installs, or tells you to install,
 names one exact version. It reads the connector manifests, the string literals in

@@ -312,19 +312,24 @@ func (t *Tools) webSearchOn() (bool, string) {
 }
 
 // Confirm says configure and schedule_job always ask, with no session
-// approval. Any other
-// built-in asks when [builtin] confirm lists it, and runs without asking
-// otherwise. The shipped list holds write_file alone, so remember saves
-// without asking, as ARCHITECTURE.md "Memory" says, write_file asks, and
-// the read-only file tools and web_search run without asking. web_fetch
-// also runs without asking, but only for a URL the session knows and only
+// approval. Any other built-in asks when [builtin] confirm lists it. The
+// shipped list holds write_file and edit_file, so both ask, and the
+// read-only file tools and web_search run without asking. web_fetch also
+// runs without asking, but only for a URL the session knows and only
 // without save; ConfirmCall, in webguard.go, decides the rest per call.
+//
+// remember, when the list leaves it out, gets dispatch.ConfirmOutside: it
+// saves without asking in a clean chat, as ARCHITECTURE.md "Memory" says,
+// and asks every time once the chat has read mail, the web or another
+// server, so words in that content can't plant a memory unseen.
 func (t *Tools) Confirm(name string) dispatch.Confirm {
 	switch {
 	case AlwaysAsks(name):
 		return dispatch.ConfirmAlways
 	case t.asks(name):
 		return dispatch.ConfirmAsk
+	case name == Remember:
+		return dispatch.ConfirmOutside
 	default:
 		return dispatch.ConfirmNever
 	}
@@ -369,7 +374,10 @@ func (t *Tools) Status() []rpc.ServerInfo {
 		tools = append(tools, rpc.ToolInfo{
 			Name:        Remember,
 			Description: "Saves one fact about you to ~/.meru/memory.",
-			Confirm:     t.Confirm(Remember) != dispatch.ConfirmNever,
+			// Settings shows what config says: remember asks only when
+			// [builtin] confirm lists it. Its ConfirmOutside question in a
+			// chat that read outside content isn't a setting.
+			Confirm: t.asks(Remember),
 		})
 	}
 	if t.outputDir != "" {
@@ -649,8 +657,10 @@ func summary(e catalog.Entry, configPath string) string {
 			"Tell the user to run `meru tools` to see what it offers, then list the tools to allow in config.toml.\n")
 	} else {
 		fmt.Fprintf(&b, "Allowed tools: %s.\n", strings.Join(e.Allow, ", "))
-		if len(e.Confirm) > 0 {
-			fmt.Fprintf(&b, "These ask the user before each call: %s.\n", strings.Join(e.Confirm, ", "))
+		// slices.Concat joins the two lists: a tool in always_confirm
+		// asks before each call too, and without a session approval.
+		if asks := slices.Concat(e.Confirm, e.AlwaysConfirm); len(asks) > 0 {
+			fmt.Fprintf(&b, "These ask the user before each call: %s.\n", strings.Join(asks, ", "))
 		}
 	}
 	for _, n := range e.Needs {

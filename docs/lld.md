@@ -393,7 +393,7 @@ type ToolRunner interface {
 type Backend interface {
     Kind() string                              // "mcp", "a2a", "builtin" or "command"
     Tools() []engine.ToolSpec                  // allowed tools, by full name
-    Confirm(name string) Confirm               // ConfirmNever, ConfirmAsk or ConfirmAlways
+    Confirm(name string) Confirm               // ConfirmNever, ConfirmAsk, ConfirmAlways or ConfirmOutside
     Locate(name string) (server, tool string)  // for rows and metrics
     Call(ctx context.Context, name string, args json.RawMessage) (Result, error)
     Status() []rpc.ServerInfo                  // for `meru tools`
@@ -421,6 +421,12 @@ type SiteTruster interface {
     TrustSite(ctx context.Context, c Call, host string, always bool) error
 }
 ```
+
+A `Call` carries `Outside`, set by the agent when the chat has read mail, a web
+page or another server's answer. Then `effective` makes an MCP, A2A or command
+tool that asks (`ConfirmAsk`) ask every time, and `ConfirmOutside`, which only
+`remember` returns, asks; in a clean chat `ConfirmOutside` runs unasked
+([docs/design/security.md](design/security.md)).
 
 The agent sees tools only through `ToolRunner`. `merud` passes a
 `*dispatch.Dispatcher`; tests pass `fakeTools`; nil turns tools off. `Dispatch`

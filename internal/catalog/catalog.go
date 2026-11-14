@@ -207,9 +207,13 @@ func Entries() []Entry {
 				"search_drive_files", "get_doc_content",
 				"get_gmail_attachment_content",
 			},
-			Confirm: []string{"send_gmail_message", "manage_event"},
-			Install: installUV + " Then start the server yourself: " + googleStart,
-			Docs:    "https://github.com/taylorwilsdon/google_workspace_mcp",
+			Confirm: []string{"manage_event"},
+			// A send asks every time, even after "for this chat": mail
+			// out is the action a hostile email most wants
+			// (docs/design/security.md).
+			AlwaysConfirm: []string{"send_gmail_message"},
+			Install:       installUV + " Then start the server yourself: " + googleStart,
+			Docs:          "https://github.com/taylorwilsdon/google_workspace_mcp",
 		},
 		{
 			Name:        "obsidian",

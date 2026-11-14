@@ -107,7 +107,12 @@ Extended is the smallest tier that holds every tool in `Allow`:
 core. Without the flag the server loads every tool of the four services, or the
 tier that `WORKSPACE_MCP_TOOL_TIER` names, so the flag also keeps your shell from
 changing the tier. `TestGoogleToolTier` checks the flag. `Allow` names nine tools;
-`send_gmail_message` and `manage_event` sit in `Confirm`.
+`manage_event` sits in `Confirm`, and `send_gmail_message` in `AlwaysConfirm`, so
+a send asks every time, even after "for this chat": mail out is the action a
+hostile email most wants (see [docs/design/security.md](../design/security.md)).
+`TestCatalogIsTwoServers` checks both lists, and `TestCatalogActionsAsk` in
+[policy](testing.md) fails when any entry allows a tool named for sending,
+sharing, deleting or creating that neither list names.
 
 `get_gmail_attachment_content` saves a mail's attachment to disk and returns the
 saved filename, not the text. `WORKSPACE_ATTACHMENT_DIR` tells the server where
@@ -129,8 +134,8 @@ The catalog once held six more entries: a web page reader, a server for files in
 chosen folders, a Windows desktop server, and three that each ran the Google
 server with one service. With them went `NeedFolders`, `WithArgs`, `ExpandFolder`,
 `Entry.OS`, `RunsOn` and the file `args.go`. A catalog entry now takes no words
-after its name. `always_confirm` stays in `Entry` and in config, with no catalog
-entry that uses it today.
+after its name. `always_confirm` stays in `Entry` and in config; the `google`
+entry uses it for `send_gmail_message`.
 
 `SecretNames` lists the `secrets.toml` entries an entry uses, from both its env
 and its Needs. `configure` checks them before it writes anything.

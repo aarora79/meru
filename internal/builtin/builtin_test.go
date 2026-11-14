@@ -49,7 +49,7 @@ func TestConfigure(t *testing.T) {
 		{
 			name:     "catalog entry that asks first",
 			args:     `{"action":"add_mcp_server","catalog":"google"}`,
-			wantText: "These ask the user before each call: send_gmail_message, manage_event",
+			wantText: "These ask the user before each call: manage_event, send_gmail_message",
 		},
 		{
 			name:    "missing secret",
@@ -170,7 +170,8 @@ func TestBackend(t *testing.T) {
 	}{
 		{Configure, dispatch.ConfirmAlways}, // listed in confirm, still always
 		{"write_file", dispatch.ConfirmAsk},
-		{"remember", dispatch.ConfirmNever},
+		{"remember", dispatch.ConfirmOutside}, // asks only in a chat that read outside content
+		{"read_file", dispatch.ConfirmNever},
 	}
 	for _, c := range confirms {
 		if got := tools.Confirm(c.name); got != c.want {
@@ -323,9 +324,11 @@ func TestRememberSpecAndConfirm(t *testing.T) {
 		}
 	}
 
-	// Memories save without asking, unless [builtin] confirm lists remember.
-	if got := tools.Confirm(Remember); got != dispatch.ConfirmNever {
-		t.Errorf("Confirm(remember) = %v, want ConfirmNever by default", got)
+	// Memories save without asking in a clean chat and ask in one that
+	// read outside content (ConfirmOutside), unless [builtin] confirm
+	// lists remember, which makes it ask everywhere.
+	if got := tools.Confirm(Remember); got != dispatch.ConfirmOutside {
+		t.Errorf("Confirm(remember) = %v, want ConfirmOutside by default", got)
 	}
 	if st := tools.Status(); st[0].Offered != 4 || st[0].Tools[2].Confirm {
 		t.Errorf("Status = %+v, want remember listed without confirm", st)

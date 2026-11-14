@@ -387,7 +387,7 @@ function toolRow(body, c, t) {
   if (always) {
     li.append(el("span", "tool-why", t.name === "configure"
       ? "Always asks: it changes Meru's own settings, so the model can never grant itself a tool."
-      : "Always asks: config lists it in always_confirm, because it runs commands."));
+      : "Always asks: config lists it in always_confirm."));
   }
   return li;
 }

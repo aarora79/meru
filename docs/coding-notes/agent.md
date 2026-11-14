@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `outside.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `outside_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -146,6 +146,48 @@ sign in (see [Servers that wait for a sign-in](#servers-that-wait-for-a-sign-in-
 `merud` passes `*dispatch.Dispatcher`, which has these five methods. Tests
 pass `fakeTools`, which answers from a table by tool name. A `nil`
 ToolRunner turns tools off.
+
+### Outside content (outside.go)
+
+Once a chat has read words someone else wrote, every server tool that asks
+asks before every call, and `remember` asks too
+([docs/design/security.md](../design/security.md)). `dispatch` applies that
+rule; the agent only tells it when the chat has crossed the line, with
+`dispatch.Call.Outside`.
+
+`readsOutside(kind, name, args, outputDir, home, asks)` decides one call:
+
+- an MCP, A2A or command tool counts when it runs without asking, which means
+  it reads, such as a mail search. A tool that asks first, such as a send,
+  doesn't: you saw that call, and its result is the server saying it ran.
+  Counting it would mark the chat at the first approved send, so "for this
+  chat" could never hold for a server's tool. `asks` comes from `asksFirst`,
+  which treats a tool `Tools()` no longer lists as one that reads, so a removed
+  server's old results still count;
+- `web_search` and `web_fetch` count;
+- `read_file` and `grep` count on a path under the output folder's
+  `attachments` or `downloads` folder, where mail attachments and web downloads
+  land. `underOutside` expands `~/` with `home` and cleans both paths first;
+- every other built-in reads your own machine and doesn't count.
+
+The turn keeps the mark in `t.outside`. `Handle` sets it from the chat's
+transcript with `readOutside`, which pairs each `tool_call` line with its
+`tool_result` by call ID and counts only calls that ended `ok` or `error`; a
+denied or declined call brought nothing in. `fullName` rebuilds the model's
+name for a tool from the line's kind, server and tool. Reading the transcript,
+not a map in memory, means a restart of `merud` can't clear the mark. A
+transcript that can't be read counts as outside, the side that asks more, with
+a debug line.
+
+`runCalls` copies `t.outside` into each call of a round before its goroutines
+start, so the calls of one round all carry the mark as it stood before the
+round: the model asked for them before it saw any result. After the round,
+any call that ran and `readsOutside` sets `t.outside` for the next round.
+
+`outside_test.go` holds `TestReadsOutside` and `TestReadOutside`, two tables;
+`TestOutsideAcrossRounds`, a turn where a mail read in round one marks the
+send in round two and the next turn starts marked; and
+`TestCleanChatStaysClean`, a turn of local reads and a memory with no mark.
 
 ### The TurnRecorder interface
 

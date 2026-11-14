@@ -279,8 +279,11 @@ func TestMCPAddCatalogProbe(t *testing.T) {
 		t.Fatalf("mcp add: %v\n%s", err, out)
 	}
 	s := serverIn(t, sock, "google")
-	if !slices.Equal(s.Allow, []string{"search_gmail_messages", "send_gmail_message"}) || !slices.Equal(s.Confirm, []string{"send_gmail_message"}) {
-		t.Errorf("allow %q confirm %q", s.Allow, s.Confirm)
+	// The catalog asks about a send every time, so the accepted "ask"
+	// lands in always_confirm, not confirm.
+	if !slices.Equal(s.Allow, []string{"search_gmail_messages", "send_gmail_message"}) || len(s.Confirm) != 0 ||
+		!slices.Equal(s.AlwaysConfirm, []string{"send_gmail_message"}) {
+		t.Errorf("allow %q confirm %q always_confirm %q", s.Allow, s.Confirm, s.AlwaysConfirm)
 	}
 	if s.URL != "http://127.0.0.1:8000/mcp" || s.Command != "" || len(s.Env) != 0 {
 		t.Errorf("server = %+v, want the url entry with no env", s)

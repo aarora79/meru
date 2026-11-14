@@ -50,6 +50,17 @@ Run mail.send? [o]nce  [s]ession  [d]eny:
 refuses. The box opens on deny, so a stray Enter runs nothing. In the desktop
 app, **Edit first** puts a mail back in the box as a draft for you to change.
 
+**After mail or the web, Meru asks every time.** Once a chat has read your mail,
+a web page or another server's answer, a server's tool that asks offers only
+once and deny, and an earlier `s` stops counting. Meru says why: "This chat has
+read mail or the web, so Meru asks before each call." `remember` asks then too.
+An email or a page can hold words written to steer the model, and this keeps a
+yes you gave for one thing from carrying another. `write_file` and `edit_file`
+keep their `s`. To make a tool ask every time in every chat, list it in its
+server's `always_confirm`; the catalog's `send_gmail_message` comes that way.
+[What stops an email or a web page from acting for me?](prompt-injection.md)
+says more.
+
 **Nobody to ask means no.** `meru run --json`, `meru check` and a question piped
 from a script decline every call that would ask.
 

@@ -36,9 +36,9 @@ func TestMCPAddAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	notes := cfg.MCP.Servers[len(cfg.MCP.Servers)-1]
-	// search says read-only, so it runs without asking. send says destructive, and
-	// secret says nothing, so both ask first.
-	if !slices.Equal(notes.Allow, []string{"search", "secret", "send"}) || !slices.Equal(notes.Confirm, []string{"secret", "send"}) {
+	// search and read_mail say read-only, so they run without asking. send
+	// says destructive, and secret says nothing, so both ask first.
+	if !slices.Equal(notes.Allow, []string{"read_mail", "search", "secret", "send"}) || !slices.Equal(notes.Confirm, []string{"secret", "send"}) {
 		t.Errorf("allow %q confirm %q", notes.Allow, notes.Confirm)
 	}
 

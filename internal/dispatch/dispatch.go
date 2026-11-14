@@ -43,10 +43,20 @@ const (
 	// ConfirmAsk asks, unless the user already approved the tool for this
 	// session.
 	ConfirmAsk
-	// ConfirmAlways asks every time and offers no session approval. Only
-	// the configure tool uses it: config grants lasting trust, so the model
-	// can't grant any to itself.
+	// ConfirmAlways asks every time and offers no session approval:
+	// configure and schedule_job, which change config, web_fetch on an
+	// address nobody gave, and a server's always_confirm tools. A
+	// ConfirmAsk call in a chat that read outside content acts as this one
+	// too (see Call.Outside).
 	ConfirmAlways
+	// ConfirmOutside runs without asking in a chat that has read nothing
+	// from outside the machine, and asks every time in one that has. Only
+	// remember uses it: a memory outlives the chat, so a hostile page must
+	// not plant one unseen, but "remember that I prefer tea" in a clean
+	// chat shouldn't ask. It comes last so the numbers above keep their
+	// meaning; nothing stores them, but ConfirmNever must stay the zero
+	// value, the one a Backend that forgets to say gets.
+	ConfirmOutside
 )
 
 // Backend is one source of tools: the MCP client pool, the A2A client, the
@@ -212,6 +222,16 @@ type Call struct {
 	// (AGENTS.md, non-negotiable 4). Append, for such a call, writes to
 	// the chat's memory, not to a file.
 	Incognito bool
+	// Outside says the chat has read content from outside the machine
+	// before this call: an MCP server's or an A2A agent's answer, a
+	// [[commands]] entry's output, web_search or web_fetch, or a mail
+	// attachment or download saved in the output folder. Then a tool
+	// that asks asks every time, and an earlier "for this chat" approval
+	// stops counting, so words in that content can't ride on a yes the
+	// user gave for something else (docs/design/security.md). The agent
+	// sets it; false, the zero value, keeps the old behavior for any
+	// caller that doesn't.
+	Outside bool
 }
 
 // CallerMeru is Call.Caller for a call merud made itself.

@@ -177,10 +177,12 @@ they never show up in `Off`.
 
 ```go
 switch {
-case name == Configure:
+case AlwaysAsks(name): // configure and schedule_job
     return dispatch.ConfirmAlways
-case slices.Contains(t.confirm, name):
+case t.asks(name): // [builtin] confirm lists it
     return dispatch.ConfirmAsk
+case name == Remember:
+    return dispatch.ConfirmOutside
 default:
     return dispatch.ConfirmNever
 }
@@ -189,6 +191,14 @@ default:
 `configure` returns `ConfirmAlways` before it looks at `[builtin] confirm`, so no
 setting can switch its prompt off, and `dispatch` offers only "approve once" and
 "deny". Config grants lasting trust; the model mustn't grant any to itself.
+
+`remember`, when `[builtin] confirm` leaves it out, returns
+`dispatch.ConfirmOutside`: it saves without asking in a clean chat and asks
+every time once the chat has read mail, the web or another server, so words in
+that content can't plant a memory (see [dispatch](dispatch.md)). `Status`
+still reports `remember`'s `Confirm` from the config list alone, so Settings
+shows your setting, not the per-chat question. `TestBackend` and
+`TestRememberSpecAndConfirm` check both levels.
 
 `Call` decodes the arguments with `DisallowUnknownFields`, so a key the tool
 doesn't know, such as an `allow` list the model made up, fails instead of being

@@ -1,7 +1,7 @@
 # dispatch
 
 **Code:** `internal/dispatch/` (`doc.go`, `dispatch.go`, `dispatcher.go`,
-`dispatcher_test.go`, `base64.go`, `base64_test.go`, `retry.go`, `retry_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
+`dispatcher_test.go`, `outside_test.go`, `base64.go`, `base64_test.go`, `retry.go`, `retry_test.go`), and `cmd/merud/backends.go` for the MCP backend. The
 commands backend lives in [commands](commands.md).
 **Milestone:** v0.3
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop) step 4,
@@ -147,6 +147,36 @@ builds from the job's `allow` list (see [merud](merud.md), jobs.go). A call that
 asks every time is declined without asking anyone: `configure`, `web_fetch` on a
 URL nobody gave, a download, an MCP tool in `always_confirm`. The test is one
 condition: `c.Approve == nil || (c.Source == rpc.SourceJob && confirm != ConfirmAsk)`.
+
+**A chat that read outside content.** `Call.Outside` says the chat has read
+mail, a web page or another server's answer before this call; the agent sets it
+(see [agent](agent.md), outside.go). `run` passes the backend's level through
+`effective` before `approve` sees it:
+
+```go
+// A switch with no value runs the first case that is true.
+switch {
+case confirm == ConfirmOutside && c.Outside:
+    return ConfirmAlways
+case confirm == ConfirmOutside:
+    return ConfirmNever
+case confirm == ConfirmAsk && c.Outside && kind != KindBuiltin:
+    return ConfirmAlways
+}
+return confirm
+```
+
+So in such a chat an MCP, A2A or command tool that asks asks every time, an
+earlier session approval stops counting, and the approval carries `Reason:
+"outside"` for the client to explain. Built-ins keep `ConfirmAsk`: `write_file`
+and `edit_file` write only inside the output folder. `ConfirmOutside` is the
+level `remember` returns: it runs unasked in a clean chat and asks every time in
+one that read outside content. A job gets no exception: the lifted call is
+`ConfirmAlways`, which a job declines, so a job that read mail can't send. When
+the lift applies, the span gets `meru.approval.outside = true` and a debug line
+says so. A declined call's text ends "Don't call it again in this turn.", since
+a small model often asks again in the next round. [docs/design/security.md](../design/security.md)
+explains why.
 
 **SiteTruster.** A call that asks every time offers no session choice, since
 that would cover every later call. `web_fetch` can offer something narrower:
@@ -325,6 +355,7 @@ matter:
 | `ConfirmNever` | never | none |
 | `ConfirmAsk` | unless approved for this session | once, session, deny |
 | `ConfirmAlways` | every time | once, deny; with a website, once, this website for this chat, always this website, deny |
+| `ConfirmOutside` | never reaches `approve`: `effective` turns it into `ConfirmNever` or `ConfirmAlways` | |
 
 A job (`Source == "job"`) and a client with no `Approve` function can't say yes, so
 those calls end `declined` without a prompt. An answer the prompt didn't offer
@@ -439,6 +470,9 @@ be a secret.
   JSON in the transcript. More in [go-basics/json.md](go-basics/json.md).
 - **Structs as map keys** — `approvalKey{session, tool}` works as a key because Go
   compares structs field by field.
+- **iota**: numbers the `Confirm` levels; `ConfirmOutside` comes last so the
+  others keep their numbers and `ConfirmNever` stays the zero value. More in
+  [go-basics/iota.md](go-basics/iota.md).
 
 ## Try it
 
@@ -448,7 +482,11 @@ go test -race -run MCP ./cmd/merud/
 ```
 
 `TestDispatchOutcomes` runs one table row per outcome. `TestSessionApproval` walks
-a series of calls through the approval rules. `TestRedaction` plants a secret in
+a series of calls through the approval rules. In `outside_test.go`,
+`TestEffectiveConfirm` is a table of levels, kinds and sources;
+`TestOutsideIgnoresSessionApproval` walks one chat from clean to outside;
+`TestRememberLevel` and `TestJobOutsideSendDeclined` cover `ConfirmOutside` and
+jobs; and `TestDeclineTextNoRetry` checks the last sentence a declined call gives. `TestRedaction` plants a secret in
 the arguments and the error text and checks it reaches no line, row or prompt.
 `TestSessionOnContext` checks that a backend reads the call's session with
 `SessionFrom`. `TestCiteNumbersAndSources` puts a counter that has handed out
