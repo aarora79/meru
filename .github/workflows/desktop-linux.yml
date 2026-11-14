@@ -42,7 +42,9 @@ jobs:
           case "$VERSION" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::$VERSION isn't a version tag"; exit 1 ;; esac
           assets=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name') ||
             { echo "::error::no release $VERSION; run make release first"; exit 1; }
-          if echo "$assets" | grep -q '^meru-desktop-'; then
+          # Match only the Linux archive: the Windows desktop app,
+          # meru-desktop-VERSION-windows-amd64.zip, shares the name's start.
+          if echo "$assets" | grep -q '^meru-desktop-.*-linux-'; then
             echo "::error::release $VERSION already has the Linux desktop app; a published file never changes"
             exit 1
           fi
