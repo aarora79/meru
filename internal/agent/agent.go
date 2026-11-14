@@ -727,8 +727,8 @@ type response struct {
 //
 // A question with images first checks that the main model can look at
 // them (see checkVision), and then skips the router, whose fast model
-// reads text alone: it takes the route its scope gives, and "direct" in
-// auto (see respondScoped).
+// reads text alone: it takes the route its scope gives, and in auto
+// "direct" with the search route's tools (see respondScoped).
 func (a *Agent) respond(ctx context.Context, t *turn, question string, history []engine.Message) (response, error) {
 	var res response
 	if len(t.images) > 0 {

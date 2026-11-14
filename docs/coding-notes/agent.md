@@ -688,6 +688,7 @@ the router:
 | `mail` | `tools` | no | every tool of the servers `mailServers` picks, with `datetime` and `about_meru` |
 | `web` | `tools` | no | `web_search`, `web_fetch`, `datetime`, `about_meru` |
 | `talk` | `direct` | no | none |
+| `auto`, a question with images | `direct` | no | `toolSpecs("search")` |
 
 The route rules that widen a route stay out, and so do a picked skill's tools: a
 scope promises what the turn may touch. That is also why `files` drops the
@@ -836,8 +837,12 @@ two functions, and `merud` decides where they come from.
 4. Otherwise `respond` hands the turn to `respondScoped` even in `auto`. The
    router's fast model reads only text, so its guess about a photo would be
    noise. `scopeRoute` gives `auto` the route `direct`, and `scopeSpecs` the
-   tools `direct` offers, `datetime` and `about_meru`. A scope the user
-   picked still holds.
+   tools the `search` route offers: the file tools, the commands that don't
+   ask, `datetime`, `about_meru` and the web tools. A user who attaches a
+   screenshot and asks about a PDF the chat found can then have it read;
+   with the `direct` tools alone, the model tried `web_fetch` on a `file://`
+   link and gave up. The turn searches nothing first. `TestImageTurnOffersFileTools`
+   in `scope_test.go` checks the list. A scope the user picked still holds.
 5. `finishPrompt` calls `withImages`, which sets `Images` on the last message,
    the question. Tool rounds reuse the same `msgs`, so every round of this turn
    sees the images, and no later turn does: `transcript.History` gives a later
