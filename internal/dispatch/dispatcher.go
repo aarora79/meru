@@ -369,7 +369,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, c Call) (Result, Outcome) {
 // the outcome, the user's choice ("" when nobody was asked) and how long
 // the tool ran.
 func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, tool string, args json.RawMessage) (res Result, outcome, approval string, ran time.Duration) {
-	approval, outcome = d.approve(ctx, c, b, confirmFor(b, c), kind, server, tool, args)
+	base := confirmFor(b, c)
+	confirm := effective(base, kind, c)
+	var reason string
+	if confirm == ConfirmAlways && base != ConfirmAlways {
+		// The chat read outside content, so this call asks every time.
+		// The span and the debug line say why, and the client shows it.
+		reason = rpc.ReasonOutside
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("meru.approval.outside", true))
+		d.log.Debug("approval asks every time: the chat read outside content", "tool", c.Name, "session", c.Session)
+	}
+	approval, outcome = d.approve(ctx, c, b, confirm, reason, kind, server, tool, args)
 	switch outcome {
 	case "":
 		// Approved, or no approval needed: run it.
@@ -377,10 +387,15 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 		return Result{IsError: true, Text: "The turn ended before the user answered, so the call didn't run."}, outcome, approval, 0
 	default: // OutcomeDeclined
 		if approval == "" {
-			return Result{IsError: true, Text: "This tool needs the user's approval, and nobody can give it here, so the call didn't run. Answer without it."},
+			return Result{IsError: true, Text: "This tool needs the user's approval, and nobody can give it here, so the call didn't run. " +
+					"Answer without it, and don't call it again in this turn."},
 				outcome, approval, 0
 		}
-		return Result{IsError: true, Text: "The user said no to this call, so it didn't run. Answer without it, or ask the user what to do."},
+		// A small model often asks for the same call again in the next
+		// round, which asks the user again; the last sentence heads that
+		// off.
+		return Result{IsError: true, Text: "The user said no to this call, so it didn't run. " +
+				"Answer without it, or ask the user what to do. Don't call it again in this turn."},
 			outcome, approval, 0
 	}
 
@@ -408,6 +423,36 @@ func (d *Dispatcher) run(ctx context.Context, c Call, b Backend, kind, server, t
 	}
 }
 
+// effective returns the confirm level approve acts on for call c to a
+// tool of kind, given confirm, the level its backend gave.
+//
+// In a chat that read outside content (see Call.Outside), ConfirmAsk
+// becomes ConfirmAlways: words in that content can't ride on an earlier
+// "for this chat" yes, and each call asks with once and deny alone.
+// ConfirmOutside asks every time there, and runs unasked in a clean chat.
+//
+// Built-in tools keep ConfirmAsk. write_file and edit_file write only
+// inside the output folder, never replace a file unasked, and edit_file
+// keeps a .bak, so asking at every note of a research turn would cost
+// more than it guards. remember, the one built-in whose effect outlives
+// the chat, has its own level, ConfirmOutside.
+//
+// A job gets no exception. Its approver answers only ConfirmAsk, so a
+// lifted call in a job is declined: a job that read mail can't be steered
+// into a send (docs/design/security.md).
+func effective(confirm Confirm, kind string, c Call) Confirm {
+	// A switch with no value runs the first case that is true.
+	switch {
+	case confirm == ConfirmOutside && c.Outside:
+		return ConfirmAlways
+	case confirm == ConfirmOutside:
+		return ConfirmNever
+	case confirm == ConfirmAsk && c.Outside && kind != KindBuiltin:
+		return ConfirmAlways
+	}
+	return confirm
+}
+
 // confirmFor says whether call c to backend b asks first: what b's
 // ConfirmCall says, when b is a CallConfirmer with an answer for c, and
 // b.Confirm(c.Name) otherwise.
@@ -431,11 +476,14 @@ func confirmFor(b Backend, c Call) Confirm {
 //     host, it also offers that host for the session, or always; the
 //     answer goes back to b's TrustSite.
 //
+// confirm is the level effective gave; reason, when set, travels on the
+// question to the client (see rpc.Approval.Reason).
+//
 // A job, or a client that can't ask (c.Approve is nil), can't say yes, so
 // the call is declined without asking. approve writes an approval line for
 // each answer. It returns the user's choice ("" when nobody answered) and
 // an outcome: "" to run the call, "declined" or "cancelled" to skip it.
-func (d *Dispatcher) approve(ctx context.Context, c Call, b Backend, confirm Confirm, kind, server, tool string, args json.RawMessage) (choice, outcome string) {
+func (d *Dispatcher) approve(ctx context.Context, c Call, b Backend, confirm Confirm, reason, kind, server, tool string, args json.RawMessage) (choice, outcome string) {
 	var choices []rpc.Choice
 	var site string
 	switch confirm {
@@ -464,7 +512,7 @@ func (d *Dispatcher) approve(ctx context.Context, c Call, b Backend, confirm Con
 	if c.Approve == nil || (c.Source == rpc.SourceJob && confirm != ConfirmAsk) {
 		return "", OutcomeDeclined
 	}
-	answer, err := c.Approve(ctx, rpc.Approval{ID: c.ID, Name: c.Name, Kind: kind, Args: args, Choices: choices, Site: site})
+	answer, err := c.Approve(ctx, rpc.Approval{ID: c.ID, Name: c.Name, Kind: kind, Args: args, Choices: choices, Site: site, Reason: reason})
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", OutcomeCancelled

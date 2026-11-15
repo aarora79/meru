@@ -323,7 +323,8 @@ mouse_copy = true
 # name    = "google"
 # url     = "http://127.0.0.1:8000/mcp"
 # allow   = ["search_gmail_messages", "get_gmail_message_content", "get_gmail_thread_content", "send_gmail_message", "get_events", "manage_event", "search_drive_files", "get_doc_content", "get_gmail_attachment_content"]
-# confirm = ["send_gmail_message", "manage_event"]
+# confirm = ["manage_event"]
+# always_confirm = ["send_gmail_message"]
 #
 # # Obsidian: Lists, searches and reads the notes in your open Obsidian vault; appending to a note asks first.
 # # Docs: https://github.com/MarkusPfundstein/mcp-obsidian

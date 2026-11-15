@@ -244,7 +244,9 @@ func catalogEntries(cfg config.Config, sec *secrets.Secrets) []rpc.CatalogEntry 
 		ce := rpc.CatalogEntry{
 			Name: e.Name, Title: e.Title, Description: e.Description, Transport: e.Transport,
 			Command: strings.TrimSpace(e.Command + " " + strings.Join(e.Args, " ")), URL: e.URL, Start: e.Start,
-			Requires: e.Requires, Install: e.Install, Docs: e.Docs, Allow: e.Allow, Confirm: e.Confirm,
+			// Confirm names every tool that asks, always_confirm's too:
+			// the client shows them all as "asks first".
+			Requires: e.Requires, Install: e.Install, Docs: e.Docs, Allow: e.Allow, Confirm: slices.Concat(e.Confirm, e.AlwaysConfirm),
 		}
 		for _, srv := range cfg.MCP.Servers {
 			if srv.Name == e.Name {
@@ -328,7 +330,7 @@ func (s *toolService) setEntryPolicy(ctx context.Context, p rpc.PolicyChange) er
 			return fmt.Errorf("%s doesn't offer a tool named %q", p.Server, p.Tool)
 		}
 		if p.Policy == rpc.PolicyAllow && slices.Contains(always, p.Tool) {
-			return fmt.Errorf("%s.%s always asks: config lists it in always_confirm, because it runs commands; "+
+			return fmt.Errorf("%s.%s always asks: config lists it in always_confirm; "+
 				"it can be on and ask, or off", p.Server, p.Tool)
 		}
 		lists := map[string][]string{}

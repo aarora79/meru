@@ -2,7 +2,7 @@
 
 **Code:** `test/e2e/` (`main_test.go`, `harness_test.go`, `ask_test.go`, `failure_test.go`,
 `daemon_test.go`, `index_test.go`, `office_test.go`, `builtins_test.go`, `integration_test.go`, `index_integration_test.go`,
-`mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `ollama_test.go`, `usagereport_test.go`, `race_test.go`, `norace_test.go`),
+`mcp_add_test.go`, `commands_test.go`, `connectors_test.go`, `ollama_test.go`, `usagereport_test.go`, `injection_test.go`, `race_test.go`, `norace_test.go`),
 `cmd/fakemcp/`
 **Milestone:** v0.1; the notes tests in v0.2
 **Architecture:** [The shape: daemon + thin client](../../ARCHITECTURE.md#the-shape-daemon--thin-client),
@@ -182,7 +182,12 @@ makes a test slower, not flaky.
 | `TestNewBuiltinE2E` | `builtins_test.go` | A config whose `[builtin] tools` leaves out `analyze_table`: `connections` marks it New and off, `merud.log` names it, and `tool_policy` allow turns it on, clears the mark and writes it into `config.toml` |
 | `TestAnalyzeTableE2E` | `office_test.go` | The fake model calls `analyze_table` with a `where` on two columns and a sum; `merud` runs it through `dispatch`, the model's next round reads the exact total, 176.75, under "Cite this table as [2]", since the turn's search took [1], and `meru` prints the rows the sum drew on |
 | `TestToolNotesFollowUpE2E` | `office_test.go` | Turn 1 sums rows with `analyze_table`; turn 2, "how did you get that?", sends the main model a prompt whose history holds turn 1's tool note: the header, `analyze_table`, the path and the sum, and no old "Cite this table as" line |
-| `TestMCPAddAndRemove` | `mcp_add_test.go` | `meru mcp add stdio` probes `cmd/fakemcp` through a real merud, proposes `search` (read-only) as allowed and `send` and `secret` as asking, writes them, and `meru tools` shows the server with no restart; `meru mcp remove --yes` takes it out of config and out of merud |
+| `TestInjectedSendAsksEveryTime` | `injection_test.go` | One chat: a send approved "for this session", a second send that runs unasked, then `read_mail` returns an email telling the model to send the tax forms to x@evil.example and the model's send asks with `once,deny` and `reason: outside`; the no keeps "sent to x@evil.example" out of every request |
+| `TestInjectedRememberAsks` | `injection_test.go` | `remember` saves unasked in a clean chat; after `read_mail` it asks, and a no leaves the planted address out of `memory/` |
+| `TestOutsideSurvivesRestart` | `injection_test.go` | `read_mail`, a restart of merud, then a send in the same chat: it still asks with `once,deny`, since the mark comes from the transcript |
+| `TestJobInjectedSend` | `injection_test.go` | Two `[[jobs]]` whose `allow` names `notes.send`, run with `job_run`: the one that only sends gets `ok`; the one that reads the hostile email first gets `declined` |
+| `TestRunJSONSeesTwoChoices` | `injection_test.go` | `meru run --json` on an injected turn prints an approval with `"choices":["once","deny"]` and `"reason":"outside"`, and the send never runs |
+| `TestMCPAddAndRemove` | `mcp_add_test.go` | `meru mcp add stdio` probes `cmd/fakemcp` through a real merud, proposes `search` and `read_mail` (read-only) as allowed and `send` and `secret` as asking, writes them, and `meru tools` shows the server with no restart; `meru mcp remove --yes` takes it out of config and out of merud |
 | `TestConnectorLifecycle` | `connectors_test.go` | The Obsidian connector through a real merud, with `cmd/fakemcp` as its program: turned on with no vault it is `needs_config`, and `meru mcp status` says `needs config` and "Set vault_path under [connectors.obsidian]"; with a vault and `mcp_reload` it is ready without running, and `meru tools` offers `obsidian.obsidian_list_vaults`; the first call starts it; after a SIGKILL merud logs the crash, starts it again, and the next call answers from a new process |
 | `TestConnectorSetUpByHand` | `connectors_test.go` | An `[[mcp.servers]]` entry named `obsidian` wins over a connector that is turned on: the connector reports `by_hand` and its sentence, `meru tools` shows only the hand-added server's tools, and `meru mcp status` shows it connected and "set up by hand" |
 | `TestConnectorSetAndFix` | `connectors_test.go` | `meru mcp set` refuses a vault folder that isn't there and writes nothing, then takes Obsidian from needs config to ok with a real one; the folder goes, a reload finds it missing, and `meru mcp fix` asks for a new one and brings it back; a second fix, with nothing to ask, runs the check again |
@@ -199,9 +204,9 @@ The connector tests download nothing. `fakeObsidianInstall` lays out
 whose `bin/node` is a link to `cmd/fakemcp`, and the package folder with its
 `.meru-installed` marker, `package.json` and an empty script. merud counts the
 connector as installed and starts fakemcp in Node's place. `cmd/fakemcp`
-offers three tools, `search`, `send` and `secret`; started with `--vault` among
+offers four tools, `search`, `send`, `secret` and `read_mail`; started with `--vault` among
 its arguments, as the Obsidian manifest's `serve --vault <name>=<path>` is, it
-adds a fourth, `obsidian_list_vaults`, which the manifest's health check calls.
+adds `obsidian_list_vaults`, which the manifest's health check calls.
 Its answer, `vault notes (pid N)`, names the process, so the test knows which
 process to kill and can tell that the next answer came from a new one.
 

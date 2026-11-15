@@ -811,7 +811,9 @@ answer: `off` when `allow` leaves it out, `always` when `always_confirm` names i
 `ask` when `confirm` does, `allow` otherwise. It also copies the server's
 `SignIn` and `Link`, so the card of an `auth = "oauth"` server that waits for a
 sign-in shows Sign in (`TestFillPoliciesSignIn`). `catalogEntries` adds the catalog,
-marking what config has and which keys `secrets.toml` holds.
+marking what config has and which keys `secrets.toml` holds. Its `Confirm` joins
+the entry's `confirm` and `always_confirm` lists, so the card says "asks first"
+for every tool that asks.
 
 After the `[[mcp.servers]]` entries come the connectors the pool runs, one
 `Connection` each from `connectorConnection`. The card carries the connector's
@@ -1667,8 +1669,13 @@ after its own timeout.
 `allow`. The three are constants numbered by `iota`, which counts up from 0
 inside one `const` block.
 
-- For a catalog entry, the catalog's lists decide. A tool the catalog doesn't
-  name starts `off`, with its hint shown, since nobody has read it.
+- For a catalog entry, the catalog's lists decide. A tool in its `Confirm` or
+  `AlwaysConfirm` starts `ask`. A tool the catalog doesn't name starts `off`,
+  with its hint shown, since nobody has read it. When you accept, a tool you
+  left at `ask` that the catalog lists in `AlwaysConfirm`, such as
+  `send_gmail_message`, goes back to `always_confirm`, not `confirm`: the table
+  has one "ask", and the catalog's every-time ask is the stricter one.
+  `TestMCPAddCatalogProbe` checks it.
 - For a server of your own, the hints decide. A tool that says `readOnlyHint`
   starts as `allow`; every other tool starts as `ask`. A hint is the server's
   claim, so a tool with no hint counts as one that may change something.

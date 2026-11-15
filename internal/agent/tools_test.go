@@ -94,7 +94,8 @@ func (f *fakeTools) Dispatch(ctx context.Context, c dispatch.Call) (dispatch.Res
 	if r.done != nil {
 		defer close(r.done)
 	}
-	_ = c.Append(transcript.Line{Type: transcript.TypeToolCall, CallID: c.ID, Tool: c.Name, Args: c.Args, Caller: c.Caller})
+	// The kind goes on the line as dispatch writes it; outside.go reads it.
+	_ = c.Append(transcript.Line{Type: transcript.TypeToolCall, CallID: c.ID, Kind: toolKind(c.Name), Tool: c.Name, Args: c.Args, Caller: c.Caller})
 	// A call to a tool the fake doesn't offer, with a hint, gets the hint
 	// back as a denied call, as dispatch gives it.
 	if c.Hint != "" && !slices.ContainsFunc(f.Tools(), func(s engine.ToolSpec) bool { return s.Name == c.Name }) {

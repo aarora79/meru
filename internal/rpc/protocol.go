@@ -844,7 +844,16 @@ type Approval struct {
 	// A client that doesn't know the field shows an approval for "@lab",
 	// and its no keeps the turn on this machine.
 	Consent *ConsentInfo `json:"consent,omitempty"`
+	// Reason, when set, says why this call asks when it otherwise
+	// wouldn't, or offers fewer choices: ReasonOutside. A client shows a
+	// line for it; one that doesn't know the field shows the choices
+	// alone.
+	Reason string `json:"reason,omitempty"`
 }
+
+// ReasonOutside is Approval.Reason when the chat has read mail, the web
+// or another server, so the call asks every time (docs/design/security.md).
+const ReasonOutside = "outside"
 
 // KindConsent is Approval.Kind for a question about sending a turn off
 // this machine; see Approval.Consent.

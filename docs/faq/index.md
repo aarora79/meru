@@ -35,6 +35,7 @@ steps and links to [running.md](../running.md) for the full story.
 - [How do I turn on web search?](web-search.md)
 - [How do I let Meru read my Apple Notes?](apple-notes.md)
 - [How do I choose which tools ask me first?](tool-approvals.md)
+- [What stops an email or a web page from acting for me?](prompt-injection.md)
 - [How do I make Meru do something on a schedule?](scheduled-jobs.md)
 - [Where do I put an API key?](secrets.md)
 

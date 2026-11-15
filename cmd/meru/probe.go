@@ -117,7 +117,7 @@ func (c *console) pickTools(e catalog.Entry, res *rpc.ProbeResult) (catalog.Entr
 	}
 	if len(res.Tools) == 0 {
 		fmt.Fprintf(c.out, "%s offers no tools, so the model gets nothing from it.\n", who)
-		e.Allow, e.Confirm = nil, nil
+		e.Allow, e.Confirm, e.AlwaysConfirm = nil, nil, nil
 		return e, true, nil
 	}
 	fmt.Fprintf(c.out, "%s offers %d tools.\n", who, len(res.Tools))
@@ -139,12 +139,19 @@ func (c *console) pickTools(e catalog.Entry, res *rpc.ProbeResult) (catalog.Entr
 			fmt.Fprintln(c.out, err)
 		}
 	}
-	e.Allow, e.Confirm = nil, nil
+	// A tool the catalog asks about every time keeps that when the user
+	// leaves it at ask; this table has one "ask", and the catalog's
+	// always_confirm is the stricter of the two.
+	always := e.AlwaysConfirm
+	e.Allow, e.Confirm, e.AlwaysConfirm = nil, nil, nil
 	for _, p := range picks {
 		if p.state != toolOff {
 			e.Allow = append(e.Allow, p.tool.Name)
 		}
-		if p.state == toolAsk {
+		switch {
+		case p.state == toolAsk && slices.Contains(always, p.tool.Name):
+			e.AlwaysConfirm = append(e.AlwaysConfirm, p.tool.Name)
+		case p.state == toolAsk:
 			e.Confirm = append(e.Confirm, p.tool.Name)
 		}
 	}
@@ -167,7 +174,7 @@ func propose(e catalog.Entry, tools []rpc.ProbeTool) []pick {
 	for i, t := range tools {
 		state := toolAsk
 		switch {
-		case fromCatalog && slices.Contains(e.Confirm, t.Name):
+		case fromCatalog && (slices.Contains(e.Confirm, t.Name) || slices.Contains(e.AlwaysConfirm, t.Name)):
 			state = toolAsk
 		case fromCatalog && slices.Contains(e.Allow, t.Name):
 			state = toolAllow

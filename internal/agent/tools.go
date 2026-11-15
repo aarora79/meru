@@ -387,6 +387,13 @@ type turn struct {
 	readChars  int
 	readTools  int
 	sawPicture bool
+	// outside says the chat has read content from outside the machine:
+	// set from the transcript when the turn starts, and after any round
+	// whose calls brought some in (see outside.go). Every call carries it
+	// to dispatch, which then makes a tool that asks ask every time. Only
+	// the turn's own goroutine reads and writes it: runCalls reads it
+	// before its goroutines start and sets it after they end.
+	outside bool
 	// wroteFiles counts the turn's successful write_file and edit_file
 	// calls, for the check on answers that say they made a file (see
 	// claimsFileWork).
@@ -975,6 +982,12 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		}
 	}
 
+	// Every call in the round carries the chat's mark as it stood before
+	// the round: the model asked for these calls before it saw any of
+	// their results.
+	outside := t.outside
+	asks := a.asksFirst()
+
 	// Each goroutine writes only its own slot of out and found, so they
 	// need no lock.
 	out := make([]engine.Message, len(calls))
@@ -1017,6 +1030,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 				// An incognito chat's calls get a tool_calls row without
 				// their arguments or results; see dispatch.Call.
 				Incognito: t.sess.Incognito(),
+				Outside:   outside,
 			})
 			// res.Images, from view_image, rides on the tool message: the
 			// model looks at the picture on its next round. Dispatch logged
@@ -1041,6 +1055,12 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 		// order the model made them.
 		if caller == "" {
 			t.tried = append(t.tried, triedCall{name: calls[i].Name, outcome: o})
+		}
+		// A call that ran brought its words in, even one that failed; a
+		// denied or declined one brought nothing.
+		if (o == dispatch.OutcomeOK || o == dispatch.OutcomeError) &&
+			readsOutside(toolKind(calls[i].Name), calls[i].Name, calls[i].Arguments, a.outputDir, a.home, asks) {
+			t.outside = true
 		}
 		if o != dispatch.OutcomeOK {
 			continue

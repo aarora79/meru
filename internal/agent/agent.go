@@ -447,6 +447,16 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 
 	traceID := traceIDOf(span)
 	t.sess, t.source, t.traceID = sess, rpc.Source(source), traceID
+	// Has this chat read mail, the web or another server before? The mark
+	// comes from the transcript, so a restart of merud can't clear it. A
+	// transcript that can't be read counts as outside: the safe side asks
+	// more (docs/design/security.md).
+	if lines, err := sess.Lines(); err != nil {
+		t.outside = true
+		a.log.DebugContext(ctx, "transcript unreadable; treating the chat as having read outside content", "session", sess.ID(), "err", err)
+	} else {
+		t.outside = readOutside(lines, a.outputDir, a.home, a.asksFirst())
+	}
 	// asked is the question the turn routes, searches and recalls on. For
 	// Continue it is the last turn's question, and t.handoff holds what
 	// the model reads in its place. See continue.go. The last turn has to

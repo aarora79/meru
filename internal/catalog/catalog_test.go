@@ -283,10 +283,11 @@ func TestCatalogIsTwoServers(t *testing.T) {
 	if google.URL != "http://127.0.0.1:8000/mcp" || !strings.Contains(google.Start, "uvx workspace-mcp==1.30.0 --transport streamable-http") {
 		t.Errorf("google = url %q, start %q", google.URL, google.Start)
 	}
-	for _, tool := range []string{"send_gmail_message", "manage_event"} {
-		if !slices.Contains(google.Confirm, tool) {
-			t.Errorf("google confirm lacks %s, which sends or changes something", tool)
-		}
+	if !slices.Contains(google.Confirm, "manage_event") {
+		t.Error("google confirm lacks manage_event, which changes the calendar")
+	}
+	if !slices.Contains(google.AlwaysConfirm, "send_gmail_message") || slices.Contains(google.Confirm, "send_gmail_message") {
+		t.Error("google must list send_gmail_message in always_confirm alone: a send asks every time")
 	}
 }
 
