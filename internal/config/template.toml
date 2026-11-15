@@ -313,7 +313,9 @@ mouse_copy = true
 # stdout) or url (a Streamable HTTP server you run; merud connects). The
 # model gets only the tools allow names, with no wildcards. A tool in
 # confirm asks before each call; one in always_confirm asks every time,
-# with no approval for the session. `meru tools` shows what a server offers.
+# with no approval for the session (Settings' "Always ask" writes it). A
+# chat that read mail or the web asks every time for confirm tools too.
+# `meru tools` shows what a server offers.
 #
 # The two servers in Meru's catalog, as `meru mcp add` writes them:
 #

@@ -190,9 +190,10 @@ func fillPolicies(c *rpc.Connection, info rpc.ServerInfo, prefix string, allow, 
 	// An auth = "oauth" server that waits for a sign-in gets the app's Sign
 	// in button, and the link while a sign-in waits for the browser.
 	c.SignIn, c.Link = info.SignIn, info.Link
-	desc := map[string]string{}
+	desc, hints := map[string]string{}, map[string]string{}
 	for _, t := range info.OfferedTools {
 		desc[strings.TrimPrefix(t.Name, prefix)] = t.Description
+		hints[strings.TrimPrefix(t.Name, prefix)] = t.Hint
 	}
 	names := slices.Collect(maps.Keys(desc))
 	for _, a := range allow {
@@ -203,7 +204,7 @@ func fillPolicies(c *rpc.Connection, info rpc.ServerInfo, prefix string, allow, 
 	for _, n := range names {
 		_, offered := desc[n]
 		c.Tools = append(c.Tools, rpc.ToolPolicy{
-			Name: n, Description: desc[n], Policy: policyOf(n, allow, confirm, always),
+			Name: n, Description: desc[n], Hint: hints[n], Policy: policyOf(n, allow, confirm, always),
 			Missing: info.Connected && !offered,
 		})
 	}
@@ -271,17 +272,19 @@ func catalogEntries(cfg config.Config, sec *secrets.Secrets) []rpc.CatalogEntry 
 // config and what the source offers, writes the new lists to config.toml,
 // reloads that kind of source, and replies with the new "connections"
 // event. It refuses a tool the source neither offers nor config names, a
-// policy other than off, ask and allow, and allow for a tool that always
-// asks. Deny-by-default holds: a tool the user never switched stays off.
+// policy other than off, ask, always and allow, always for a tool that
+// has no always_confirm list (a built-in or an A2A skill), and allow for
+// configure and schedule_job. Deny-by-default holds: a tool the user
+// never switched stays off.
 func (s *toolService) handleToolPolicy(ctx context.Context, req rpc.Request, emit func(rpc.Event) error) error {
 	p := req.Policy
 	if p == nil {
 		return errors.New("tool_policy needs a policy change")
 	}
 	switch p.Policy {
-	case rpc.PolicyOff, rpc.PolicyAsk, rpc.PolicyAllow:
+	case rpc.PolicyOff, rpc.PolicyAsk, rpc.PolicyAlways, rpc.PolicyAllow:
 	default:
-		return fmt.Errorf("policy %q isn't one of off, ask and allow", p.Policy)
+		return fmt.Errorf("policy %q isn't one of off, ask, always and allow", p.Policy)
 	}
 	var err error
 	switch p.Kind {
@@ -329,20 +332,15 @@ func (s *toolService) setEntryPolicy(ctx context.Context, p rpc.PolicyChange) er
 		if !slices.Contains(allow, p.Tool) && !s.offers(p.Kind, p.Server, prefix+p.Tool) {
 			return fmt.Errorf("%s doesn't offer a tool named %q", p.Server, p.Tool)
 		}
-		if p.Policy == rpc.PolicyAllow && slices.Contains(always, p.Tool) {
-			return fmt.Errorf("%s.%s always asks: config lists it in always_confirm; "+
-				"it can be on and ask, or off", p.Server, p.Tool)
+		if p.Policy == rpc.PolicyAlways && p.Kind == dispatch.KindA2A {
+			return fmt.Errorf("an agent's skills have no always-ask list: %s.%s can be off, ask or allow", p.Server, p.Tool)
 		}
 		lists := map[string][]string{}
 		lists["allow"], lists["confirm"] = newLists(p.Tool, p.Policy, allow, confirm)
-		if p.Policy == rpc.PolicyOff && slices.Contains(always, p.Tool) {
-			// always_confirm must stay inside allow; the tool comes back
-			// as ask when turned on again.
-			lists["always_confirm"] = slices.DeleteFunc(slices.Clone(always), func(t string) bool { return t == p.Tool })
-		}
-		if slices.Contains(always, p.Tool) && p.Policy == rpc.PolicyAsk {
-			// It asks every time already; confirm needn't name it.
-			lists["confirm"] = slices.Clone(confirm)
+		if p.Kind == dispatch.KindMCP {
+			// Each tool sits in at most one of confirm and always_confirm,
+			// so the file says one thing about it.
+			lists["always_confirm"] = alwaysList(p.Tool, p.Policy, always)
 		}
 		if err := catalog.SetEntryLists(s.configPath, table, p.Server, lists); err != nil {
 			return err
@@ -364,6 +362,15 @@ func (s *toolService) setBuiltinPolicy(p rpc.PolicyChange) error {
 	}
 	if builtin.AlwaysAsks(p.Tool) && p.Policy == rpc.PolicyAllow {
 		return fmt.Errorf("%s always asks: it changes config.toml, so the model can never change Meru on its own; it can be on and ask, or off", p.Tool)
+	}
+	switch {
+	case p.Policy == rpc.PolicyAlways && builtin.AlwaysAsks(p.Tool):
+		// configure and schedule_job ask every time anyway; "always"
+		// turns them on.
+		p.Policy = rpc.PolicyAsk
+	case p.Policy == rpc.PolicyAlways:
+		return fmt.Errorf("built-in tools have no always-ask list: %s can be off, ask or allow; "+
+			"in a chat that read mail or the web, a tool that asks asks every time anyway", p.Tool)
 	}
 	return s.bt.EditConfig(func() error {
 		cfg, err := config.Load(s.configPath)
@@ -405,8 +412,9 @@ func offList(tool, policy string, off []string) []string {
 }
 
 // newLists returns allow and confirm with tool set to policy: off takes it
-// out of both; ask puts it in both; allow puts it in allow and takes it
-// out of confirm. An entry already in place keeps its place in the list,
+// out of both; ask puts it in both; allow and always put it in allow and
+// take it out of confirm, always because always_confirm names it instead
+// (see alwaysList). An entry already in place keeps its place in the list,
 // and a new one goes at the end, so the file changes as little as it can.
 func newLists(tool, policy string, allow, confirm []string) (newAllow, newConfirm []string) {
 	without := func(list []string) []string {
@@ -421,10 +429,22 @@ func newLists(tool, policy string, allow, confirm []string) (newAllow, newConfir
 	switch policy {
 	case rpc.PolicyAsk:
 		return with(allow), with(confirm)
-	case rpc.PolicyAllow:
+	case rpc.PolicyAllow, rpc.PolicyAlways:
 		return with(allow), without(confirm)
 	}
 	return without(allow), without(confirm)
+}
+
+// alwaysList returns always, an MCP server's always_confirm, with tool in
+// it for the always policy and out of it for any other, keeping the order
+// of the rest. Settings' "Always ask" writes here, and picking Ask, Allow
+// or Off takes the tool back out.
+func alwaysList(tool, policy string, always []string) []string {
+	out := slices.DeleteFunc(slices.Clone(always), func(t string) bool { return t == tool })
+	if policy == rpc.PolicyAlways {
+		out = append(out, tool)
+	}
+	return out
 }
 
 // offers reports whether the source of kind named server offers the tool

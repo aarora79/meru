@@ -191,6 +191,9 @@ func (b *mcpBox) mcpRows() []mcpRow {
 		}
 		for ti, t := range c.Tools {
 			text := fmt.Sprintf("  %-11s %s", policyWords(t.Policy), t.Name)
+			if t.Hint != "" {
+				text += " · " + t.Hint
+			}
 			if t.Missing {
 				text += " · not offered"
 			}
@@ -301,7 +304,7 @@ func connHeading(c rpc.Connection) string {
 }
 
 // policyWords says a policy the way the app's switches do: Off, Ask,
-// Allow, or Always asks for a tool that asks before every call.
+// Always ask, or Allow.
 func policyWords(p string) string {
 	switch p {
 	case rpc.PolicyOff:
@@ -311,7 +314,7 @@ func policyWords(p string) string {
 	case rpc.PolicyAllow:
 		return "Allow"
 	case rpc.PolicyAlways:
-		return "Always asks"
+		return "Always ask"
 	}
 	return p
 }
@@ -333,17 +336,22 @@ func newToolsLine(tools []rpc.ToolPolicy) string {
 }
 
 // nextPolicy returns the policy one step left (step -1) or right (+1) of
-// tool t's, in the order Off, Ask, Allow. A tool that always asks steps
-// between Off and Always asks, which merud turns on as Ask; it never
-// reaches Allow. configure always asks even while it is off.
+// tool t's. An MCP tool steps through Off, Ask, Always ask and Allow, since
+// its server has an always_confirm list; a built-in or an agent's skill
+// through Off, Ask and Allow. configure and schedule_job always ask, so
+// they step between Off and Always ask, which merud turns on, and never
+// reach Allow.
 func nextPolicy(kind string, t rpc.ToolPolicy, step int) string {
-	if t.Policy == rpc.PolicyAlways || (kind == "builtin" && t.Name == "configure") {
+	if kind == "builtin" && (t.Name == "configure" || t.Name == "schedule_job") {
 		if step > 0 {
-			return rpc.PolicyAsk
+			return rpc.PolicyAlways
 		}
 		return rpc.PolicyOff
 	}
 	order := []string{rpc.PolicyOff, rpc.PolicyAsk, rpc.PolicyAllow}
+	if kind == "mcp" {
+		order = []string{rpc.PolicyOff, rpc.PolicyAsk, rpc.PolicyAlways, rpc.PolicyAllow}
+	}
 	i := max(slices.Index(order, t.Policy), 0)
 	return order[min(max(i+step, 0), len(order)-1)]
 }
@@ -407,7 +415,7 @@ func (m *Model) mcpKey(msg tea.KeyMsg) tea.Cmd {
 			step = -1
 		}
 		next := nextPolicy(c.Kind, t, step)
-		if next == t.Policy || (t.Policy == rpc.PolicyAlways && next == rpc.PolicyAsk) {
+		if next == t.Policy {
 			return nil
 		}
 		server := c.Name

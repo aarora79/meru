@@ -334,6 +334,9 @@ type ApprovalView struct {
 	// is a mail field.
 	JSON    string       `json:"json,omitempty"`
 	Choices []ChoiceView `json:"choices"`
+	// Reason is the sentence for why this call asks when it otherwise
+	// wouldn't, from rpc.ReasonText: "" for most cards.
+	Reason string `json:"reason,omitempty"`
 	// Draft is what "Edit first" puts in the composer: the call's
 	// arguments written as a request the user can change and send, since
 	// merud runs a call with the arguments it asked about and no others.
@@ -380,7 +383,8 @@ func approvalView(a rpc.Approval) (v ApprovalView) {
 		return consentView(a)
 	}
 	server, tool := splitName(a.Kind, a.Name)
-	v = ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Server: server, Tool: tool, Label: stepLabel(a.Kind, server, tool, a.Args)}
+	v = ApprovalView{ID: a.ID, Name: a.Name, Kind: a.Kind, Server: server, Tool: tool, Label: stepLabel(a.Kind, server, tool, a.Args),
+		Reason: rpc.ReasonText(a.Reason)}
 	for _, c := range a.Choices {
 		v.Choices = append(v.Choices, ChoiceView{Choice: c, Label: choiceLabel(c, a.Site)})
 	}

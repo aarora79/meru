@@ -235,3 +235,19 @@ func TestAskConsent(t *testing.T) {
 		}
 	}
 }
+
+// TestAskApprovalReason checks that the prompt prints the reason line for
+// a chat that read outside content, before the question.
+func TestAskApprovalReason(t *testing.T) {
+	var errOut bytes.Buffer
+	p := newPrompter(strings.NewReader("o\n"), &errOut, true)
+	a := rpc.Approval{Name: "mail.send", Kind: "mcp", Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny}, Reason: rpc.ReasonOutside}
+	if c, err := p.approve(context.Background(), a); err != nil || c != rpc.ChoiceOnce {
+		t.Fatalf("approve = %q, %v; want once", c, err)
+	}
+	out := errOut.String()
+	why := strings.Index(out, rpc.ReasonText(rpc.ReasonOutside))
+	if why < 0 || why > strings.Index(out, "Run mail.send? [o]nce  [d]eny") {
+		t.Errorf("stderr lacks the reason line before the question:\n%s", out)
+	}
+}

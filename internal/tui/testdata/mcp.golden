@@ -5,7 +5,7 @@ Meru मेरु v0.4.3 lite · minicpm5:2b · 2637 docs (11698 vectors, 84 MB)
   │ Connections                                                                              │
   │                                                                                          │
   │   meru · built in · 3 of 3 tools on                                                      │
-  │ ›   Always asks configure                                                                │
+  │ ›   Always ask  configure                                                                │
   │     Allow       web_search                                                               │
   │     Ask         write_file                                                               │
   │                                                                                          │

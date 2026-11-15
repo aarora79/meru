@@ -255,13 +255,8 @@ const descMax = 50
 // missing readOnlyHint as false, so ReadOnly is nil only for a tool with no
 // annotations at all; Destructive is nil whenever the server left it out.
 func hint(t rpc.ProbeTool) string {
-	switch {
-	case isTrue(t.ReadOnly):
-		return "read-only"
-	case isTrue(t.Destructive):
-		return "may delete"
-	case t.ReadOnly != nil:
-		return "changes things"
+	if h := rpc.HintOf(t.ReadOnly, t.Destructive); h != "" {
+		return h
 	}
 	return "no hint"
 }

@@ -830,8 +830,15 @@ a connector's place gets `Connector = by_hand` and the connector's sentence.
   no crash leaves a tool in both `tools` and `off`. `builtinConnection` marks
   each built-in `config.NewBuiltins` returns as `New`, with a line naming them in
   the card's `Note`, and `newToolService` logs them at startup. A tool must be one the
-  source offers or config names. `allow` is refused for an `always_confirm` tool
-  and for `configure`. Then the matching reload runs: `reloadMCP`, `reloadA2A`, or
+  source offers or config names. `always` puts an MCP tool in `allow` and its
+  server's `always_confirm` and takes it out of `confirm`; any other policy takes
+  it out of `always_confirm` (`alwaysList`), so a tool sits in at most one of the
+  two lists, and Allow works straight from Always ask. An agent's skill and a
+  built-in have no `always_confirm`, so `always` is refused for them, except for
+  `configure` and `schedule_job`, which always ask, where it means on. `allow` is
+  refused for those two. `TestToolPolicyOp` walks a tool through all four.
+  `fillPolicies` copies each tool's `Hint` from `OfferedTools`
+  (`TestFillPoliciesHint`). Then the matching reload runs: `reloadMCP`, `reloadA2A`, or
   `reloadBuiltin`, which hands `bt.SetLists` the new `[builtin]` lists.
 - `handleMCPAdd` appends a catalog server's block once `secrets.toml` holds its
   key, and reloads. `handleMCPRemove` takes a block out and reloads.

@@ -133,7 +133,7 @@ var connsFixture = []rpc.Connection{
 	{Name: "meru", Kind: "builtin", State: rpc.MCPConnected, Offered: 3, Tools: []rpc.ToolPolicy{
 		{Name: "configure", Policy: rpc.PolicyAlways}, {Name: "web_search", Policy: rpc.PolicyAllow}, {Name: "write_file", Policy: rpc.PolicyAsk}}},
 	{Name: "google", Kind: "mcp", Transport: "http", State: rpc.MCPConnected, Offered: 124, Tools: []rpc.ToolPolicy{
-		{Name: "search_gmail_messages", Policy: rpc.PolicyAllow}, {Name: "send_gmail_message", Policy: rpc.PolicyAsk}, {Name: "list_calendars", Policy: rpc.PolicyOff}}},
+		{Name: "search_gmail_messages", Policy: rpc.PolicyAllow, Hint: rpc.HintReadOnly}, {Name: "send_gmail_message", Policy: rpc.PolicyAsk}, {Name: "list_calendars", Policy: rpc.PolicyOff}}},
 	{Name: "notes", Kind: "mcp", Transport: "stdio", State: rpc.MCPNotConnected, Err: `exec: "npx" not found`, Offered: -1, Tools: []rpc.ToolPolicy{
 		{Name: "search", Policy: rpc.PolicyAllow}}},
 	{Name: "commands", Kind: "command", State: rpc.MCPConnected, Fixed: true, Note: "Edit [[commands]] in config.toml to change these.", Tools: []rpc.ToolPolicy{
@@ -198,8 +198,9 @@ func TestMCPBoxShowsError(t *testing.T) {
 }
 
 // TestMCPPolicyKeys checks the policy keys: → and ← step the marked tool
-// through Off, Ask and Allow and send the change to merud; a tool that
-// always asks never reaches Allow; the local commands take no change.
+// through Off, Ask and Allow, with Always ask between Ask and Allow for an
+// MCP tool, and send the change to merud; configure never reaches Allow;
+// the local commands take no change.
 func TestMCPPolicyKeys(t *testing.T) {
 	tests := []struct {
 		name string
@@ -216,6 +217,12 @@ func TestMCPPolicyKeys(t *testing.T) {
 		// its tools.
 		{"send_gmail_message to off", []tea.Msg{press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyLeft)},
 			&rpc.PolicyChange{Kind: "mcp", Server: "google", Tool: "send_gmail_message", Policy: rpc.PolicyOff}},
+		{"send_gmail_message to always ask", []tea.Msg{press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyRight)},
+			&rpc.PolicyChange{Kind: "mcp", Server: "google", Tool: "send_gmail_message", Policy: rpc.PolicyAlways}},
+		{"search_gmail_messages, an MCP tool, from allow back to always ask", []tea.Msg{press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyLeft)},
+			&rpc.PolicyChange{Kind: "mcp", Server: "google", Tool: "search_gmail_messages", Policy: rpc.PolicyAlways}},
+		{"write_file, a built-in, skips always ask", []tea.Msg{press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyRight)},
+			&rpc.PolicyChange{Kind: "builtin", Server: "meru", Tool: "write_file", Policy: rpc.PolicyAllow}},
 		{"a heading takes no policy", []tea.Msg{press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyDown), press(tea.KeyRight)}, nil},
 	}
 	for _, tt := range tests {

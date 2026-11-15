@@ -311,8 +311,8 @@ own. The commands, in the order `/help` lists them:
 Each box opens over the conversation and keeps the keys until Esc or q closes it.
 In a box with rows, ↑ and ↓ move a marker and the box scrolls to keep it in view.
 The keys that change something are the same everywhere: ← and → step a tool's
-policy through Off, Ask and Allow (a tool that always asks steps between Off and
-Always asks), Enter adds or toggles the marked row, and `d` removes a folder or an
+policy through Off, Ask and Allow, with Always ask between Ask and Allow for an MCP
+tool (`configure` and `schedule_job` step between Off and Always ask), Enter adds or toggles the marked row, and `d` removes a folder or an
 MCP server, forgets a memory or deletes a chat, after a second `d`, since none of
 those can be undone from the chat. Adding a catalog server that needs an API key opens a field
 that shows `•` for each character; Enter sends the key to `merud` with
@@ -594,12 +594,17 @@ differs from `meru chat`'s.
   Below them it has a card per tool source: the built-in web tools, merud's
   other built-in tools, each MCP server and A2A agent, and the local commands.
   Each card shows whether the source is connected, the last error when it isn't,
-  "N of M tools on", and a switch per tool with three positions that map onto
-  config: **Off**, the tool isn't in `allow`; **Ask**, it is in `allow` and in
-  `confirm`; **Allow**, it is in `allow` and not in `confirm`. A tool in
-  `always_confirm`, and `configure`, shows **Always asks** and has no Allow: the
-  one runs commands, and the other changes config, so the model could grant
-  itself a tool. The local commands show their policy without a switch: each is a
+  "N of M tools on", and a switch per tool whose positions map onto config:
+  **Off**, the tool isn't in `allow`; **Ask**, it is in `allow` and in `confirm`;
+  **Always ask**, for an MCP tool only, it is in `allow` and in its server's
+  `always_confirm`, so it asks before every call with no approval for the chat;
+  **Allow**, it is in `allow` and in neither list. A tool sits in at most one of
+  `confirm` and `always_confirm`. A built-in or an agent's skill has no
+  `always_confirm`, so its switch has three positions. `configure` and
+  `schedule_job` show **Always ask** and have no Allow: they change config, so
+  the model could grant itself a tool or start a job. Under each MCP tool's name
+  the card shows the server's hint, from its MCP annotations: "read-only", "may
+  delete" or "changes things"; a hint is the server's claim. The local commands show their policy without a switch: each is a
   `[[commands]]` entry you edit in `config.toml`. **Add a connection** lists the
   catalog servers not added yet, with what each needs, its start command, and the
   tools it turns on; an API key goes into a password field. Under them, **Add
@@ -4197,10 +4202,12 @@ typo.
 Tools are **deny-by-default**. A server that offers 40 tools gives the model none
 until you allow specific ones.
 
-- **Commands ask every time.** A tool in `always_confirm` asks before every call and
+- **Some tools ask every time.** A tool in `always_confirm` asks before every call and
   offers only "approve once" and "deny", like the built-in `configure`. It is for a
-  tool that runs commands, where a session approval would let the model run any
-  command unseen for the rest of the session. No catalog entry needs it today.
+  tool that sends something, such as mail, or runs commands, where a session
+  approval would let the model act unseen for the rest of the session. The
+  catalog's `send_gmail_message` comes this way, and Settings' **Always ask**
+  writes the list.
 - **No wildcards.** `allow` and `confirm` name each tool; `merud` refuses `*` or any
   other pattern. A wildcard would admit tools a server adds in a later release,
   which nobody has read.

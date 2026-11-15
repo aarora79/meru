@@ -418,7 +418,7 @@ box a command opens. In a box with rows, ↑ and ↓ move the `›` marker.
 | `/copy N` | copy code block N; `/copy` alone works like Ctrl-Y, and `/copy answer` copies the whole answer |
 | `/usage` | show how much you use Meru; `/usage by model` shows a row per answer model: questions, time to first token, speed, tool calls, bad calls and capped turns |
 | `/me` | show what Meru knows about you; `d` twice forgets the marked memory. `/me add I grow tomatoes` saves a fact about you, and `/me prefer short answers` how you like answers |
-| `/mcp` | your connections: each tool with Off, Ask or Allow, which ← and → change, and the catalog servers you can add with Enter. A server that needs an API key asks for it in a field that shows `•` for each character. `d` twice removes the marked server |
+| `/mcp` | your connections: each tool with Off, Ask, Always ask (MCP tools) or Allow, which ← and → change, and the catalog servers you can add with Enter. A server that needs an API key asks for it in a field that shows `•` for each character. `d` twice removes the marked server |
 | `/folders` | the folders Meru searches, with the usual ones not searched yet: Enter adds the marked one, and `d` twice removes one. `/folders add ~/Garden` adds any folder |
 | `/skills` | the skills; Enter turns the marked one on or off |
 | `/model` | show the model sets, the table `meru model` prints |
@@ -714,9 +714,11 @@ the list. They run at once, even while an answer runs, and never reach the model
 `~/.meru/config.toml`, keeps your comments, and applies it at once:
 
 - **Connections**: a card per tool source, with an Off, Ask or Allow switch per
-  tool. Off hides the tool from the model; Ask makes Meru ask before each call;
-  Allow runs it without asking. A tool that runs commands, and `configure`, always
-  ask. **Add a connection** adds a catalog server, as `meru mcp add` does; paste
+  tool, and Always ask too for an MCP server's tools. Off hides the tool from the
+  model; Ask makes Meru ask before each call, with "for this chat" on offer;
+  Always ask asks before every call, with no approval for the chat; Allow runs it
+  without asking. Under each MCP tool's name, the server's hint says whether it
+  reads or changes things. `configure` and `schedule_job` always ask. **Add a connection** adds a catalog server, as `meru mcp add` does; paste
   its API key there if it needs one. **Add your own MCP server**, under the
   catalog, adds any other server, as `meru mcp add stdio` and `meru mcp add http`
   do: a name, then either the program and its arguments, one in each field, or

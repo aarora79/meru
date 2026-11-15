@@ -328,3 +328,25 @@ func TestConsentBox(t *testing.T) {
 		})
 	}
 }
+
+// TestApprovalReasonLine checks that a box for a chat that read outside
+// content shows rpc.ReasonText's sentence, the one the desktop card shows,
+// and that a plain box doesn't.
+func TestApprovalReasonLine(t *testing.T) {
+	for _, reason := range []string{"", rpc.ReasonOutside} {
+		events := toolReply([]rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny})
+		events[2].Approval.Reason = reason
+		merud := &fakeMerud{events: events}
+		snd := newFakeSender()
+		m, result := startTurn(t, testModel(merud.ask, snd), "email sam")
+		m = untilApproval(t, m, snd)
+		// The box wraps the line to its width, so compare without line breaks.
+		view := strings.Join(strings.Fields(m.View()), " ")
+		has := strings.Contains(view, "so Meru asks before each call.")
+		if has != (reason != "") {
+			t.Errorf("reason %q: view shows the reason line = %v:\n%s", reason, has, m.View())
+		}
+		m, _ = update(t, m, typeText("d"))
+		waitDone(t, m, snd, result)
+	}
+}
