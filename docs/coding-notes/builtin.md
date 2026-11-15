@@ -531,6 +531,18 @@ and search never indexes it. It holds what `write_file` wrote, what `web_fetch`
 downloaded and, in `attachments/`, the mail attachments the `google` server
 saves (see [catalog](catalog.md)).
 
+`read_file` gives an HTML page's text, as the indexer reads it, except for a
+page in the output folder, where `htmlSource` gives its markup. A real chat
+showed why: the model read back a page of links it had written, got the text
+with every `<a href>` gone, and wrote the page again from that text. The
+model edits in the output folder, and `edit_file` needs the markup to match.
+`htmlSource` resolves the output folder's links before it compares paths,
+since `resolve` hands over a path such as `/private/var/…` for `/var/…` on a
+Mac, and reads the file through an `os.Root` on its folder so a symlink can't
+lead elsewhere. The header says "The HTML source, as edit_file sees it."
+`TestReadFileHTMLSource` checks a page in the output folder and one in an
+indexed folder.
+
 The three tools share one path check, `resolve`. It accepts four shapes of
 path:
 

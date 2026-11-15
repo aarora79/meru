@@ -394,6 +394,13 @@ type turn struct {
 	// the turn's own goroutine reads and writes it: runCalls reads it
 	// before its goroutines start and sets it after they end.
 	outside bool
+	// chatLinks holds the links earlier turns' tool results and the
+	// user's lines hold, read from the transcript when the turn starts,
+	// for the check on made-up links (see links.go).
+	chatLinks map[string]bool
+	// copiedNote says the model wrote one of Meru's own notes, such as a
+	// record of tool calls, into its answer, and Meru cut it.
+	copiedNote bool
 	// wroteFiles counts the turn's successful write_file and edit_file
 	// calls, for the check on answers that say they made a file (see
 	// claimsFileWork).
@@ -619,6 +626,9 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			// only a plan and a copied note gets the plan nudge.
 			if cut := withoutMeruNotes(rep.text); cut != strings.TrimSpace(rep.text) {
 				a.log.WarnContext(ctx, "the model copied one of Meru's notes into its answer; cut it", "round", t.rounds)
+				// The client already showed the copy as it streamed, so the
+				// answer gets a notice too (see copiedNoteNotice).
+				t.copiedNote = true
 				rep.text = cut
 				total.text = cut
 			}

@@ -167,6 +167,10 @@ func failedWord(outcome string) string {
 var meruNoteStarts = []string{
 	"[Meru stopped here:",
 	toolNotesStart,
+	// A model has written the tool record with a square bracket, as
+	// "[Meru's record of the tools this turn ran …]", followed by calls it
+	// never made.
+	"[" + toolNotesStart[1:],
 	"(Meru's notes on the pages",
 }
 
@@ -189,7 +193,9 @@ func withoutMeruNotes(text string) string {
 				break
 			}
 			end := len(text)
-			if start[0] == '[' {
+			// A cap note ends at its closing bracket; a tool record, in
+			// either bracket, runs to the end like the notes it copies.
+			if start[0] == '[' && !strings.HasSuffix(start, toolNotesStart[1:]) {
 				if j := strings.Index(text[i:], "]"); j >= 0 {
 					end = i + j + 1
 				}
