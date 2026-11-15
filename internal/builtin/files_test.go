@@ -616,3 +616,44 @@ func TestOutputFolder(t *testing.T) {
 		}
 	}
 }
+
+// TestReadFileHTMLSource checks that read_file gives the markup of an HTML
+// page in the output folder, where the model edits what it wrote, and the
+// text of one elsewhere, as the indexer reads it. A real chat lost every
+// link of a page it wrote: it read the page back as text and wrote it again.
+func TestReadFileHTMLSource(t *testing.T) {
+	base := t.TempDir()
+	notes := filepath.Join(base, "notes")
+	out := filepath.Join(base, "meru-output")
+	for _, d := range []string{notes, out} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const page = `<html><body><p>Poems</p><a href="https://example.com/ghazal">a ghazal</a></body></html>`
+	for _, p := range []string{filepath.Join(notes, "saved.html"), filepath.Join(out, "links.html")} {
+		if err := os.WriteFile(p, []byte(page), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ix, err := index.New(config.Index{Folders: []string{notes}, MaxFileMB: 1}, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := New(filepath.Join(base, "config.toml"), config.Builtin{Tools: config.BuiltinTools()}, config.Web{}, nil, out, ix, nil, nil)
+	read := func(path string) string {
+		t.Helper()
+		res, err := tools.Call(context.Background(), ReadFile, json.RawMessage(`{"path":`+jsonPath(path)+`}`))
+		if err != nil || res.IsError {
+			t.Fatalf("read_file %s = %+v, %v", path, res, err)
+		}
+		return res.Text
+	}
+	if got := read(filepath.Join(out, "links.html")); !strings.Contains(got, `<a href="https://example.com/ghazal">`) ||
+		!strings.Contains(got, "The HTML source, as edit_file sees it.") {
+		t.Errorf("a page in the output folder came back without its markup:\n%s", got)
+	}
+	if got := read(filepath.Join(notes, "saved.html")); strings.Contains(got, "<a href") || !strings.Contains(got, "a ghazal") {
+		t.Errorf("a page in an indexed folder should read as text:\n%s", got)
+	}
+}

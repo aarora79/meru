@@ -979,7 +979,7 @@ and arguments and offers the choices `merud` sends, from these:
 
   | Tool | What it returns |
   | --- | --- |
-  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page, a Word file as text, and an Excel workbook sheet by sheet under a `--- sheet Name ---` line, with a sheet or a CSV file one row per line and its cells joined by ` | `. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. |
+  | `read_file` | A file's whole text, 12,000 characters per call, with the offset for the next call. PDFs come page by page, a Word file as text, and an Excel workbook sheet by sheet under a `--- sheet Name ---` line, with a sheet or a CSV file one row per line and its cells joined by ` | `. A bare filename that no folder holds is looked up in `<output_dir>/attachments/`, so the model can pass the name a mail tool reports. An HTML page comes as its text, except one in the output folder, which comes as its markup: the model edits there, and a real turn read back a page of links as text and wrote it again with every link gone. |
   | `list_folder` | A folder's folders, then its files with size and modified date, 1 to 3 levels deep, at most 300 entries. |
   | `grep` | Every line that holds a word or an RE2 regular expression, as `path:line: text` (`path (page N)` for a PDF, `path (sheet S, row N)` for an Excel sheet, `path (row N)` for a CSV file), and each file whose name matches as `path (file name)`, until 50 lines (the model may ask for up to 200), 5 seconds or 20,000 files. A line longer than 200 characters shows the 200 around its first match. With no path it searches every folder but the past chats. A plain-text pattern that finds nothing and reads as a regular expression, such as `a|b` or `x.*y`, runs again as one, and the result says so. |
   | `search_files` | The hybrid search of [Retrieval](#retrieval) for the model's own query: 8 excerpts by default, at most 20 and 14,000 characters, each numbered after the turn's other excerpts, with its path, heading and lines or page. Its excerpts join the turn's `sources` event. Offered when `[index] folders` is set. |
@@ -2261,7 +2261,8 @@ the full word lists:
 | it, they, or a file, folder, note, email or event "is now at/in" | "It's now at ~/Projects/garden" |
 | "has/have been" and an action | "The file has been saved to ~/Projects" |
 | "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
-| the same with created, updated, wrote, written, fixed, corrected, edited, changed, replaced or added, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
+| a sentence that opens with saved, written or stored, after an optional "yes" or "ok", then at, to, in, as or under | "Yes — saved at ~/meru-output/links.html" |
+| the same with created, updated, wrote, written, rewrote, rebuilt, restored, stripped, cleaned, fixed, corrected, edited, changed, replaced or added, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
 | a sentence that opens with one of those verbs, or added, changed, edited or replaced, then "the", "your", "a", "an", "it" or "them", when it names such a thing | "Updated the HTML dashboard with a new column" |
 
 A sentence that ends in "?", or that holds words such as "if", "want me", "I
@@ -2391,6 +2392,34 @@ this answer goes without what it would have read. Check the answer before you
 rely on it.", or names each tool when more than one failed. A call the user
 declined, or one the allow lists refused, doesn't count. It misses an answer that
 owns up in other words, such as "I have no data on that".
+
+A seventh check looks at the web links in a full answer, under the same rule as
+the amounts: a turn where a tool returned a result, or whose route wasn't
+`direct`. Asked for a ghazal on a poetry site, a model called no tool and gave a
+link built from the poem's words. It had the site's shape and opened the site's
+list of ghazals, not the poem; three more made-up links followed, and one went
+into a page of links the model saved. So `merud` takes every `http` and `https`
+link in the answer, code blocks included, since a page written to a file carries
+its links too, and looks for it among the links the chat already read: this
+turn's tool results, question, memories, excerpts and web section, every
+earlier `tool_result` line and every message of yours in the transcript.
+Earlier answers don't count, so a link the model made up once stays made up. It
+compares links with the scheme and host in lower case and the fragment and a
+trailing slash dropped. When links turn up nowhere, the `notice` event says "No
+search, page or message in this chat gave <link>, so the model may have made it
+up. Check it before you use it.", naming up to three and then "and 2 more
+links". It passes a made-up link that matches one the chat read, and flags a
+real link the model knew without a search.
+
+An eighth check catches a model that copies Meru's own notes. The history
+carries a record of each turn's tool calls after its answer, headed "(Meru's
+record of the tools this turn ran …)", and a real turn wrote one into its
+answer as "[Meru's record of the tools this turn ran …]", listing a `read_file`
+and an `edit_file` it never called, after it said it had fixed a page it never
+touched. `merud` cuts such a copy, in either bracket, from the end of an answer
+that made no call, as it cuts a copied cap note, and since the client already
+showed it, the `notice` event adds "The answer copied Meru's record of tool
+calls, and Meru cut it: this turn ran none of the calls it listed." 
 
 ### Routing
 

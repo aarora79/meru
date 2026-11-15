@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `outside.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `outside_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `outside.go`, `links.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `outside_test.go`, `links_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1410,6 +1410,41 @@ codes before and after, an amount named twice, and inline code. `TestAmountsNoti
 forms. `TestAmountsCheckInATurn` runs a fake turn whose mail tool returns a
 hotel folio: an answer with a made-up tax total gets the notice, one that
 quotes the folio gets none, and one with no tool call gets none.
+
+### Links nothing in the chat gave (links.go)
+
+A model can make up a web link that looks right. Asked for a ghazal on a poetry
+site, one built a link from the poem's words; it opened the site's list of
+ghazals, not the poem, and three more made-up links followed into a page the
+model saved. The check runs under the amounts check's rule and adds a notice
+naming each link no search, page, tool result or message of the user's in the
+chat holds.
+
+`linkPattern` finds each `http` or `https` link, in prose, in Markdown's
+`[text](url)` and in an HTML attribute. `linkKey` turns a link into the form the
+check compares: the scheme and host in lower case, the fragment and trailing
+punctuation and slash dropped. `linksIn` builds a set of those keys from any
+number of texts. `chatLinks` builds the set from a transcript's `tool_result`
+lines and the user's lines; `Handle` keeps it in `t.chatLinks` from the lines it
+reads at the start of the turn, the same lines `readOutside` reads. Earlier
+answers don't count, so a link the model made up once stays made up.
+`unsourcedLinks` returns each link in the answer, code included, that neither
+that set nor this turn's `read` holds; `linksNotice` names up to three, with
+"made it up" for one and "made them up" for more.
+
+The same chat showed two more gaps, both in `honest.go` and `plans.go`. The
+claim patterns missed "Yes — saved at …", now `claimSavedTo`, and "I stripped
+those off", now one of `claimMade`'s verbs. And the model copied the history's
+tool record into its answer with a square bracket, "[Meru's record of the tools
+this turn ran …]", where Meru writes a round one, so `withoutMeruNotes` let it
+stand. `meruNoteStarts` now holds the square form too, cut to the end of the
+text like the round one, and `runCalls` sets `t.copiedNote` when it cuts a note,
+so the answer gets `copiedNoteNotice`.
+
+`TestUnsourcedLinks` replays that chat's links: the real ones from a search and
+an email pass, the made-up one fails even after an earlier answer gave it, and
+links in a page the model writes count. `TestLinksNotice` checks the forms, and
+`TestCopiedRecordNotice` runs a turn that copies the record.
 
 ### Links to the files a turn saved (saved.go)
 

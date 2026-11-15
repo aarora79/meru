@@ -164,6 +164,12 @@ func (t *Tools) readFile(raw json.RawMessage) (string, error) {
 	}
 
 	full := joinPages(text)
+	note := ""
+	if text.Kind == index.KindHTML {
+		if src, ok := t.htmlSource(c.Path); ok {
+			full, note = src, " The HTML source, as edit_file sees it."
+		}
+	}
 	// Offsets count characters, not bytes, so a page never ends inside a
 	// multi-byte character. []rune(s) turns the text into its characters.
 	runes := []rune(full)
@@ -173,13 +179,58 @@ func (t *Tools) readFile(raw json.RawMessage) (string, error) {
 	end := min(a.Offset+maxReadChars, len(runes))
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n%s, modified %s. Characters %d to %d of %d.\n\n",
-		t.show(c.Path), size(c.Info.Size()), c.Info.ModTime().Format("2006-01-02 15:04"), a.Offset, end, len(runes))
+	fmt.Fprintf(&b, "%s\n%s, modified %s. Characters %d to %d of %d.%s\n\n",
+		t.show(c.Path), size(c.Info.Size()), c.Info.ModTime().Format("2006-01-02 15:04"), a.Offset, end, len(runes), note)
 	b.WriteString(string(runes[a.Offset:end]))
 	if end < len(runes) {
 		fmt.Fprintf(&b, "\n\n[%d more characters. To read on, call read_file with offset %d.]", len(runes)-end, end)
 	}
 	return b.String(), nil
+}
+
+// maxSourceBytes caps the HTML source htmlSource returns: twice what
+// write_file writes in one file, so any page Meru made fits.
+const maxSourceBytes = 2 * maxWriteBytes
+
+// htmlSource returns the markup of the HTML file at path, and true, when
+// the file sits in the output folder, where write_file and edit_file
+// work. Elsewhere, and on any failure, it returns false and read_file
+// shows the page's text, as the indexer reads it.
+//
+// A real chat showed why. The model wrote a page of links, read it back
+// with read_file to change it, got the text with every <a href> gone, and
+// wrote the page again from that text: no link was left to click, and an
+// edit_file call couldn't match markup it never saw. The source is what
+// the model needs to edit a page it made.
+//
+// It opens the file through an os.Root on its folder, as the indexer
+// does, so a symlink there can't lead the read elsewhere.
+func (t *Tools) htmlSource(path string) (string, bool) {
+	if t.outputDir == "" {
+		return "", false
+	}
+	// The resolver hands over a path with links resolved, such as
+	// /private/var/... for /var/... on a Mac, so the output folder is
+	// resolved the same way before the two are compared.
+	dir := t.outputDir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return "", false
+	}
+	// defer runs root.Close() when htmlSource returns.
+	defer root.Close()
+	b, err := root.ReadFile(filepath.Base(path))
+	if err != nil || len(b) > maxSourceBytes {
+		return "", false
+	}
+	return string(b), true
 }
 
 // joinPages returns a file's text as one string. A PDF's pages each start

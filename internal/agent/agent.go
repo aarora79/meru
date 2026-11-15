@@ -451,11 +451,14 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	// comes from the transcript, so a restart of merud can't clear it. A
 	// transcript that can't be read counts as outside: the safe side asks
 	// more (docs/design/security.md).
+	// The same lines give the links earlier turns read, for the check on
+	// made-up links (see links.go).
 	if lines, err := sess.Lines(); err != nil {
 		t.outside = true
 		a.log.DebugContext(ctx, "transcript unreadable; treating the chat as having read outside content", "session", sess.ID(), "err", err)
 	} else {
 		t.outside = readOutside(lines, a.outputDir, a.home, a.asksFirst())
+		t.chatLinks = chatLinks(lines)
 	}
 	// asked is the question the turn routes, searches and recalls on. For
 	// Continue it is the last turn's question, and t.handoff holds what
@@ -604,6 +607,17 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
 				notice = strings.TrimSpace(notice + " " + n)
 			}
+			// A web link no search result, page, tool result or message of
+			// the user's in this chat holds, under the same rule. A real
+			// chat's model gave links built from a poem's words, which
+			// opened a site's list page, not the poem. See links.go.
+			if n := linksNotice(unsourcedLinks(rep.text, t.chatLinks, t.read)); n != "" {
+				notice = strings.TrimSpace(notice + " " + n)
+			}
+		}
+		// A record of tool calls the model wrote itself, which Meru cut.
+		if t.copiedNote {
+			notice = strings.TrimSpace(notice + " " + copiedNoteNotice)
 		}
 		// A tool call that failed and was never redone, which the answer
 		// doesn't own up to. See failedCallsNotice.

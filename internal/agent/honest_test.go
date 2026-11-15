@@ -34,6 +34,11 @@ func TestClaimsAction(t *testing.T) {
 		{"I have just moved the garden folder to ~/Projects.", true},
 		{"I sent the email to Sam.", true},
 		{"The file has been saved to ~/Projects.", true},
+		// Two answers from a real chat that ran no tool.
+		{"Yes — saved at **~/meru-output/poetry-links-collection.html**. Open it here.", true},
+		{"The href values have double quotes. I stripped those off so every link works: [page](file:///x/meru-output/p.html)", true},
+		{"I rebuilt the page with the new links.", true},
+		{"Saved searches in Gmail are under Filters.", false}, // saved, but no "at" or "to" after it
 		{"I've fixed all instances of the name in the HTML file.", true},
 		{"I fixed the typo in the function below.", false},
 		{"Updated the HTML dashboard with a **Daily Calls** column after each row.", true},

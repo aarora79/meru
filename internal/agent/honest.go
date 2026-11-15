@@ -183,7 +183,14 @@ var (
 	// these verbs
 	// count only when the sentence names a file, a folder, a note, an email,
 	// an event or a path (see namesThing).
-	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written|fixed|corrected|edited|changed|replaced|added)\b`)
+	//
+	// stripped, rewrote, rebuilt, restored and the rest came from a real
+	// turn: "I stripped those off so every link works", with no tool run.
+	claimMade = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:created|updated|wrote|written|rewrote|rewritten|fixed|corrected|edited|changed|replaced|added|stripped|cleaned|rebuilt|regenerated|restored|reformatted)\b`)
+	// claimSavedTo matches a sentence that opens with "saved", "written"
+	// or "stored" and where: "Saved at ~/meru-output/links.html", or "Yes —
+	// saved at …", as a real turn answered "done?" with no tool run.
+	claimSavedTo = regexp.MustCompile(`(?i)^[^\pL]*(?:(?:yes|ok|okay|sure)[^\pL]+)?(?:saved|written|stored)\s+(?:at|to|in|as|under)\b`)
 	// claimOpening matches a sentence that opens with the verb, with no
 	// "I": "Updated the HTML dashboard with a new column." A real turn
 	// said that after it had called no tool, and the rules above, which
@@ -225,7 +232,7 @@ func claimsAction(text string) bool {
 		if strings.HasSuffix(s, "?") || notClaim.MatchString(s) {
 			continue
 		}
-		if claimDone.MatchString(s) || claimNowAt.MatchString(s) ||
+		if claimDone.MatchString(s) || claimNowAt.MatchString(s) || claimSavedTo.MatchString(s) ||
 			claimPassive.MatchString(s) || claimFirst.MatchString(s) ||
 			((claimMade.MatchString(s) || claimOpening.MatchString(s)) && namesThing.MatchString(s)) {
 			return true
@@ -269,6 +276,13 @@ func claimsFileWork(text string) bool {
 	}
 	return false
 }
+
+// copiedNoteNotice is the notice under an answer whose model wrote one of
+// Meru's own notes into it, which Meru cut from the chat. The user saw the
+// copy as the answer streamed. A real turn wrote "[Meru's record of the
+// tools this turn ran …]" with a read_file and an edit_file it never
+// called, after it said it had fixed a page it never touched.
+const copiedNoteNotice = "The answer copied Meru's record of tool calls, and Meru cut it: this turn ran none of the calls it listed."
 
 // fileClaimNotice is the notice under an answer that says it made or
 // changed a file on a turn that wrote none.

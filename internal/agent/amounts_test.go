@@ -153,6 +153,10 @@ func TestWithoutMeruNotes(t *testing.T) {
 		{"You paid $735.34 for the stay.", "You paid $735.34 for the stay."},
 		{"[Meru stopped here: no closing bracket", ""},
 		{"(Meru's notes on the pages this turn read.) [1] a page", ""},
+		// A real turn wrote the record with a square bracket, then two
+		// calls it never made: all of it goes.
+		{"Let me look at the file:\n\n[Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above.]\n" +
+			"- read_file {\"path\":\"/x/p.html\"} ok: …\n- edit_file {\"path\":\"p.html\",\"old\":\"]\"}", "Let me look at the file:"},
 	}
 	for _, tt := range tests {
 		if got := withoutMeruNotes(tt.in); got != tt.want {
