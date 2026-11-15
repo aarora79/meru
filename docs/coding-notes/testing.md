@@ -225,6 +225,10 @@ no longer matches anything
 fails the test, so the list can only shrink. `TestPinRulesCatch` runs the rules on
 made-up lines, the way `TestChecksCatchViolations` does for the other checks.
 
+The check turns each XML tag with no attributes, such as `<integer>`, into a
+space first (`xmlTag`), so the launchd plist's `<integer>63</integer>`, its
+`Umask`, doesn't read as the version range `r>63`.
+
 `models_test.go` keeps the installers on one model table. The Mac installer
 reads `config.Recommendations` itself, but `scripts/install.sh`, the
 `meru-install` skill and the README's benchmark table can't read Go, so each

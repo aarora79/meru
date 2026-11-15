@@ -286,7 +286,9 @@ func TestWebFetchGuard(t *testing.T) {
 			args: fetch(base + "/release"), outcome: dispatch.OutcomeOK},
 		{name: "earlier question URL", session: "b2", question: "summarize it\n" + base + "/release is the page",
 			args: fetch(base + "/release"), outcome: dispatch.OutcomeOK},
-		{name: "another page on a search result's host", search: true, session: "c", args: fetch(base + "/long.txt"), outcome: dispatch.OutcomeOK},
+		{name: "another page on a search result's host asks", search: true, session: "c", args: fetch(base + "/long.txt"), asks: true, outcome: dispatch.OutcomeOK},
+		{name: "another page on the host of the user's URL", session: "c2", question: "read " + base + "/release",
+			args: fetch(base + "/long.txt"), outcome: dispatch.OutcomeOK},
 		{name: "notes in the query string", search: true, session: "d",
 			args: fetch(base + "/release?notes=" + url.QueryEscape("my tax is due")), asks: true, outcome: dispatch.OutcomeOK},
 		{name: "job source", session: "e", source: rpc.SourceJob, args: fetch(base + "/release"), outcome: dispatch.OutcomeDeclined},
@@ -333,19 +335,39 @@ func TestWebFetchGuardHosts(t *testing.T) {
 	if _, o := d.Dispatch(context.Background(), guardCall(WebSearch, `{"query":"go"}`, "h", "", rpc.SourceTUI, a)); o.Outcome != dispatch.OutcomeOK {
 		t.Fatalf("search outcome %q", o.Outcome)
 	}
+	// A search result makes its own page known, not its site: another
+	// path there could carry data out (docs/design/security.md).
 	tests := []struct {
 		url  string
 		want dispatch.Confirm
 		ok   bool
 	}{
-		{base + "/some/other/page", dispatch.ConfirmNever, false},
+		{base + "/release", dispatch.ConfirmNever, false},
+		{base + "/some/other/page", dispatch.ConfirmAlways, true},
 		{base + "/page?user=notes", dispatch.ConfirmAlways, true},
 		{"https://attacker.example/page", dispatch.ConfirmAlways, true},
 	}
 	for _, tt := range tests {
 		c, ok := tools.ConfirmCall(guardCall(WebFetch, fmt.Sprintf(`{"url":%q}`, tt.url), "h", "", rpc.SourceTUI, a))
 		if c != tt.want || ok != tt.ok {
-			t.Errorf("ConfirmCall(%s) = %v, %v; want %v, %v", tt.url, c, ok, tt.want, tt.ok)
+			t.Errorf("after a search, ConfirmCall(%s) = %v, %v; want %v, %v", tt.url, c, ok, tt.want, tt.ok)
+		}
+	}
+
+	// A URL in the user's own question makes its site known: another page
+	// there reads unasked, one with a query string still asks.
+	question := "what's new on " + base + "/blog"
+	for _, tt := range []struct {
+		url  string
+		want dispatch.Confirm
+		ok   bool
+	}{
+		{base + "/docs/install", dispatch.ConfirmNever, false},
+		{base + "/docs?q=x", dispatch.ConfirmAlways, true},
+	} {
+		c, ok := tools.ConfirmCall(guardCall(WebFetch, fmt.Sprintf(`{"url":%q}`, tt.url), "q", question, rpc.SourceTUI, a))
+		if c != tt.want || ok != tt.ok {
+			t.Errorf("after the user's URL, ConfirmCall(%s) = %v, %v; want %v, %v", tt.url, c, ok, tt.want, tt.ok)
 		}
 	}
 }

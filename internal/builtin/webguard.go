@@ -130,11 +130,27 @@ func (k *knownURLs) trusted(session, raw string) bool {
 	return session != "" && s != nil && s.urls[trustKey(host)]
 }
 
-// add records urls as known in session, normalized. A call with no
-// session records nothing: there is no session to tie the URLs to. When
-// the session is new and maxURLSessions sessions exist, the one used
-// longest ago goes. A session at maxURLsPerSession takes no more URLs.
+// add records urls as known in session, normalized, each with its host:
+// the URLs in the user's own words, whose sites the user named. A call
+// with no session records nothing: there is no session to tie the URLs
+// to. When the session is new and maxURLSessions sessions exist, the one
+// used longest ago goes. A session at maxURLsPerSession takes no more URLs.
 func (k *knownURLs) add(session string, urls ...string) {
+	k.record(session, true, urls)
+}
+
+// addExact records urls as known in session without their hosts: the
+// URLs a search showed the model. A search result can come from any site,
+// an attacker's included, so only that page is known; another page on the
+// same site asks first, since its path could carry data out as well as a
+// query string could (docs/design/security.md).
+func (k *knownURLs) addExact(session string, urls ...string) {
+	k.record(session, false, urls)
+}
+
+// record does the work of add and addExact; withHost says whether each
+// URL's host becomes known too.
+func (k *knownURLs) record(session string, withHost bool, urls []string) {
 	if session == "" || len(urls) == 0 {
 		return
 	}
@@ -155,7 +171,9 @@ func (k *knownURLs) add(session string, urls ...string) {
 		}
 		if n, ok := normalizeURL(raw); ok {
 			s.urls[n] = true
-			s.urls[hostKey(n)] = true
+			if withHost {
+				s.urls[hostKey(n)] = true
+			}
 		}
 	}
 }
@@ -181,15 +199,17 @@ func (k *knownURLs) touch(s *sessionURLs) {
 }
 
 // has reports whether raw may be fetched without asking in session: the
-// URL itself is known, or it has no query string and its host is one a
-// known URL came from.
+// URL itself is known, or it has no query string and its host is one the
+// user's own words named.
 //
 // The host rule exists because the model often knows a site's canonical
-// page, such as go.dev/doc/devel/release, when the search results showed
-// only go.dev/dl/. The query rule keeps the guard's point: a query string
-// is where a made-up URL carries data out, so a URL with one must match
-// exactly. An attacker's own site still has to appear in real search
-// results, or in the user's own words, before it can be fetched unasked.
+// page, such as go.dev/doc/devel/release, when the user named go.dev. It
+// covers only hosts from the user's words (add), not from search results
+// (addExact): an attacker's page can rank in a search, and any path on
+// that site could carry data out. Another page on such a site asks, with
+// "this website for this chat" on offer. The query rule keeps the guard's
+// point for the user's sites too: a query string is where a made-up URL
+// carries data out, so a URL with one must match exactly.
 func (k *knownURLs) has(session, raw string) bool {
 	n, ok := normalizeURL(raw)
 	if session == "" || !ok {

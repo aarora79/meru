@@ -64,6 +64,12 @@ var exactRunnerVersion = regexp.MustCompile(`(@|==)v?\d+\.\d+\.\d+\S*$`)
 // signed off by its owner. The check removes it before matching.
 var meruReleases = regexp.MustCompile(`github\.com/aarora79/meru/releases/latest`)
 
+// xmlTag matches an XML tag with no attributes, such as <integer> or
+// </string>. The check turns each into a space before matching, so the
+// launchd plist's <integer>63</integer> doesn't read as the version range
+// "r>63"; a range such as "workspace-mcp>=1.30" has no tag to strip.
+var xmlTag = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9]*>`)
+
 // pinFinding is one line that breaks a rule.
 type pinFinding struct {
 	where string // "path:line"
@@ -201,7 +207,7 @@ func pinLines(file, text string, comments bool, first int) []pinFinding {
 		if !comments && strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		clean := meruReleases.ReplaceAllString(trimmed, "")
+		clean := xmlTag.ReplaceAllString(meruReleases.ReplaceAllString(trimmed, ""), " ")
 		for _, r := range pinRules {
 			if what, ok := breaks(r, clean); ok {
 				out = append(out, pinFinding{where: file + ":" + strconv.Itoa(first+i), text: trimmed, what: what})
@@ -288,6 +294,8 @@ func TestPinRulesCatch(t *testing.T) {
 		{`version = "2.0.1"`, false},
 		{"npm install obsidian-mcp@^2.0.0", true},
 		{"pip install workspace-mcp>=1.30", true},
+		{"pip install workspace-mcp>1.30", true},
+		{"<integer>63</integer>", false}, // a plist value, not a version range
 		{"curl -O https://raw.githubusercontent.com/searxng/searxng/master/container/.env", true},
 		{"curl -O https://raw.githubusercontent.com/searxng/searxng/v2026.9.29/container/.env", false},
 		{"curl -fsSL https://github.com/aarora79/meru/releases/latest/download/install.sh | bash", false},

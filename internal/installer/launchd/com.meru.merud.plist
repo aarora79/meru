@@ -23,6 +23,12 @@
   <key>KeepAlive</key>
   <true/>
 
+  <!-- Files launchd and merud create get no group or other bits: 63 is
+       octal 077. Without it launchd makes the two logs below readable by
+       every account on the Mac. -->
+  <key>Umask</key>
+  <integer>63</integer>
+
   <!-- merud writes its own log with slog; these catch anything printed
        before that log opens, such as a config error. -->
   <key>StandardOutPath</key>

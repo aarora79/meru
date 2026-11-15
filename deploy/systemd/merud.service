@@ -12,6 +12,8 @@ ExecStart=%h/go/bin/merud
 # Restart after a crash, but not after `systemctl --user stop merud`.
 Restart=on-failure
 RestartSec=5
+# Files merud creates get no group or other bits, as under launchd.
+UMask=0077
 
 [Install]
 WantedBy=default.target

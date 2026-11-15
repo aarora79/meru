@@ -357,7 +357,8 @@ func (t *Tools) webSearch(ctx context.Context, raw json.RawMessage) (string, []r
 	for i, r := range shown {
 		urls[i] = r.URL
 	}
-	t.web.known.add(dispatch.SessionFrom(ctx), urls...)
+	// The exact pages, not their sites: see knownURLs.addExact.
+	t.web.known.addExact(dispatch.SessionFrom(ctx), urls...)
 	first := dispatch.CiteNumbers(ctx, len(shown))
 	var sources []rpc.Citation
 	for i, r := range shown {
