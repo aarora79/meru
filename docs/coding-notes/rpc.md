@@ -346,8 +346,15 @@ says it is one. `SessionInfo` gained `Folder` and `Tags`.
 The types of the desktop app's settings ops. `Scope` values name where a question
 may look (`auto`, `files`, `mail`, `web`, `talk`), and `Scopes` lists them in the
 order the app shows them. `PolicyChange` is what `tool_policy` changes, and the
-`Policy` constants (`off`, `ask`, `allow`, and `always`, which only `merud`
-reports) map onto config's lists. `Connection` and `ToolPolicy` describe each
+`Policy` constants (`off`, `ask`, `allow` and `always`) map onto config's lists;
+`always` writes an MCP tool to its server's `always_confirm`.
+`ToolPolicy.Hint` and `ToolInfo.Hint` carry the server's word on a tool from
+`HintOf`, which turns MCP's `readOnlyHint` and `destructiveHint`, both `*bool` so
+"not given" stays apart from false, into "read-only", "may delete" or "changes
+things", and "" when the server gave no annotations. `meru mcp add`'s table and
+both clients' Settings use the same words. `TestHintOf` is its table.
+`ReasonText`, in protocol.go, gives the sentence for an `Approval.Reason`, so the
+desktop card, `meru chat`'s box and one-shot `meru` show the same words. `Connection` and `ToolPolicy` describe each
 tool source tool by tool; `ToolPolicy.New` marks a built-in that `[builtin]
 tools` and `off` both leave out, one a later release added, which a client marks
 New (#123), and an older client ignores the field, `CatalogEntry` and `CatalogNeed` a catalog server and

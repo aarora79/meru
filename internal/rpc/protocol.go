@@ -855,6 +855,15 @@ type Approval struct {
 // or another server, so the call asks every time (docs/design/security.md).
 const ReasonOutside = "outside"
 
+// ReasonText returns the sentence a client shows for an Approval.Reason,
+// the same in every client, or "" for none or a reason it doesn't know.
+func ReasonText(reason string) string {
+	if reason == ReasonOutside {
+		return "This chat has read mail or the web, so Meru asks before each call."
+	}
+	return ""
+}
+
 // KindConsent is Approval.Kind for a question about sending a turn off
 // this machine; see Approval.Consent.
 const KindConsent = "consent"
@@ -926,6 +935,10 @@ type ToolInfo struct {
 	// session approval can switch that off (the configure tool).
 	Confirm    bool `json:"confirm,omitempty"`
 	AlwaysAsks bool `json:"always_asks,omitempty"`
+	// Hint is what the server says about an MCP tool, in HintOf's words:
+	// "read-only", "may delete" or "changes things"; "" when it said
+	// nothing.
+	Hint string `json:"hint,omitempty"`
 	// Argv is a local command's program and arguments as config.toml
 	// declares them, placeholders and all, so `meru tools` can show what
 	// the command runs. Empty for every other tool.

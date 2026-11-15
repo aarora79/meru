@@ -161,3 +161,18 @@ func TestConsentView(t *testing.T) {
 		t.Errorf("view = %+v", v)
 	}
 }
+
+// TestApprovalViewReason checks the reason line: a card for a chat that
+// read outside content carries rpc.ReasonText's sentence, and a plain
+// card carries none.
+func TestApprovalViewReason(t *testing.T) {
+	plain := approvalView(rpc.Approval{ID: "1", Name: "google.send_gmail_message", Kind: "mcp", Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny}})
+	if plain.Reason != "" {
+		t.Errorf("plain card reason = %q, want none", plain.Reason)
+	}
+	outside := approvalView(rpc.Approval{ID: "2", Name: "google.send_gmail_message", Kind: "mcp",
+		Choices: []rpc.Choice{rpc.ChoiceOnce, rpc.ChoiceDeny}, Reason: rpc.ReasonOutside})
+	if outside.Reason != rpc.ReasonText(rpc.ReasonOutside) || outside.Reason == "" {
+		t.Errorf("outside card reason = %q, want %q", outside.Reason, rpc.ReasonText(rpc.ReasonOutside))
+	}
+}

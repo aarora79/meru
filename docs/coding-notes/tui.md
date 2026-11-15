@@ -150,14 +150,16 @@ knows about you, the memories that go into every prompt:
 
 `/mcp` opens the app's Connections: each tool source, each tool with its policy,
 and the catalog servers not added yet. ↑ and ↓ move the `›` marker, and ← and →
-step the marked tool through Off, Ask and Allow:
+step the marked tool through Off, Ask and Allow, with Always ask between Ask and
+Allow for an MCP tool. An MCP tool's row ends with its server's hint, such as
+`· read-only`:
 
 ```text
   ╭──────────────────────────────────────────────────────────────╮
   │ Connections                                                  │
   │                                                              │
   │   meru · built in · 11 of 11 tools on                        │
-  │ ›   Always asks configure                                    │
+  │ ›   Always ask  configure                                    │
   │     Allow       datetime                                     │
   │     Ask         write_file                                   │
   │ …                                                            │
@@ -1205,10 +1207,12 @@ says whether a key can act on it and which connection, tool or catalog entry it
 stands for, so the key handler and the drawing read the same list. `mcpKey` does
 the rest:
 
-- ← and → call `nextPolicy`, which steps Off, Ask, Allow and stops at the ends. A
-  tool that always asks, such as `configure`, steps between Off and Always asks,
-  since `merud` refuses Allow for it. The change goes out as `OpToolPolicy` with
-  the server `meru` for a built-in tool.
+- ← and → call `nextPolicy`, which steps Off, Ask, Allow and stops at the ends.
+  An MCP tool steps Off, Ask, Always ask, Allow, since its server has an
+  `always_confirm` list; a built-in or an agent's skill has none. `configure` and
+  `schedule_job` step between Off and Always ask, since `merud` refuses Allow for
+  them. The change goes out as `OpToolPolicy` with the server `meru` for a
+  built-in tool. `TestMCPPolicyKeys` walks each case.
 - Enter on a catalog server sends `OpMCPAdd`. A server whose API key
   `secrets.toml` doesn't hold yet (`keyNeed`) first opens a field, a Bubbles
   `textinput` with `EchoPassword`, which draws `•` for each character.

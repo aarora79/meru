@@ -42,9 +42,10 @@ const (
 	PolicyAsk   = "ask"
 	PolicyAllow = "allow"
 	// PolicyAlways marks a tool that asks before every call and offers no
-	// approval for the session: configure, and a server's always_confirm
-	// tools. It can be turned off, but never to allow. Only merud reports
-	// it; OpToolPolicy doesn't take it.
+	// approval for the session: configure, schedule_job, and a server's
+	// always_confirm tools. OpToolPolicy takes it for an MCP tool, which
+	// it writes to always_confirm; configure and schedule_job can be on
+	// (always) or off, never allow.
 	PolicyAlways = "always"
 )
 
@@ -141,6 +142,9 @@ type ToolPolicy struct {
 	Description string `json:"description,omitempty"`
 	// Policy is PolicyOff, PolicyAsk, PolicyAllow or PolicyAlways.
 	Policy string `json:"policy"`
+	// Hint is the server's own word on an MCP tool, from HintOf; "" when
+	// it gave none. A client shows it under the tool's name.
+	Hint string `json:"hint,omitempty"`
 	// Missing is true for a tool config allows but the connected source
 	// doesn't offer, usually a typo or a tool the server dropped.
 	Missing bool `json:"missing,omitempty"`
@@ -303,4 +307,29 @@ type ModelChoice struct {
 	// "ollama pull gemma3:12b" and "ollama run gemma3:12b".
 	Pull string `json:"pull"`
 	Run  string `json:"run"`
+}
+
+// The words for what a server says about a tool, from its MCP
+// annotations. Both clients and `meru mcp add` show them.
+const (
+	HintReadOnly      = "read-only"      // readOnlyHint: the tool changes nothing
+	HintMayDelete     = "may delete"     // destructiveHint: it may delete or overwrite
+	HintChangesThings = "changes things" // annotated, but neither of the two
+)
+
+// HintOf turns a tool's readOnlyHint and destructiveHint into one of the
+// Hint words, or "" when the server gave no annotations. Both are
+// pointers because a server may leave either out; MCP's Go SDK reads a
+// missing readOnlyHint as false, so readOnly is nil only when the tool
+// has no annotations at all. A hint is the server's claim, not a promise.
+func HintOf(readOnly, destructive *bool) string {
+	switch {
+	case readOnly != nil && *readOnly:
+		return HintReadOnly
+	case destructive != nil && *destructive:
+		return HintMayDelete
+	case readOnly != nil:
+		return HintChangesThings
+	}
+	return ""
 }

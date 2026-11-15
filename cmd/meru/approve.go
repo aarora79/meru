@@ -82,6 +82,10 @@ func (p *prompter) approve(ctx context.Context, a rpc.Approval) (rpc.Choice, err
 	} else {
 		fmt.Fprintln(p.out, " with no arguments.")
 	}
+	// Why this call asks every time, in the words both chat clients use.
+	if why := rpc.ReasonText(a.Reason); why != "" {
+		fmt.Fprintln(p.out, why)
+	}
 
 	question := fmt.Sprintf("Run %s? %s: ", a.Name, choiceMenu(a.Choices, a.Site))
 	for {

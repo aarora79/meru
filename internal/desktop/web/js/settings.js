@@ -76,7 +76,7 @@ export function policyWords(policy) {
     case "allow":
       return "Allow";
     case "always":
-      return "Always asks";
+      return "Always ask";
   }
   return policy;
 }
@@ -339,14 +339,18 @@ function signInRow(body, name) {
   return row;
 }
 
-// toolRow draws one tool with its Off / Ask / Allow switch. A tool that
-// always asks offers Off and Always asks, and says why it can't be Allow;
-// a local command shows its policy without a switch.
+// toolRow draws one tool with its switch: Off / Ask / Always ask / Allow
+// for an MCP tool, whose server has an always_confirm list, and Off / Ask /
+// Allow for a built-in or an agent's skill. configure and schedule_job,
+// which always ask, offer Off and Always ask and say why they can't be
+// Allow; a local command shows its policy without a switch. An MCP tool
+// shows its server's hint, such as "read-only", under its name.
 function toolRow(body, c, t) {
   const li = el("li", "tool-row");
   const text = el("div", "tool-text");
   text.append(el("span", "tool-name", t.name));
   if (t.description) text.append(el("span", "tool-desc", firstLine(t.description)));
+  if (t.hint) text.append(el("span", "tool-hint", "The server says: " + t.hint));
   if (t.missing) text.append(el("span", "card-error", "The server doesn't offer this tool now."));
   // A built-in a later release added, off until the user decides (#123).
   // The badge says "New" in words, not by color alone.
@@ -356,8 +360,8 @@ function toolRow(body, c, t) {
     li.append(el("span", "policy-badge " + t.policy, policyWords(t.policy)));
     return li;
   }
-  const always = t.policy === "always" || (t.name === "configure" && c.kind === "builtin");
-  const choices = always ? ["off", "always"] : ["off", "ask", "allow"];
+  const always = c.kind === "builtin" && (t.name === "configure" || t.name === "schedule_job");
+  const choices = always ? ["off", "always"] : c.kind === "mcp" ? ["off", "ask", "always", "allow"] : ["off", "ask", "allow"];
   const group = el("div", "segmented");
   group.setAttribute("role", "radiogroup");
   group.setAttribute("aria-label", t.new ? t.name + ", new" : t.name);
@@ -369,9 +373,9 @@ function toolRow(body, c, t) {
     b.tabIndex = on ? 0 : -1;
     b.addEventListener("click", () => {
       if (on) return;
-      // Turning an always-asks tool back on makes it ask; merud writes it
-      // to confirm, and configure asks every time whatever config says.
-      const policy = p === "always" ? "ask" : p;
+      // merud writes "always" to the server's always_confirm list; for
+      // configure and schedule_job it means on, since they always ask.
+      const policy = p;
       bridge.setPolicy(c.kind, c.kind === "builtin" ? "meru" : c.name, t.name, policy).then(
         (cv) => {
           current.focus = "";
@@ -387,7 +391,7 @@ function toolRow(body, c, t) {
   if (always) {
     li.append(el("span", "tool-why", t.name === "configure"
       ? "Always asks: it changes Meru's own settings, so the model can never grant itself a tool."
-      : "Always asks: config lists it in always_confirm."));
+      : "Always asks: it changes Meru's schedule, so the model can never set a job running on its own."));
   }
   return li;
 }

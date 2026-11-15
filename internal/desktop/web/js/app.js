@@ -1318,10 +1318,18 @@ function whyText(v) {
     return "The answer model, " + v.name + ", runs on a computer on your own network, so this question, and what Meru adds to it, " +
       "would leave this computer. Meru asks first every time; a yes lasts this turn or this chat, never longer.";
   }
+  // A chat that read mail or the web asks before each call: an email or a
+  // page can hold words written to steer the model.
+  if (v.reason) {
+    return v.reason + " An email or a page can hold words written to steer the model, so a yes covers this call alone.";
+  }
   const where = v.server || (v.kind === "builtin" ? "Meru" : v.kind);
   const policy = state.askingTools && (state.askingTools.tools.find((p) => p.name === v.tool) || {}).policy;
-  if (v.tool === "configure" || policy === "always") {
-    return v.tool + " asks every time. It can change Meru's settings or run commands, so no approval lasts beyond one call.";
+  if (v.tool === "configure" || v.tool === "schedule_job") {
+    return v.tool + " asks every time. It changes Meru's settings, so no approval lasts beyond one call.";
+  }
+  if (policy === "always") {
+    return v.tool + " is set to Always ask, so Meru waits for you before each call, and no approval lasts beyond one call.";
   }
   if (v.tool === "web_fetch") {
     return "Meru asks before it reads a web address that no search or question of yours gave, and before any download.";

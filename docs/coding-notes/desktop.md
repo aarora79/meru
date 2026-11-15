@@ -175,7 +175,10 @@ names the server and tool, for the "Why Meru is asking" panel, and writes the
 `Draft` that Edit first puts in the composer: "Send this mail instead:" with the
 fields, or "Run write_file with these arguments instead:" with the JSON.
 `approvalView` has a named result, `(v ApprovalView)`, so a deferred function can
-set `v.Draft` after the fields are in, whichever `return` runs.
+set `v.Draft` after the fields are in, whichever `return` runs. `Reason` holds
+`rpc.ReasonText`'s sentence for a chat that read mail or the web; the page's
+`whyText` puts it on the card and in the side panel, with why a yes covers one
+call (`TestApprovalViewReason`).
 
 `choiceLabel` writes each button. The website choices name the host from
 `Approval.Site`: "Allow en.wikipedia.org for this chat" and "Always allow
@@ -578,7 +581,8 @@ bundler.
   finished answers in order, as `meru chat` does, and each block's header shows its
   number.
 - `js/settings.js` draws the seven sections of Settings: Connections, with an Off /
-  Ask / Allow switch per tool, Folders, About you, Skills, Models, Activity
+  Ask / Allow switch per tool, and Always ask between Ask and Allow for an MCP
+  tool, whose hint shows under its name, Folders, About you, Skills, Models, Activity
   and About. On the Meru card, `toolRow` puts a "New" badge, in words as well as
   color, after a built-in `merud` marks `new`: one a later release added, off
   until you turn it on or off; the card's note names them (#123). It also draws the Usage screen, which the Usage button at the foot

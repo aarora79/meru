@@ -100,7 +100,8 @@ func (b mcpBackend) Status() []rpc.ServerInfo {
 			info.Connector, info.Sentence = st.State, st.Sentence
 		}
 		for _, t := range st.OfferedTools {
-			info.OfferedTools = append(info.OfferedTools, rpc.ToolInfo{Name: st.Name + "." + t.Name, Description: t.Description})
+			info.OfferedTools = append(info.OfferedTools, rpc.ToolInfo{Name: st.Name + "." + t.Name, Description: t.Description,
+				Hint: rpc.HintOf(t.ReadOnly, t.Destructive)})
 		}
 		prefix := st.Name + "."
 		for _, t := range tools {

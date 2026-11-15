@@ -248,6 +248,11 @@ func (m *Model) approvalBoxView(width int) string {
 		}
 	} else {
 		lines = append(lines, fit(m.style.approvalTitle.Render("Run "+a.ask.Name+"?")+"  "+m.style.dim.Render(a.ask.Kind)))
+		// Why this call asks when it otherwise wouldn't, the same words the
+		// desktop card shows, wrapped to fit.
+		if why := rpc.ReasonText(a.ask.Reason); why != "" {
+			lines = append(lines, strings.Split(ansi.Wordwrap(m.style.dim.Render(why), inner, ""), "\n")...)
+		}
 		for _, l := range rpc.ArgsLines(a.ask.Args, boxArgLines) {
 			lines = append(lines, fit(l))
 		}

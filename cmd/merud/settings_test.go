@@ -138,15 +138,21 @@ func TestToolPolicyOp(t *testing.T) {
 		t.Error("no catalog entries")
 	}
 
+	// Each step names the policy and the three lists it should leave: a
+	// tool sits in at most one of confirm and always_confirm.
 	steps := []struct {
 		policy      string
 		wantAllow   []string
 		wantConfirm []string
+		wantAlways  []string
 		wantTool    bool // the model gets local.echo
 	}{
-		{rpc.PolicyAsk, []string{"echo"}, []string{"echo"}, true},
-		{rpc.PolicyAllow, []string{"echo"}, nil, true},
-		{rpc.PolicyOff, nil, nil, false},
+		{rpc.PolicyAsk, []string{"echo"}, []string{"echo"}, nil, true},
+		{rpc.PolicyAlways, []string{"echo"}, nil, []string{"echo"}, true},
+		{rpc.PolicyAsk, []string{"echo"}, []string{"echo"}, nil, true},
+		{rpc.PolicyAlways, []string{"echo"}, nil, []string{"echo"}, true},
+		{rpc.PolicyAllow, []string{"echo"}, nil, nil, true}, // straight from always to allow
+		{rpc.PolicyOff, nil, nil, nil, false},
 	}
 	for _, st := range steps {
 		t.Run(st.policy, func(t *testing.T) {
@@ -157,8 +163,9 @@ func TestToolPolicyOp(t *testing.T) {
 			}
 			cfg := loadConfig(t, dir)
 			srv := cfg.MCP.Servers[0]
-			if !slices.Equal(srv.Allow, st.wantAllow) || !slices.Equal(srv.Confirm, st.wantConfirm) {
-				t.Errorf("allow %v confirm %v, want %v and %v", srv.Allow, srv.Confirm, st.wantAllow, st.wantConfirm)
+			if !slices.Equal(srv.Allow, st.wantAllow) || !slices.Equal(srv.Confirm, st.wantConfirm) || !slices.Equal(srv.AlwaysConfirm, st.wantAlways) {
+				t.Errorf("allow %v confirm %v always_confirm %v, want %v, %v and %v",
+					srv.Allow, srv.Confirm, srv.AlwaysConfirm, st.wantAllow, st.wantConfirm, st.wantAlways)
 			}
 			names := toolNamesOf(mcpServers(t, call(t, d.sock, rpc.Request{Op: rpc.OpTools})))
 			if got := slices.Contains(names, "local.echo"); got != st.wantTool {
@@ -204,7 +211,8 @@ func TestToolPolicyOp(t *testing.T) {
 	}{
 		{"a tool the server doesn't offer", rpc.PolicyChange{Kind: "mcp", Server: "local", Tool: "nope", Policy: rpc.PolicyAllow}, "doesn't offer"},
 		{"a server config doesn't have", rpc.PolicyChange{Kind: "mcp", Server: "ghost", Tool: "echo", Policy: rpc.PolicyAllow}, "no mcp source"},
-		{"a policy that isn't one", rpc.PolicyChange{Kind: "mcp", Server: "local", Tool: "echo", Policy: "always"}, "isn't one of"},
+		{"a policy that isn't one", rpc.PolicyChange{Kind: "mcp", Server: "local", Tool: "echo", Policy: "sometimes"}, "isn't one of"},
+		{"always for a built-in", rpc.PolicyChange{Kind: "builtin", Server: "meru", Tool: "write_file", Policy: rpc.PolicyAlways}, "no always-ask list"},
 		{"configure to allow", rpc.PolicyChange{Kind: "builtin", Server: "meru", Tool: "configure", Policy: rpc.PolicyAllow}, "always asks"},
 		{"a local command", rpc.PolicyChange{Kind: "command", Server: "meru", Tool: "x", Policy: rpc.PolicyAllow}, "edit config.toml"},
 	}
@@ -583,5 +591,27 @@ func TestFillPoliciesSignIn(t *testing.T) {
 				t.Errorf("state = %q", c.State)
 			}
 		})
+	}
+}
+
+// TestFillPoliciesHint checks that each tool's hint, from the server's
+// annotations, reaches its row in Settings, and that a tool config allows
+// but the server doesn't offer has none.
+func TestFillPoliciesHint(t *testing.T) {
+	info := rpc.ServerInfo{Name: "google", Connected: true, OfferedTools: []rpc.ToolInfo{
+		{Name: "google.search_gmail_messages", Hint: rpc.HintReadOnly},
+		{Name: "google.send_gmail_message", Hint: rpc.HintChangesThings},
+		{Name: "google.get_events"},
+	}}
+	var c rpc.Connection
+	fillPolicies(&c, info, "google.", []string{"search_gmail_messages", "send_gmail_message", "gone"}, nil, []string{"send_gmail_message"})
+	want := map[string]string{"search_gmail_messages": rpc.HintReadOnly, "send_gmail_message": rpc.HintChangesThings, "get_events": "", "gone": ""}
+	for _, tool := range c.Tools {
+		if tool.Hint != want[tool.Name] {
+			t.Errorf("%s hint = %q, want %q", tool.Name, tool.Hint, want[tool.Name])
+		}
+	}
+	if policy(c, "send_gmail_message") != rpc.PolicyAlways {
+		t.Errorf("send_gmail_message policy = %q, want always", policy(c, "send_gmail_message"))
 	}
 }

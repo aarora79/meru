@@ -439,8 +439,10 @@ copy. It adds them only for the server's own host: a server marked
 clients and transports in [go-basics/http-clients.md](go-basics/http-clients.md).
 
 `setToolsLocked` also keeps `all`: every tool the server listed, allowed or not,
-by name, with its description. `Status` hands it out as `OfferedTools`, so the
-desktop app can show a tool that config leaves off, with a switch to turn it on.
+by name, with its description and its `ReadOnly` and `Destructive` hints from
+the MCP annotations, as the probe reads them. `Status` hands it out as
+`OfferedTools`, so the desktop app can show a tool that config leaves off, with a
+switch to turn it on and the server's hint under its name.
 
 ### oauth.go
 

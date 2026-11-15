@@ -1,12 +1,18 @@
 # How do I choose which tools ask me first?
 
-Each tool is Off, Ask or Allow:
+Each tool is Off, Ask, Always ask or Allow:
 
 - **Off**: the model never sees it.
-- **Ask**: Meru asks you before each call.
+- **Ask**: Meru asks you before each call, and you can say yes for the rest of
+  the chat.
+- **Always ask**: Meru asks before every call, with no yes for the chat. Only an
+  MCP server's tools have it; use it for a tool that sends, such as mail.
 - **Allow**: it runs without asking.
 
-`configure`, and any tool that runs commands, always asks, whatever you set.
+`configure` and `schedule_job` always ask, whatever you set. Under each MCP tool,
+Settings shows what its server says it does: "read-only", "may delete" or
+"changes things". A hint is the server's claim, so keep a tool that sends at Ask
+or Always ask whatever it says.
 
 **In the desktop app**: Settings, Connections, then the switch beside each tool.
 In `meru chat`: `/mcp`, then ← and → on a tool. Both apply at once.

@@ -172,6 +172,11 @@ type ServerStatus struct {
 type Tool struct {
 	Name        string
 	Description string
+	// ReadOnly and Destructive are the server's readOnlyHint and
+	// destructiveHint, as on ProbeTool: nil when the server gave no
+	// annotations, or left destructiveHint out. Settings shows them.
+	ReadOnly    *bool
+	Destructive *bool
 }
 
 // NewPool validates servers, then starts or connects to each one added by
@@ -419,7 +424,12 @@ func (s *server) setToolsLocked(tools []*mcp.Tool) {
 	s.offered = len(tools)
 	s.all = make([]Tool, 0, len(tools))
 	for _, t := range tools {
-		s.all = append(s.all, Tool{Name: t.Name, Description: t.Description})
+		tool := Tool{Name: t.Name, Description: t.Description}
+		if a := t.Annotations; a != nil {
+			readOnly := a.ReadOnlyHint
+			tool.ReadOnly, tool.Destructive = &readOnly, a.DestructiveHint
+		}
+		s.all = append(s.all, tool)
 	}
 	slices.SortFunc(s.all, func(a, b Tool) int { return strings.Compare(a.Name, b.Name) })
 	s.tools, s.unknown = allowedTools(s.cfg.Name, s.allow, tools)
