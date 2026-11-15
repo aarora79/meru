@@ -96,6 +96,7 @@ func run(ctx context.Context, args []string, stderr io.Writer, buildEngine engin
 	if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", cfg.Dir, err)
 	}
+	tightenServiceLogs(cfg.Dir)
 
 	// red hides secrets in the log and the spans. It hides nothing until the
 	// tool service loads secrets.toml and hands it the secret set; that
@@ -657,4 +658,26 @@ func (r routerAdapter) Decide(ctx context.Context, question string, history []en
 		return agent.Decision{}, err
 	}
 	return agent.Decision{Route: string(d.Route), Confidence: d.Confidence, Outcome: string(d.Outcome)}, nil
+}
+
+// serviceLogs are the files launchd writes merud's standard output and
+// standard error to, named in deploy/launchd/com.meru.merud.plist.
+var serviceLogs = []string{"merud.out.log", "merud.err.log"}
+
+// tightenServiceLogs sets each of serviceLogs in dir to mode 0600 when it
+// exists with group or other bits. The plist's Umask makes new ones 0600,
+// but launchd keeps the mode of a log that already exists, so an install
+// from before the Umask kept a log every account could read. A log that
+// isn't there, or a mode it can't change, is left alone: merud's own log
+// and socket don't depend on it.
+func tightenServiceLogs(dir string) {
+	for _, name := range serviceLogs {
+		path := filepath.Join(dir, name)
+		// Lstat, not Stat: a link there is left alone rather than followed.
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 == 0 {
+			continue
+		}
+		_ = os.Chmod(path, 0o600)
+	}
 }

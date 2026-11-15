@@ -177,6 +177,14 @@ the watcher see the same context and return too. The deferred calls then close
 the store and give telemetry a fresh five-second context to send its last
 batch.
 
+**Two older logs.** Right after `MkdirAll` makes the Meru folder,
+`tightenServiceLogs` sets `merud.out.log` and `merud.err.log`, where launchd
+writes what `merud` prints before its own log opens, to mode `0600` when either
+has group or other bits. The plist's `Umask` makes launchd create them `0600`,
+but launchd keeps the mode of a file that exists, so an install from before the
+`Umask` kept logs any account could read. It uses `os.Lstat`, so a link there is
+left alone rather than followed. `TestTightenServiceLogs` checks both.
+
 **The log.** `openLog` opens `merud.log` for appending and builds the logger
 every package shares. `-v` sets the level to `debug`, whatever `[log] level`
 says. The text handler goes inside `obs.LogHandler`, which adds the turn's

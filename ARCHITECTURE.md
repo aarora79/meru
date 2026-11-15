@@ -5087,10 +5087,12 @@ one. So `web_fetch` runs without asking only when the URL appeared, in the same
 session, in a `web_search` result or in something the user typed: this turn's
 question or an earlier one. The guard compares URLs with the scheme and host in
 lower case and the fragment dropped; the query counts, because that is where data
-would go. A URL with no query string also runs unasked when its host is one a known
-URL came from: the model often knows a site's canonical page, such as
-`go.dev/doc/devel/release`, when the results showed only `go.dev/dl/`, and an
-attacker's site still has to turn up in real search results first. Any other URL
+would go. A URL with no query string also runs unasked when its host is one the
+user's own words named: the model often knows a site's canonical page, such as
+`go.dev/doc/devel/release`, when you named `go.dev`. A search result makes only its
+own page known, not its site: an attacker's page can rank in a search, and any
+path on that site could carry data out as well as a query string. Another page
+on such a site asks, with **this website for this chat** on offer. Any other URL
 asks, with no choice that covers the tool for the session, as `configure` does: such
 a choice would let every later made-up URL through. It offers four choices: once;
 **this website for this chat**; **always this website**; and deny. The two website
@@ -6015,7 +6017,11 @@ sum by (gen_ai_tool_name, meru_outcome) (increase(meru_tool_calls_total{meru_out
 
 `merud` writes `key=value` lines with `log/slog` to `merud.log` in its home folder,
 and doesn't export them. `[log] level` picks how much it writes; `merud -v` forces
-`debug`.
+`debug`. `merud.log` has mode `0600`. Under launchd, anything `merud` prints
+before that log opens goes to `merud.out.log` and `merud.err.log`; the plist's
+`Umask` makes launchd create them `0600` too, and `merud` sets either to `0600` at
+startup if an older install left it readable by other accounts. The systemd unit
+sets `UMask=0077` for the same reason.
 
 - **`info`** (the default): startup settings, each model warm-up, the store's
   counts, each index scan's counts, shutdown, a `route` line per decision with
@@ -6225,7 +6231,7 @@ it in the service file or use one of the others.
   when the model asks; taking it out of `[builtin] tools` turns it off. It refuses any address
   on this machine or your network. It runs without asking only for a URL that a
   search result or your own question gave in the same session, or for a page
-  with no query string on the same site, so the model can't carry your data out
+  with no query string on a site your own words named, so the model can't carry your data out
   in a URL it made up; any other URL, and every
   download, asks you first, and a scheduled job declines them (see
   [Web search](#web-search)).
