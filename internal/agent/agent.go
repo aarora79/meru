@@ -459,6 +459,7 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 	} else {
 		t.outside = readOutside(lines, a.outputDir, a.home, a.asksFirst())
 		t.chatLinks = chatLinks(lines)
+		t.lastRoute = lastRoute(lines)
 	}
 	// asked is the question the turn routes, searches and recalls on. For
 	// Continue it is the last turn's question, and t.handoff holds what
@@ -778,6 +779,13 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	dec, picked, err := a.routeAndPick(ctx, question, history, t.skill)
 	if err != nil {
 		return res, err
+	}
+	// A follow-up the router is unsure of keeps the chat's last route; see
+	// keepRoute. The rules below may still change it.
+	if r := keepRoute(dec, t.lastRoute); r != dec.Route {
+		a.log.DebugContext(ctx, "route kept from the last turn: the router was unsure",
+			"from", dec.Route, "to", r, "confidence", dec.Confidence)
+		dec.Route = r
 	}
 	// Writing help on text the question gives, such as "rewrite: …", needs
 	// nothing from the files, though the text may say "my". The router can

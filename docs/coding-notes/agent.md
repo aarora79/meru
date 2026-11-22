@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `outside.go`, `links.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `outside_test.go`, `links_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `unsure.go`, `outside.go`, `links.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `unsure_test.go`, `outside_test.go`, `links_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -1533,6 +1533,21 @@ table of messages, typos and near misses such as "create a job" included,
 `TestEditDistance` checks the edit count, and `TestThanksGoesDirect` runs that turn with the fake
 router's low-confidence fallback and checks it goes direct, searches nothing
 and offers no file tool.
+
+`unsure.go` runs before both, right after the router. `Handle` reads the
+transcript once at the start of the turn, and `lastRoute` walks its lines
+from the end to the newest `assistant` line with a route; it lands in
+`t.lastRoute`. `keepRoute` gives that route in place of the fallback when the
+router's outcome is `low_confidence`, and leaves a sure route, a `degraded`
+router and a chat's first question alone. Ollama's own log showed the reason.
+The answer model keeps one prompt in its cache, and a tool route puts about
+30,000 tokens of tool schemas at the front. A direct turn's prompt offers a
+few tools, so the next tool prompt shared almost nothing with the cached one,
+and Ollama re-read all 39,844 tokens of "great job Meru!" in 45 seconds. A
+follow-up on the same route reads only what changed. `TestKeepRoute` and
+`TestLastRoute` are tables, and `TestUnsureFollowUpKeepsRoute` runs a direct
+turn and then an unsure follow-up through `seqRouter`, and checks the second
+stays direct and offers no `read_file`.
 
 The next rule: when the router says `direct` and the question names an
 indexed folder, the route becomes `search`:
