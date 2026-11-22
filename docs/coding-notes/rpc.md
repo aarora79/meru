@@ -526,6 +526,23 @@ dead one doesn't answer, and `Listen` deletes its leftover file. `Listen` never
 deletes a regular file it didn't make. After listening it sets the socket's
 mode to `0600`, so other users on the machine can't connect.
 
+Before any of that, `checkSocketDir` (peer.go) checks the folder that holds the
+socket. It refuses a folder that is a symbolic link, which could move the socket
+somewhere other accounts reach, and one another user owns. A folder open to group
+or other accounts gets mode `0700`, because `os.MkdirAll` never changes the mode
+of a folder that exists. And `Serve` asks `samePeer` about each connection it
+accepts: the kernel's record of the connecting process's user ID, through
+`LOCAL_PEERCRED` on macOS and `SO_PEERCRED` on Linux, must be `merud`'s own, or
+the connection is closed with a warn log line. `peerUID` and `ownerUID` differ
+by system, so they live in `peer_darwin.go`, `peer_linux.go` and
+`peer_other.go`, chosen by the file name's suffix or a build tag (see
+[go-basics/build-tags.md](go-basics/build-tags.md)); on other systems, Windows
+among them, they report "can't say" and the folder's access rules are the guard.
+Each reaches the socket's file descriptor through `SyscallConn().Control`, which
+holds the connection open while the function runs. `TestSamePeer` and
+`TestCheckSocketDir` cover them, and `TestOpenHomeIsClosed` in the end-to-end
+tests starts `merud` in a folder with mode `0755`.
+
 **Serve** accepts connections until its context is cancelled and runs each one
 in its own goroutine:
 

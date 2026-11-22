@@ -531,6 +531,7 @@ scan and watcher side by side), Bubble Tea with Bubbles for the `meru chat`
 terminal UI, with Glamour to render an answer's Markdown, goldmark to find its
 links and code blocks, and Lip Gloss, termenv and `charmbracelet/x/ansi` for
 styles and widths, `golang.org/x/term` so `meru setup` reads an API key without echo,
+`golang.org/x/sys` so `merud` can read a socket peer's user ID,
 and for the indexer `fsnotify`, `golang.org/x/net/html` and `ledongthuc/pdf`.
 The desktop app adds Wails v3 (`wailsapp/wails/v3`, pinned to a beta), and its
 page vendors marked, DOMPurify and its fonts as files, with no Node or npm.
