@@ -1441,6 +1441,21 @@ stand. `meruNoteStarts` now holds the square form too, cut to the end of the
 text like the round one, and `runCalls` sets `t.copiedNote` when it cuts a note,
 so the answer gets `copiedNoteNotice`.
 
+A later turn of that chat showed three more. The model said "Yes, I fixed it
+in the last answer" and "The page at [poetry-links-collection.html](file:///…)
+now has clickable links" with no tool run, so `claimsAction` gained
+`claimEarlier`, a claim about an earlier turn that needs a time word such as
+"in the last answer" or "already", and `claimsFileWork` gained
+`claimLinkedNow`, which lets a link or a path sit between the thing and "now".
+The model also copied two notices in square brackets, so `withoutMeruNotes`
+now runs `bracketNote` over the whole answer and cuts each bracketed span that
+`isMeruNote` knows: one that opens with "Meru" or "Meru's", or holds a phrase
+from `noticeMarks`. The regular expression wants a character after the `]`
+that isn't `(`, or the end of the text, so a Markdown link stays. And "check my
+email and send a hello to her from Meru, and look up …" read as a request for
+the web, so web first searched the whole sentence; `askedCalls` now returns no
+call when `webQuery`'s text has more than `maxAskedWords` (12) words.
+
 `TestUnsourcedLinks` replays that chat's links: the real ones from a search and
 an email pass, the made-up one fails even after an earlier answer gave it, and
 links in a page the model writes count. `TestLinksNotice` checks the forms, and

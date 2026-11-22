@@ -203,5 +203,55 @@ func withoutMeruNotes(text string) string {
 			text = text[:i] + text[end:]
 		}
 	}
+	text = bracketNote.ReplaceAllStringFunc(text, func(span string) string {
+		// span is "[note]" and, unless the text ended there, one more
+		// character, which stays.
+		end := strings.LastIndexByte(span, ']')
+		if isMeruNote(span[1:end]) {
+			return span[end+1:]
+		}
+		return span
+	})
 	return strings.TrimSpace(text)
+}
+
+// bracketNote matches a span in square brackets on one line, not followed
+// by "(", so a Markdown link such as [Meru on GitHub](https://…) stays.
+// Go's regexp has no lookahead, so the match takes the next character
+// too, or the end of the text, and withoutMeruNotes keeps that character.
+var bracketNote = regexp.MustCompile(`\[[^\[\]\n]{3,600}\](?:[^(]|$)`)
+
+// noticeMarks are words only Meru's notices hold. The history shows each
+// answer's notice in square brackets after it, and a real model copied
+// "[These tool calls failed, so this answer goes without what they would
+// have read …]" into an answer of its own, and made up "[Meru failed to get
+// the answer from the conversation it read …]".
+var noticeMarks = []string{
+	"this answer goes without",
+	"nothing changed on your computer",
+	"Check the answer before you rely on it",
+	"Check before you rely on it",
+	"may have made it up",
+	"may have made them up",
+	"in what Meru read",
+	"Meru cut it",
+	"The answer says Meru",
+	"The answer links",
+}
+
+// isMeruNote reports whether note, the text inside a pair of square
+// brackets, is one of Meru's notes: it opens with "Meru " or "Meru's ",
+// as the cap note, the record of tool calls and the stop notes do, or it
+// holds words only a notice holds.
+func isMeruNote(note string) bool {
+	note = strings.TrimSpace(note)
+	if strings.HasPrefix(note, "Meru ") || strings.HasPrefix(note, "Meru's ") {
+		return true
+	}
+	for _, m := range noticeMarks {
+		if strings.Contains(note, m) {
+			return true
+		}
+	}
+	return false
 }

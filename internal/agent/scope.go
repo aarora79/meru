@@ -95,7 +95,7 @@ func (a *Agent) respondScoped(ctx context.Context, t *turn, question string, his
 		if len(webCalls) > 0 {
 			t.webFirst = webFirstAsked
 		} else {
-			a.log.DebugContext(ctx, "no web first: the web tool the question needs is off")
+			a.log.DebugContext(ctx, "no web first: the web tool the question needs is off, or the question reads as an instruction")
 		}
 	}
 	a.log.DebugContext(ctx, "route set by the scope", "scope", t.scope, "route", res.route, "tools", len(specs))

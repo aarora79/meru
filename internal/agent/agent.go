@@ -902,7 +902,13 @@ func (a *Agent) respond(ctx context.Context, t *turn, question string, history [
 	var webCalls []webCall
 	if t.handoff == "" && a.askedWebFirst(ctx, question) {
 		webCalls = askedCalls(question, history, a.tools.Tools())
-		t.webFirst = webFirstAsked
+		// A question too long to search as written gets no call, and the
+		// model searches in its own words (see maxAskedWords).
+		if len(webCalls) > 0 {
+			t.webFirst = webFirstAsked
+		} else {
+			a.log.DebugContext(ctx, "no web first: the question reads as an instruction, not a search")
+		}
 	}
 
 	// A file turn looks in the user's files first. "tools" searches too,

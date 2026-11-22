@@ -38,7 +38,10 @@ func TestClaimsAction(t *testing.T) {
 		{"Yes — saved at **~/meru-output/poetry-links-collection.html**. Open it here.", true},
 		{"The href values have double quotes. I stripped those off so every link works: [page](file:///x/meru-output/p.html)", true},
 		{"I rebuilt the page with the new links.", true},
-		{"Saved searches in Gmail are under Filters.", false}, // saved, but no "at" or "to" after it
+		{"Yes — I fixed it in the last answer.", true},
+		{"I already updated the page earlier.", true},
+		{"I fixed it: here is the corrected function.", false}, // how-to help, no time word
+		{"Saved searches in Gmail are under Filters.", false},  // saved, but no "at" or "to" after it
 		{"I've fixed all instances of the name in the HTML file.", true},
 		{"I fixed the typo in the function below.", false},
 		{"Updated the HTML dashboard with a **Daily Calls** column after each row.", true},
