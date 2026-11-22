@@ -190,6 +190,11 @@ var (
 	// claimSavedTo matches a sentence that opens with "saved", "written"
 	// or "stored" and where: "Saved at ~/meru-output/links.html", or "Yes —
 	// saved at …", as a real turn answered "done?" with no tool run.
+	// claimEarlier matches a claim about an earlier turn: "I fixed it in
+	// the last answer", "I already updated the page". A real turn answered
+	// "done?" that way with no tool run, in any turn. The time words keep
+	// "I fixed it: here is the code" in a how-to answer out.
+	claimEarlier = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:already\s+)?(?:fixed|updated|edited|changed|saved|wrote|rewrote|added|made)\s+(?:it|them|that|this|those|the\s+\w+)\s+(?:in\s+(?:the|my)\s+(?:last|previous|earlier)\s+(?:answer|reply|message|turn)|already|earlier|before)\b`)
 	claimSavedTo = regexp.MustCompile(`(?i)^[^\pL]*(?:(?:yes|ok|okay|sure)[^\pL]+)?(?:saved|written|stored)\s+(?:at|to|in|as|under)\b`)
 	// claimOpening matches a sentence that opens with the verb, with no
 	// "I": "Updated the HTML dashboard with a new column." A real turn
@@ -232,7 +237,7 @@ func claimsAction(text string) bool {
 		if strings.HasSuffix(s, "?") || notClaim.MatchString(s) {
 			continue
 		}
-		if claimDone.MatchString(s) || claimNowAt.MatchString(s) || claimSavedTo.MatchString(s) ||
+		if claimDone.MatchString(s) || claimNowAt.MatchString(s) || claimSavedTo.MatchString(s) || claimEarlier.MatchString(s) ||
 			claimPassive.MatchString(s) || claimFirst.MatchString(s) ||
 			((claimMade.MatchString(s) || claimOpening.MatchString(s)) && namesThing.MatchString(s)) {
 			return true
@@ -251,7 +256,12 @@ func claimsAction(text string) bool {
 var (
 	claimBuilt    = regexp.MustCompile(`(?i)\bI(?:'ve|\s+have)?\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b|\bI(?:'ve|\s+have)?\s+\w+[^!?\n]*?\band\s+(?:\w+\s+)?(?:built|rebuilt|created|made|updated|wrote|written|embedded|included|added|put|generated|designed|saved|replaced|edited|changed|fixed)\b`)
 	claimThingNow = regexp.MustCompile(`(?i)\bthe\s+(?:card|page|file|html|image|picture|photo|document)\s+now\s+(?:uses|has|holds|includes|shows|contains)\b|\b(?:the|your)\s+(?:card|page|file|html|image|picture|poster|document)(?:'s|\s+is)\s+(?:ready|done|saved|finished|complete)\b`)
-	fileThing     = regexp.MustCompile(`(?i)\b(?:file|files|html|page|card|image|picture|photo|png|jpe?g|document|report|draft|dashboard)\b|~/`)
+	// claimLinkedNow matches "The page at [links.html](file:///…) now has
+	// clickable links": the thing, then its link or path, then "now has".
+	// A real turn said that with no tool run; claimThingNow wants "now"
+	// right after the noun.
+	claimLinkedNow = regexp.MustCompile(`(?i)\bthe\s+(?:card|page|file|html|document)\s+(?:at\s+)?(?:\[[^\]]*\]\([^)]*\)|file://\S+|~/\S+)\s+now\s+(?:uses|has|holds|includes|shows|contains)\b`)
+	fileThing      = regexp.MustCompile(`(?i)\b(?:file|files|html|page|card|image|picture|photo|png|jpe?g|document|report|draft|dashboard)\b|~/`)
 )
 
 // claimsFileWork reports whether text says Meru made or changed a file: a
@@ -270,7 +280,7 @@ func claimsFileWork(text string) bool {
 		if strings.HasSuffix(s, "?") || notClaim.MatchString(s) {
 			continue
 		}
-		if (claimBuilt.MatchString(s) || claimThingNow.MatchString(s)) && fileThing.MatchString(s) {
+		if (claimBuilt.MatchString(s) || claimThingNow.MatchString(s) || claimLinkedNow.MatchString(s)) && fileThing.MatchString(s) {
 			return true
 		}
 	}
@@ -281,8 +291,10 @@ func claimsFileWork(text string) bool {
 // Meru's own notes into it, which Meru cut from the chat. The user saw the
 // copy as the answer streamed. A real turn wrote "[Meru's record of the
 // tools this turn ran …]" with a read_file and an edit_file it never
-// called, after it said it had fixed a page it never touched.
-const copiedNoteNotice = "The answer copied Meru's record of tool calls, and Meru cut it: this turn ran none of the calls it listed."
+// called, after it said it had fixed a page it never touched; later turns
+// copied a failed-calls notice and made up "[Meru failed to get the answer
+// …]".
+const copiedNoteNotice = "The answer copied one of Meru's own notes, and Meru cut it: it wasn't about this turn, and this turn didn't do what it said."
 
 // fileClaimNotice is the notice under an answer that says it made or
 // changed a file on a turn that wrote none.

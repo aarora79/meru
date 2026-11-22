@@ -351,3 +351,24 @@ func TestOrList(t *testing.T) {
 		}
 	}
 }
+
+// TestAskedCallsLongInstruction checks that a question too long to search
+// as written gets no web-first call, and a short one still does. The two
+// long ones are from a real chat, typos and all.
+func TestAskedCallsLongInstruction(t *testing.T) {
+	all := []engine.ToolSpec{spec("web_search"), spec("web_fetch")}
+	for _, tt := range []struct {
+		question string
+		want     bool
+	}{
+		{"also can you do a web search for salim kausar’s main khayal hun kisi aur ka…add a link to that ..rekhta might be a good source for that..", false},
+		{"so the one gmail link you fouind is perfect add that to the html right ther eis an entry for it rihgt? and for the rest of the thins in the html do a web search find the links and then put the links in the html", false},
+		{"search the web for Ahmad Faraz ranjish hi sahi", true},
+		{"look up who won the 2026 Formula One championship", true},
+	} {
+		got := len(askedCalls(tt.question, nil, all)) > 0
+		if got != tt.want {
+			t.Errorf("askedCalls(%q) made a call = %v, want %v (query %q)", tt.question, got, tt.want, webQuery(tt.question, nil))
+		}
+	}
+}

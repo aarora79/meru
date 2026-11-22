@@ -2262,6 +2262,7 @@ the full word lists:
 | "has/have been" and an action | "The file has been saved to ~/Projects" |
 | "I", "I've" or "I have", with one word allowed between, and moved, saved, sent, deleted, removed, renamed, copied or scheduled | "I've moved the folder", "I just sent the email" |
 | a sentence that opens with saved, written or stored, after an optional "yes" or "ok", then at, to, in, as or under | "Yes — saved at ~/meru-output/links.html" |
+| "I", "I've" or "I have", with an optional "already", then fixed, updated, edited, changed, saved, wrote, rewrote, added or made, then it, them, that, this, those or "the" and a word, then "in the last answer" (or reply, message, turn, with previous, earlier or "my"), already, earlier or before | "Yes, I fixed it in the last answer" |
 | the same with created, updated, wrote, written, rewrote, rebuilt, restored, stripped, cleaned, fixed, corrected, edited, changed, replaced or added, when the sentence names a file, folder, note, email, event, reminder, calendar, page, document, report, draft, spreadsheet or a path | "I've created the file ~/notes/plan.md" |
 | a sentence that opens with one of those verbs, or added, changed, edited or replaced, then "the", "your", "a", "an", "it" or "them", when it names such a thing | "Updated the HTML dashboard with a new column" |
 
@@ -2368,7 +2369,9 @@ first is "I", "I've" or "I have", with one word allowed between, and built,
 rebuilt, created, made, generated, designed, updated, wrote, embedded, included,
 added, put, saved, replaced, edited, changed or fixed, here or after an "and"
 later in the sentence. The second is "the card, page, file, image, picture, photo
-or document now uses, has, holds, includes, shows or contains". The sentence must
+or document now uses, has, holds, includes, shows or contains", where a Markdown
+link, a `file://` address or a `~/` path may sit between the thing and "now", as
+in "The page at [links.html](file:///…) now has clickable links". The sentence must
 also name a file, a page, a card, a picture, a document or a `~/` path. The same
 questions, offers and denials don't count. A match sends the `notice` "The answer
 says Meru made or changed a file, but this turn wrote or edited no file. Ask again
@@ -2417,9 +2420,14 @@ record of the tools this turn ran …)", and a real turn wrote one into its
 answer as "[Meru's record of the tools this turn ran …]", listing a `read_file`
 and an `edit_file` it never called, after it said it had fixed a page it never
 touched. `merud` cuts such a copy, in either bracket, from the end of an answer
-that made no call, as it cuts a copied cap note, and since the client already
-showed it, the `notice` event adds "The answer copied Meru's record of tool
-calls, and Meru cut it: this turn ran none of the calls it listed." 
+that made no call, as it cuts a copied cap note. A later turn of the same chat
+copied two of Meru's notices into its answer in square brackets, "[These tool
+calls failed …]" and "[Meru didn't run any tool …]", so `merud` also cuts any
+square-bracketed span that opens with "Meru" or "Meru's", or holds the words of
+one of its notices, wherever it sits in the answer. A Markdown link such as
+"[Meru on GitHub](…)" stays. Since the client already showed the copy, the
+`notice` event adds "The answer copied one of Meru's own notes, and Meru cut it:
+it wasn't about this turn, and this turn didn't do what it said."
 
 ### Routing
 
@@ -5292,7 +5300,7 @@ So `merud` itself searches before the model's first round in two cases:
 
 | Case | When | What `merud` runs |
 | --- | --- | --- |
-| `asked` | the question holds an http or https URL and `web_fetch` is on; or it holds no URL, asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web, a closing instruction ("and tell me what it is in three lines") and the filler words at either end (see below); a follow-up too short to stand alone gets the earlier question, as a file search does, and one that speaks only of the web searches for the earlier question alone |
+| `asked` | the question holds an http or https URL and `web_fetch` is on; or it holds no URL, asks for the web (see [Routing](#routing), the fourth rule) and `web_search` is on; or the desktop app's scope is web | `web_fetch` on each URL, two at most. With no URL, `web_search` on the question without its URLs, the phrases that asked for the web, a closing instruction ("and tell me what it is in three lines") and the filler words at either end (see below); a follow-up too short to stand alone gets the earlier question, as a file search does, and one that speaks only of the web searches for the earlier question alone. When that search text still has more than 12 words, the question reads as an instruction, such as "check my email and send a hello", and `merud` runs no search first; the model may still search |
 | `named` | an `auto` turn searched your files first, no connected tool is the question's target, the question doesn't say "my", "mine", "our" or "ours", it names a thing, the excerpts don't cover it, and no earlier turn of the chat names it | `web_search` on the name in double quotes, then up to five of the question's other words that aren't filler |
 
 The calls go through `dispatch` like any other. Their `tool_call` lines and

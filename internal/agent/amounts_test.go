@@ -155,6 +155,12 @@ func TestWithoutMeruNotes(t *testing.T) {
 		{"(Meru's notes on the pages this turn read.) [1] a page", ""},
 		// A real turn wrote the record with a square bracket, then two
 		// calls it never made: all of it goes.
+		// Notices the history shows in brackets, copied, and a made-up
+		// Meru note: cut. A citation, a Markdown link and plain brackets stay.
+		{"Let me read the file first.\n\n[These tool calls failed, so this answer goes without what they would have read: grep. Check the answer before you rely on it.]", "Let me read the file first."},
+		{"Let me read it.\n\n[Meru failed to get the answer from the conversation it read. It tried: read_file.]", "Let me read it."},
+		{"Saved it [Meru didn't run any tool for this answer, so nothing changed on your computer.] there.", "Saved it  there."},
+		{"See [11] and [Meru on GitHub](https://github.com/aarora79/meru), or [the docs].", "See [11] and [Meru on GitHub](https://github.com/aarora79/meru), or [the docs]."},
 		{"Let me look at the file:\n\n[Meru's record of the tools this turn ran, for later questions. It isn't part of the answer above.]\n" +
 			"- read_file {\"path\":\"/x/p.html\"} ok: …\n- edit_file {\"path\":\"p.html\",\"old\":\"]\"}", "Let me look at the file:"},
 	}
@@ -199,6 +205,8 @@ func TestClaimsFileWork(t *testing.T) {
 		want bool
 	}{
 		{"Good news — I built the card with your family photo embedded.", true},
+		{"The page at [poetry-links-collection.html](file:///Users/x/meru-output/poetry-links-collection.html) now has clickable links you can click directly in your browser.", true},
+		{"The page you linked now has a dark theme.", false}, // a web page read, no file named
 		{"I've downloaded your photo from Nidhi's email (IMG_0584.jpeg) and rebuilt the card with it.", true},
 		{"The card now uses your actual family photo.", true},
 		{"The card is ready — here's a clickable link: [Diwali Card 5x7](file:///x/card.html)", true},

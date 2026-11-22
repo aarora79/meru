@@ -45,6 +45,16 @@ const (
 	maxWebChars = 8000
 	// maxWebQuery caps the words sent to SearXNG.
 	maxWebQuery = 300
+	// maxAskedWords is the most words a question's own search may have
+	// once webWords has cleaned it. A longer one is an instruction, not a
+	// search: a real chat sent SearXNG "gmail link you fouind is perfect add
+	// that to the html right ther eis an entry for it rihgt? and for the rest
+	// of the thins in the html do a find the links and then put the links in
+	// the html", which found nothing useful, where the model's own queries,
+	// such as `"hun kisi aur ka" salim kausar site:rekhta.org`, found the
+	// poem. A question that long leaves the searching to the model, which
+	// has web_search on offer.
+	maxAskedWords = 12
 	// maxKeyWords is how many of the question's key words join a named
 	// thing in its search.
 	maxKeyWords = 5
@@ -514,7 +524,8 @@ type webCall struct {
 // askedCalls returns the calls for a question that asked for the web: a
 // web_fetch for each URL in it, when web_fetch is on, or else one
 // web_search on webQuery, when web_search is on. all is every tool config
-// allows. It returns nil when the tool the question needs is off.
+// allows. It returns nil when the tool the question needs is off, and for
+// a search longer than maxAskedWords, which the model then writes itself.
 func askedCalls(question string, history []engine.Message, all []engine.ToolSpec) []webCall {
 	if urls := webURLs(question); len(urls) > 0 {
 		if !offersTool(all, builtin.WebFetch) {
@@ -529,7 +540,11 @@ func askedCalls(question string, history []engine.Message, all []engine.ToolSpec
 	if !offersWebSearch(all) {
 		return nil
 	}
-	return []webCall{{tool: builtin.WebSearch, args: map[string]any{"query": webQuery(question, history)}}}
+	q := webQuery(question, history)
+	if len(strings.Fields(q)) > maxAskedWords {
+		return nil
+	}
+	return []webCall{{tool: builtin.WebSearch, args: map[string]any{"query": q}}}
 }
 
 // namedCalls returns the call for a named thing the user's files don't
