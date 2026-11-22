@@ -29,8 +29,9 @@ graphics card.
 [Meru for individuals](https://aarora79.github.io/meru/slides/meru-individuals.html)
 ([PDF](docs/slides/meru-individuals.pdf))
 
-> **Status: pre-alpha, v0.8.1.** Meru now runs on Windows too, with the desktop
-> app, an NVIDIA GPU and a one-line installer for PowerShell.
+> **Status: pre-alpha, v0.8.2.** Once a chat has read mail or the web, Meru
+> asks before each call that sends, shares or remembers, and `merud` answers
+> only your own user on its socket. Meru runs on macOS, Linux and Windows.
 > Answers from local models, your own files and
 > tools you allow, with every tool call logged, and a scope you pick limits the
 > tools a turn can run. Meru finds the pictures in your
