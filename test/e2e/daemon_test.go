@@ -236,3 +236,31 @@ func TestNoTelemetryByDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenHomeIsClosed starts merud in a Meru folder that other accounts
+// may open, as an old install or a hand-made folder might leave it: merud
+// sets it to 0700 before it creates its socket there, and still answers.
+func TestOpenHomeIsClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix file modes")
+	}
+	t.Parallel()
+	f := startFake(t)
+	h := newHome(t)
+	h.writeConfig(t, fakeConfig(f.url, ""))
+	if err := os.Chmod(h.dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := startMerud(t, h, nil)
+	waitReady(t, h, m, readyTimeout)
+	info, err := os.Stat(h.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Errorf("Meru's folder is %v after merud started, want 0700", got)
+	}
+	if res := runMeru(t, h, "ping"); res.code != 0 {
+		t.Errorf("meru ping exited %d: %s", res.code, res.stderr)
+	}
+}

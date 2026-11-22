@@ -6234,6 +6234,12 @@ it in the service file or use one of the others.
   value or a header. The `gh` commands leave GitHub's token with `gh`.
 - Meru doesn't sandbox MCP servers. They run with your permissions, so choose them as
   carefully as any program you install.
+- `merud.sock` answers only your account. The socket file has mode `0600`;
+  `merud` sets the folder that holds it to `0700` when it finds it open wider,
+  refuses to start when that folder is a symbolic link or another user's, and
+  closes any connection whose process, by the kernel's own record, belongs to
+  another user, root included. A program running as you passes all of this,
+  as it would read your files without Meru.
 - Mail, web pages and other servers' answers can hold words aimed at the model,
   a trick called prompt injection. The model can't reliably tell them from
   yours, so Meru doesn't rely on it: once a chat has read such content, every

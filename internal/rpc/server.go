@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"sync"
@@ -68,8 +69,12 @@ const pingTimeout = time.Second
 //
 // The socket gets mode 0600, so only the user can connect. The directory that
 // holds it (~/.meru) is 0700 as well, which closes the short gap between
-// creating the socket and changing its mode.
+// creating the socket and changing its mode; checkSocketDir makes it so,
+// and refuses a folder that is a symbolic link or another user's.
 func Listen(ctx context.Context, path string) (net.Listener, error) {
+	if err := checkSocketDir(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
 	info, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -142,6 +147,14 @@ func Serve(ctx context.Context, ln net.Listener, h Handler, log *slog.Logger) er
 			// Log, pause so we don't spin, and keep serving.
 			log.Warn("accept failed", "err", err)
 			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		// A process of another user, root included, gets the connection
+		// closed before it can send a request. The socket's mode already
+		// keeps them out; this holds if the mode or the folder changes.
+		if uid, ok := samePeer(conn); !ok {
+			log.Warn("refused a connection from another user", "peer_uid", uid, "uid", os.Getuid())
+			_ = conn.Close()
 			continue
 		}
 		wg.Go(func() { serveConn(ctx, conn, h, log) })
