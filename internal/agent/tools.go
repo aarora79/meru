@@ -398,6 +398,10 @@ type turn struct {
 	// user's lines hold, read from the transcript when the turn starts,
 	// for the check on made-up links (see links.go).
 	chatLinks map[string]bool
+	// lastRoute is the route the chat's last answered turn took, read
+	// from the transcript when the turn starts; "" in a new chat. A
+	// question the router is unsure of keeps it (see unsure.go).
+	lastRoute string
 	// copiedNote says the model wrote one of Meru's own notes, such as a
 	// record of tool calls, into its answer, and Meru cut it.
 	copiedNote bool

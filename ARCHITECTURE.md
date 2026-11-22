@@ -2509,6 +2509,20 @@ route, its confidence, the full distribution and an outcome (`ok`,
 `low_confidence` or `degraded`). A model that answers unclearly isn't an error;
 `Decide` returns the fallback and says why.
 
+In a chat with an answered turn, an unsure router keeps that turn's route
+instead of the fallback; the rules below may still change it. Most unsure
+questions are follow-ups such as "done?", "Continue" or "what tools did you
+use", and the fallback cost them time for nothing they needed. With a few
+servers connected, the tool schemas run to about 30,000 tokens, and Ollama
+keeps one prompt in its cache. A direct turn's prompt offers a few tools, so
+the next `search+tools` prompt shares almost nothing with it: after a direct
+turn, "great job Meru! Yay!!!" re-read 39,844 tokens and waited 45 seconds for
+its first word. A follow-up on the last turn's route keeps the front of the
+prompt the same, and Ollama reads only what changed. A follow-up that names a
+connected tool, such as "read the email she just sent", still gets the tools
+from the second rule below. The first question in a chat keeps the fallback
+(`keepRoute`).
+
 Ahead of the rules below, one takes a search away. When the question opens
 with a writing verb (rewrite, rephrase, reword, paraphrase, proofread, shorten,
 simplify, translate, polish, edit, improve or fix) and a line break, a colon or a
