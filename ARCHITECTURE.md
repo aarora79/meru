@@ -1443,8 +1443,19 @@ router fit beside macOS and a few open apps:
 We checked the 48 GB and 32 GB lines against memory measured on the 64 GB
 Mac, not on a 48 GB or a 32 GB Mac.
 
-`config.KnownModels` lists the six we offer, smallest first: MiniCPM5-2B,
-`gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
+**Inkling 2 Mini.** In November 2026 we ran `inkling-2-mini` (20 GB), Thinking
+Machines' looped mixture of experts, against `qwen3.6:35b` on the same code, on
+Ollama 0.40.17, which runs it on Apple silicon only. On 57 tasks a run, three
+runs each, it passed 137 of 171 against 140, every retrieval and image task
+included, but 2 of 18 tasks that need several tool calls against 10: it made the
+first call, then said it lacked what the second would have read. Its median task
+took 71 seconds against 12, and thinking on passed fewer tasks and took longer.
+It stays a model you can pick, not a default.
+[docs/benchmarks/inkling-2-mini.md](docs/benchmarks/inkling-2-mini.md) has the
+figures.
+
+`config.KnownModels` lists the seven we offer, smallest first: MiniCPM5-2B,
+`gemma3:12b`, `gemma4:26b-a4b-it-qat`, `inkling-2-mini`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
 `qwen3.6:35b-a3b-mxfp8`, with their sizes and a line each on what they did well
 and badly. It leaves out `qwen3.8:27b`, which took about eight times as
 long per task as `qwen3.6:35b-a3b-mxfp8`. The desktop app's Settings, Models

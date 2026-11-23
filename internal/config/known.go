@@ -8,8 +8,8 @@ package config
 import "slices"
 
 // KnownModel is one model we tried as the answer model ([models] main).
-// The facts come from our own runs in September 2026, on an M4 Max with
-// 64 GB, with MiniCPM5-2B as the fast model; they are no promise for
+// The facts come from our own runs in September and November 2026, on
+// an M4 Max with 64 GB, with MiniCPM5-2B as the fast model; they are no promise for
 // other computers.
 type KnownModel struct {
 	// Name is the model as Ollama names it, the name `ollama pull` takes
@@ -66,6 +66,18 @@ func KnownModels() []KnownModel {
 			Good:  "The Gemma 4 26B mixture of experts at 4 bits, small enough for a 32 GB Mac: 120 of 150 benchmark tasks passed.",
 			Bad:   "Weak across several tools (13 of 36) and slow to start: a median of 17.6 seconds to the first word.",
 			// QAT: Google trained it to lose little when stored at 4 bits.
+			Capabilities: []string{"completion", "vision", "tools", "thinking"},
+		},
+		{
+			Name:  "inkling-2-mini",
+			Label: "Inkling 2 Mini",
+			Size:  "20 GB",
+			Good:  "Read files and notes best in our November benchmark: every retrieval, image and multi-turn task passed. Needs Ollama 0.40.17 or later on Apple silicon.",
+			Bad:   "Stops after the first of several tool calls (2 of 18 such tasks, against 10 for qwen3.6:35b), and slow: a median of 69 seconds to the first word.",
+			// Thinking Machines' looped mixture of experts: 26.4B
+			// parameters, 5.4B at work on each token, its middle layers
+			// run three times. Ollama runs it on its MLX backend, on
+			// Apple silicon only as of 0.40.17.
 			Capabilities: []string{"completion", "vision", "tools", "thinking"},
 		},
 		{

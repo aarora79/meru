@@ -116,7 +116,10 @@ Times are medians on a Mac Studio (M4 Max, 64 GB) and count from the question
 to the answer's first and last token, routing, search and tool calls included.
 The tasks use the author's own files and mail, so they stay private; [the
 benchmark results](docs/benchmarks/results.md) show every model we tried, pass
-rates by kind of task, and charts of accuracy against speed.
+rates by kind of task, and charts of accuracy against speed. In November 2026
+we tried [Inkling 2 Mini](docs/benchmarks/inkling-2-mini.md): it read files and
+pictures well but stopped after the first of several tool calls, and took six
+times as long as `qwen3.6:35b`, so you can pick it but no installer does.
 
 ## Install on a Mac
 

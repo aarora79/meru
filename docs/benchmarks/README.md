@@ -8,7 +8,8 @@
 > To measure Meru on your data, build a dataset of your own with the steps below, or ask the
 > author by opening an issue on [GitHub](https://github.com/aarora79/meru/issues).
 
-[results.md](results.md) holds the latest results: how many questions each model set got
+[inkling-2-mini.md](inkling-2-mini.md) compares Inkling 2 Mini with `qwen3.6:35b`, from November
+2026. [results.md](results.md) holds the September 2026 results: how many questions each model set got
 right, by kind of question, and how fast it answered.
 
 ## What it measures

@@ -132,6 +132,7 @@ func TestModelChoices(t *testing.T) {
 		// Not pulled: the capabilities come from the known list.
 		{gemma, false, []string{}, []string{"completion", "vision"}},
 		{"gemma4:26b-a4b-it-qat", false, []string{}, ollamaCaps[qwen]},
+		{"inkling-2-mini", false, []string{}, ollamaCaps[qwen]},
 		{qwen, true, []string{"main"}, ollamaCaps[qwen]},
 		{gemmaMoE, false, []string{}, ollamaCaps[qwen]},
 		{qwenMoE, false, []string{}, ollamaCaps[qwen]},
