@@ -248,3 +248,42 @@ func TestFileClaimAfterADownload(t *testing.T) {
 		t.Errorf("events %v: want the file-claim notice", types(evs))
 	}
 }
+
+// TestUnreadPercents checks which percentages in an answer count as read.
+func TestUnreadPercents(t *testing.T) {
+	read := []string{`{"close_start":"7549.94","close_end":"6910.39","change":"-8.47"}`, "fees of 0.25 percent"}
+	tests := []struct {
+		name   string
+		answer string
+		want   []string
+	}{
+		{"read, with a minus sign", "The index fell -8.47% in ten days.", nil},
+		{"read, as words", "The fee is 0.25 percent.", nil},
+		{"not read", "The chip maker is down ~12% and the fund 12.3 %.", []string{"12%", "12.3 %"}},
+		{"each once", "Up 4%, then 4% again.", []string{"4%"}},
+		{"none and all don't count", "0% of it sold; 100% kept.", nil},
+		{"code is skipped", "Run `echo 85%` to check.\n```\n93%\n```", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unreadPercents(tt.answer, read)
+			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("unreadPercents = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPercentsNotice checks the notice's forms.
+func TestPercentsNotice(t *testing.T) {
+	if n := percentsNotice(nil); n != "" {
+		t.Errorf("no percentages: %q", n)
+	}
+	if n := percentsNotice([]string{"12%"}); !strings.HasPrefix(n, "This percentage isn't") || !strings.Contains(n, "12%") {
+		t.Errorf("one: %q", n)
+	}
+	n := percentsNotice([]string{"1%", "2%", "3%", "4%", "5%", "6%", "7%"})
+	if !strings.HasPrefix(n, "These percentages aren't") || !strings.Contains(n, "5% and 2 more") {
+		t.Errorf("seven: %q", n)
+	}
+}
