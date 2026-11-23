@@ -2369,6 +2369,16 @@ makes no model call and keeps at most 2 MiB of what the turn read. It misses
 an amount written in words, such as "ninety dollars", and passes a made-up
 amount that happens to equal any number the turn read, such as a room number.
 
+Percentages get the same check under the same rule. A real turn said a chip
+maker was "down ~12%" over ten days; it had fetched no prices for it, and the
+fall was 30%. `merud` finds each percentage outside code, such as `12%`,
+`8.4 %` or `12.3 percent`, drops a minus sign before it, and looks for the
+number among what the turn read; 0% and 100% never count. The `notice` says
+"This percentage isn't in what Meru read this turn, so the model worked it out
+or recalled it: 12%. Check before you rely on it.", or "These percentages
+aren't" for more than one. A rate the model knows, such as a tax bracket, gets
+the notice too, since a recalled figure is the kind the user should check.
+
 A fifth check looks for an answer that says Meru made or changed a file. The
 first check stays quiet once a call that could change something succeeded, and
 a real turn showed the gap: it downloaded a family photo, which succeeded, wrote
@@ -2439,6 +2449,23 @@ one of its notices, wherever it sits in the answer. A Markdown link such as
 "[Meru on GitHub](…)" stays. Since the client already showed the copy, the
 `notice` event adds "The answer copied one of Meru's own notes, and Meru cut it:
 it wasn't about this turn, and this turn didn't do what it said."
+
+A ninth check follows a question that stopped before it answered. The history
+leaves out a question with no answer, so the next turn never sees that its
+tool calls ran. In a real chat the model called a broker's order tool 24
+times, the turn was stopped, and the user asked again; the model wrote a plan
+with no call at all, from its earlier answer, and marked every holding as held
+over a year, though half weren't. Now, when the chat's last question has no
+answer and the model made calls for it, `merud` adds a line to the system
+prompt: "(Meru's note: the user's last question in this chat stopped before it
+was answered, after 24 tool calls. Their results aren't in this chat, so you
+haven't read them. If this question needs what they would have returned, call
+the tools again; don't take figures, dates or facts from earlier answers or
+from memory.)" A Continue turn gets no line, since its hand-off carries the
+results. If the answer still calls no tool, on a route other than `direct`, the
+`notice` event adds "The last question stopped before it finished, and this
+answer called no tool, so it rests on earlier answers, not on what those tool
+calls would have read. Check it before you rely on it." (`stoppedCalls`)
 
 ### Routing
 
@@ -2750,7 +2777,8 @@ assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off`, `window_full`, `capped`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when a check on
 the answer warned, such as a claimed action with no successful tool call, a
-link to a file that isn't there, a money amount the turn didn't read, or a file
+link to a file that isn't there, a money amount or percentage the turn didn't
+read, an answer with no call after a stopped question, or a file
 the answer says Meru made on a turn that wrote none (see
 [Claims no tool backs](#claims-no-tool-backs)).
 
