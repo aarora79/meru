@@ -319,13 +319,17 @@ picture with view_image, such as a photo to choose for a card." A model with
 the photos saved had told the user it couldn't view images.
 
 `followsServerTurn` (toolnouns.go) keeps the tools on a reply to a turn that
-used a server's tools. It finds the latest assistant message in the history,
-looks for the tool notes after `toolNotesStart`, and reports true when a
-note's call is named `server.tool` (`toolKind` gives `KindMCP`). `respond`
+used a server's tools. It reads the latest `serverTurnsBack` (two) assistant
+messages in the history, the two that carry tool notes, looks for the notes
+after `toolNotesStart`, and reports true when a note's call is named
+`server.tool` (`toolKind` gives `KindMCP`). An answer with no notes doesn't
+stop the search, so "check what you did", answered with no call, no longer
+hides the broker call before it. `respond`
 then sets `target` to `signFollowsServer`, and the usual `withTools` step
 widens the route. `TestReplyKeepsServerTools` runs two turns: the first
 downloads a photo through a mail tool, the second routes to `search` and
-still gets the mail tool.
+still gets the mail tool. `TestFollowsServerTurn` checks a server call one
+answer back, which counts, and two answers back, which doesn't.
 
 The text of `makePictureNote`:
 
