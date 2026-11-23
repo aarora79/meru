@@ -106,6 +106,13 @@ Ollama reads Gemma 4's whole tool list again, so its first word comes about
 11 s later. ARCHITECTURE.md, "Models we tried", has the figures per kind of
 task and the reason.
 
+In November 2026 we ran Inkling 2 Mini (`inkling-2-mini`, 20 GB) the same way,
+on Ollama 0.40.17, which runs it on Apple silicon only. Against `qwen3.6:35b` on
+the same code it passed 137 of 171 tasks against 140, but 2 of 18 that need
+several tool calls against 10, and its median task took 71.3 s against 11.8 s.
+[docs/benchmarks/inkling-2-mini.md](benchmarks/inkling-2-mini.md) has the
+figures and the model set to try it.
+
 An earlier test asked one question, how to use `btop`, which made the model
 search the web and read pages over several rounds:
 

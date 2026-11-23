@@ -24,7 +24,7 @@ func TestKnownModels(t *testing.T) {
 		}
 	}
 	want := []string{"hf.co/openbmb/MiniCPM5-2B-GGUF:Q4_K_M", "gemma3:12b", "gemma4:26b-a4b-it-qat",
-		"qwen3.6:35b", "gemma4:26b-mxfp8", "qwen3.6:35b-a3b-mxfp8"}
+		"inkling-2-mini", "qwen3.6:35b", "gemma4:26b-mxfp8", "qwen3.6:35b-a3b-mxfp8"}
 	if !slices.Equal(names, want) {
 		t.Errorf("names = %v, want %v", names, want)
 	}
@@ -51,6 +51,7 @@ func TestFindKnownModel(t *testing.T) {
 		tools bool
 	}{
 		{"qwen3.6:35b", true, true},
+		{"inkling-2-mini", true, true},
 		{"qwen3.6:35b-a3b-mxfp8", true, true},
 		{"gemma4:26b-mxfp8", true, true},
 		{"gemma4:26b-a4b-it-qat", true, true},

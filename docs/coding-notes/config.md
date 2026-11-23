@@ -458,12 +458,15 @@ with `==`, so the tests compare its three model names one by one.
 
 ### known.go
 
-`KnownModels()` lists the six models we offer as the answer model, smallest
-first: MiniCPM5-2B, `gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`,
+`KnownModels()` lists the seven models we offer as the answer model, smallest
+first: MiniCPM5-2B, `gemma3:12b`, `gemma4:26b-a4b-it-qat`, `inkling-2-mini`, `qwen3.6:35b`,
 `gemma4:26b-mxfp8` and `qwen3.6:35b-a3b-mxfp8`. The good and bad lines of the
 last two quote our September 2026 benchmark (ARCHITECTURE.md, "Models we
 tried"); `gemma4:26b-a4b-it-qat`'s bad line says we haven't benchmarked it.
-`qwen3.8:27b` stays off the list: it took several times as long per task. Each `KnownModel` holds the name
+`inkling-2-mini`'s lines quote the November 2026 run in
+`docs/benchmarks/inkling-2-mini.md`, and say it needs Ollama 0.40.17 on Apple
+silicon. Settings offers it on any system, so the bad line names the
+requirement. `qwen3.8:27b` stays off the list: it took several times as long per task. Each `KnownModel` holds the name
 Ollama gives it, a label, its size on disk, one line on what it did well and one
 on what it did badly, and the capabilities Ollama's `/api/show` listed for it.
 `merud` sends the list to the desktop app's Settings, Models, which offers each
