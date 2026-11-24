@@ -110,6 +110,14 @@ func TestWebQuery(t *testing.T) {
 			"Acme Flow pricing"},
 		{"a length at the end", "search the web for Acme Flow pricing in three lines", nil, "Acme Flow pricing"},
 		{"then explain", "look up Acme Flow team plans, then explain them simply", nil, "Acme Flow team plans"},
+		// The real messages that lost the name of the news site MS NOW.
+		{"a short name ending in now", "now web search for ms now", earlier, "ms now"},
+		{"assent goes, the name stays", "just search the web for new ms now", earlier, "new ms now"},
+		{"yes opens a search", "yes do a web search now for latest news on the msnow web site", nil,
+			"latest news on the msnow site"},
+		{"a longer word drops now", "search the web for the pricing now", earlier,
+			"pricing what does Acme Flow do with shared notes"},
+		{"run the search now", "run a web search now", song, "song maname maname sung by r. devi acvtually mean"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

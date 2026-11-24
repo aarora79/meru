@@ -231,7 +231,8 @@ func TestNoteFor(t *testing.T) {
 		{"an MCP tool and a command", names("obsidian.obsidian_read_note", "cmd.git-log"), toolsNote},
 		{"web_search and a file tool", names("datetime", "web_search", "grep"), toolsNote + " " + webNote + " " + webFallbackNote},
 		{"web_search and a file tool alone", names("web_search", "read_file"), toolsNote + " " + webNote + " " + webFallbackNote},
-		{"web_search with no file tool", names("datetime", "web_search", "web_fetch"), toolsNote + " " + webNote},
+		{"web_search and web_fetch with no file tool", names("datetime", "web_search", "web_fetch"), toolsNote + " " + webNote + " " + webFetchNote},
+		{"web_search, web_fetch and a file tool", names("web_search", "web_fetch", "grep"), toolsNote + " " + webNote + " " + webFetchNote + " " + webFallbackNote},
 		{"web_fetch and a file tool", names("web_fetch", "grep"), toolsNote},
 		{"web_search, a file tool and a command", names("web_search", "grep", "cmd.git-log"), toolsNote + " " + webNote + " " + webFallbackNote},
 	}

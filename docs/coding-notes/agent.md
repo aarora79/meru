@@ -530,6 +530,11 @@ count. It is one of the seven signs `toolTarget` checks, so a `tools` turn that
 asks Meru to remember also skips the search of your files. A wrong guess, such as "do you remember the trip?", costs a prompt
 that holds the tool schemas; the model need not call any.
 
+`savesToMemory` adds a second way in. It looks for "memorize", or for a word such
+as `save` or `add` along with "your memory" or "to memory". A real chat sent
+"save in your memory that I prefer tea" to `search`, which doesn't offer `remember`,
+and the model said it had no memory to write to.
+
 ### Skills (skills.go)
 
 A skill is a Markdown file of instructions for one kind of task (see
@@ -1122,6 +1127,14 @@ The transcript never holds the nudge. A real session's last round wrote "Let
 me find the specific date with 20 stars." and stopped, and the turn was logged
 as a full answer; another spent its 8 rounds on a web search, a refused fetch,
 `top` and `pgrep`, and the user read only the sorry.
+
+`nudgesWebDenial`, in `webdenial.go`, works the same way for a model that says
+it has no web tool while the turn offers both `web_search` and `web_fetch`.
+While SearXNG is down the turn has `web_fetch` alone, so "I can't search the
+web" is true and gets no nudge. `deniesWebTools` looks for that
+claim with a regular expression, a small pattern language for matching text.
+The turn nudges once, and stays quiet after a web call failed (`t.webFailed`),
+because "I can't read that page" is then true.
 
 Both clients offer Continue after `capped`, and `continuation` tells the model
 the turn ran out of tool rounds, so it chooses its calls with care.
@@ -1882,6 +1895,9 @@ returned, so its redaction of secrets has already run.
 number `honest.go` reads, only for calls with no caller: a web search `merud`
 chose doesn't back "I sent the email".
 
+
+`webWords` keeps a closing "now" when `endsInShortName` says it finishes a short
+name, so "ms now" survives. `assentWord` drops "just" or "yes" from the start.
 ### Earlier conversations (earlier.go)
 
 On the same turns, right after the file search, one line in `Handle` adds past
@@ -2151,7 +2167,8 @@ When you aren't sure of a fact, such as a song, a film, a book, a person, a prod
 ```
 
 A model trained months ago doesn't know which facts it lacks, so the note
-names the kinds it most often gets wrong. When the turn offers a file tool
+names the kinds it most often gets wrong. When the turn offers `web_fetch`
+too, `webFetchNote` follows and calls that tool the model's browser. When the turn offers a file tool
 too, `noteFor` adds `webFallbackNote` after that:
 
 ```text

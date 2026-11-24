@@ -181,12 +181,20 @@ func offersTool(specs []engine.ToolSpec, name string) bool {
 // Any other follow-up too short to stand alone, such as "search the web
 // for the pricing", gets the session's latest earlier question with a
 // subject after it, as a search of the files does (see searchQuery).
+//
+// A search that ends in a short name with "now", such as "ms now", stands
+// alone (see endsInShortName): it names its subject, and borrowing the
+// earlier question sent a real search off as "ms checn msnow for the latest
+// news".
 func webQuery(question string, history []engine.Message) string {
 	q, onlyWeb := webWords(question)
 	if onlyWeb {
 		if earlier := earlierWebWords(history); earlier != "" {
 			return cutRunes(earlier, maxWebQuery)
 		}
+	}
+	if endsInShortName(words(q)) {
+		return cutRunes(q, maxWebQuery)
 	}
 	if q == "" {
 		q = strings.TrimSpace(urlPattern.ReplaceAllString(question, " "))
@@ -248,17 +256,43 @@ func webWords(text string) (q string, onlyWeb bool) {
 	if i := instructionAt(keys); i > 0 {
 		tokens, keys = tokens[:i], keys[:i]
 	}
-	// Drop filler words, such as "can you ... for the", from both ends.
-	for len(keys) > 0 && (keys[0] == "" || isFiller(keys[0])) {
+	// Drop filler words, such as "can you ... for the", from both ends. The
+	// opening also drops a word of assent such as "just" or "yes". A closing
+	// "now" stays when it finishes a short name (see endsInShortName).
+	for len(keys) > 0 && (keys[0] == "" || isFiller(keys[0]) || assentWord(keys[0])) {
 		tokens, keys = tokens[1:], keys[1:]
 	}
-	for len(keys) > 0 && (keys[len(keys)-1] == "" || isFiller(keys[len(keys)-1])) {
+	for len(keys) > 0 && !endsInShortName(keys) && (keys[len(keys)-1] == "" || isFiller(keys[len(keys)-1])) {
 		tokens, keys = tokens[:len(tokens)-1], keys[:len(keys)-1]
 	}
 	q = strings.TrimRight(strings.Join(tokens, " "), "?.!,;:")
 	subjects := subjectWords(q)
 	reach := slices.ContainsFunc(keys, reachWord)
 	return q, q == "" || (subjects < standaloneWords && reach)
+}
+
+// assentWord reports whether w, the first word left in a question, only
+// agrees or urges, as in "yes do a web search for Acme" or "just search the
+// web for Acme". It means nothing to a search engine: a real search for
+// "just for new ms" found pages on multiple sclerosis.
+func assentWord(w string) bool {
+	switch w {
+	case "just", "yes", "yeah", "yep":
+		return true
+	}
+	return false
+}
+
+// endsInShortName reports whether keys, lower-case words, end in a word of
+// at most three letters and then "now", such as "ms now" or "abc now".
+// "now" is filler almost everywhere, but a word that short is rarely a
+// subject alone, so the pair likely names something: a real user asking for
+// the news site MS NOW had it cut to "ms". A longer word keeps the old rule,
+// so "search the web for the pricing now" still searches for "pricing".
+func endsInShortName(keys []string) bool {
+	n := len(keys)
+	return n >= 2 && keys[n-1] == "now" && keys[n-2] != "" &&
+		!isFiller(keys[n-2]) && utf8.RuneCountInString(keys[n-2]) <= 3
 }
 
 // instructionAt returns where a closing instruction starts in keys, the
@@ -302,7 +336,7 @@ func instructionAt(keys []string) int {
 func reachWord(w string) bool {
 	switch w {
 	case "have", "has", "got", "access", "able", "use", "using", "allowed", "enabled",
-		"go", "ahead", "yes", "yeah", "just", "already", "should", "need", "tool", "tools",
+		"go", "ahead", "run", "get", "yes", "yeah", "just", "already", "should", "need", "tool", "tools",
 		"browse", "browsing", "searching", "cannot", "can't", "cant", "not", "don't", "dont":
 		return true
 	}

@@ -78,6 +78,15 @@ const webNote = "When you aren't sure of a fact, such as a song, a film, a book,
 	"a place or anything that may have changed, call web_search before you answer, and cite the pages you use. " +
 	"Never tell the user you can't search the web."
 
+// webFetchNote follows webNote on a turn that offers web_fetch too. A real
+// turn showed why. Asked for the latest news on a site, the model searched,
+// held the link to the site's top stories, and said it had no tool that
+// could fetch the site. Asked about a browser, it said it had none. webNote
+// spoke only of search.
+const webFetchNote = "web_fetch is your browser: call it to read a page, such as the best search result " +
+	"when the user wants the latest news from a site. " +
+	"Never tell the user you have no browser or can't read a web page."
+
 // noteFor returns the tools note for a turn that offers specs: toolsNote
 // when any is a tool other than the file tools: an MCP tool, an A2A
 // skill, a local command, or a built-in such as datetime; and "" when the
@@ -90,8 +99,9 @@ const webNote = "When you aren't sure of a fact, such as a song, a film, a book,
 // route offers datetime, and turning it on changed no answer on the
 // benchmark's command questions (issue #135), so it went.
 //
-// When specs hold web_search, webNote follows toolsNote, and when they
-// hold a file tool too, webFallbackNote follows that. Both depend only on
+// When specs hold web_search, webNote follows toolsNote, with webFetchNote
+// when they hold web_fetch too, and when they hold a file tool as well,
+// webFallbackNote follows that. Both depend only on
 // which tools the turn offers, not on the question, so they stay the same
 // from one such turn to the next and sit with the other parts Ollama
 // reuses (see budget.go). Since every route offers web_search while
@@ -113,25 +123,32 @@ func noteFor(specs []engine.ToolSpec) string {
 // toolsNoteFor returns toolsNote with the web lines that suit specs, as
 // noteFor's comment describes, or "" when specs hold no tool.
 func toolsNoteFor(specs []engine.ToolSpec) string {
-	var other, files, web bool
+	var other, files, web, fetch bool
 	for _, s := range specs {
 		switch {
 		case builtin.IsFileTool(s.Name):
 			files = true
 		default:
 			other = true
-			if s.Name == builtin.WebSearch {
+			switch s.Name {
+			case builtin.WebSearch:
 				web = true
+			case builtin.WebFetch:
+				fetch = true
 			}
 		}
+	}
+	webLines := webNote
+	if fetch {
+		webLines += " " + webFetchNote
 	}
 	// A switch with no value after the keyword runs the first case whose
 	// test is true, so the web line wins over the plain toolsNote.
 	switch {
 	case web && files:
-		return toolsNote + " " + webNote + " " + webFallbackNote
+		return toolsNote + " " + webLines + " " + webFallbackNote
 	case web:
-		return toolsNote + " " + webNote
+		return toolsNote + " " + webLines
 	case other:
 		return toolsNote
 	}
@@ -306,6 +323,13 @@ type turn struct {
 	// tried holds each call the model made, in call order, with how it
 	// ended, for the words of a turn that used every round; see capAnswer.
 	tried []triedCall
+	// webDenied is true once the turn has told the model it does have web
+	// tools; see nudgesWebDenial. A turn gets one such nudge.
+	webDenied bool
+	// webFailed is true once a web_search or web_fetch call of this turn
+	// ended in anything but ok. The model may then fairly say it couldn't
+	// read the web, so nudgesWebDenial stays out of it.
+	webFailed bool
 	// planNudged is true once the turn has asked the model to take the step
 	// it announced; see planNudge. A turn gets one nudge.
 	planNudged bool
@@ -638,6 +662,19 @@ func (a *Agent) converse(ctx context.Context, t *turn, msgs []engine.Message, sp
 			}
 			if a.retriesEmpty(t, rep) {
 				return a.retryEmpty(ctx, t, msgs, total, emptyNudge)
+			}
+			// A model that says it has no web tools while they're on offer
+			// gets one nudge, with those tools still on offer.
+			if a.nudgesWebDenial(t, rep, offer) {
+				t.webDenied = true
+				if err := t.emit(rpc.Event{Type: rpc.EventToken, Text: "\n\n"}); err != nil {
+					return total, err
+				}
+				msgs = append(msgs,
+					engine.Message{Role: engine.RoleAssistant, Content: rep.text},
+					engine.Message{Role: engine.RoleUser, Content: webDenialNudge})
+				a.log.DebugContext(ctx, "the model denied having web tools; telling it they're on offer", "round", t.rounds)
+				continue
 			}
 			// A model that had tools and announced a step instead of
 			// taking it gets one nudge, with its tools still on offer.
@@ -1077,6 +1114,7 @@ func (a *Agent) runCalls(ctx context.Context, t *turn, calls []engine.ToolCall, 
 			t.outside = true
 		}
 		if o != dispatch.OutcomeOK {
+			t.webFailed = t.webFailed || builtin.IsWebTool(calls[i].Name)
 			continue
 		}
 		t.noteRead(out[i].Content)

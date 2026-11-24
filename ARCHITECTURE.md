@@ -1908,7 +1908,9 @@ order.
    `web_search`, on any route, adds a line to the tools note: "When you aren't
    sure of a fact, such as a song, a film, a book, a person, a product, a place
    or anything that may have changed, call web_search before you answer, and
-   cite the pages you use. Never tell the user you can't search the web." The
+   cite the pages you use. Never tell the user you can't search the web." When
+   the turn offers `web_fetch` too, the line goes on:
+   "web_fetch is your browser: call it to read a page, such as the best search result when the user wants the latest news from a site. Never tell the user you have no browser or can't read a web page." The
    skills list then names only the skills whose tools the turn offers, or that
    name no tools, so it never points the model at a tool it lacks. Both depend
    only on the tools offered, and in Auto every route offers the same web tools,
@@ -2270,6 +2272,8 @@ A sentence that ends in "?", or that holds words such as "if", "want me", "I
 can", "I'll", "let me", "shall I", "would you", "not", "never", "unable" or any
 "n't", counts as a question, an offer or a denial, and never as a claim. Case doesn't matter, and every pattern matches whole words.
 
+The opposite mistake gets its own check. A small model with `web_search` and `web_fetch` on offer wrote "I don't have a tool that can fetch the live site". When a round calls no tool, its answer says it has no web tool, the round offered both tools, the turn has a round left and no web call of the turn failed, `merud` tells the model once that it has both tools and runs another round. While SearXNG is down the turn has `web_fetch` alone, so "I can't search the web" is true and gets no nudge. The transcript never holds that message.
+
 When a claim turns up, `merud` sends a `notice` event after the last `token` and
 before `done`, with the text "Meru didn't run any tool for this answer, so
 nothing changed on your computer." `meru` prints it on stderr as a dim `note:`
@@ -2589,7 +2593,7 @@ that holds the tool schemas.
 The third: when the question holds "remember" as a whole word and the route is
 `direct` or `search`, the loop adds the rest, so the model can call `remember`. "Remember that I
 work on the registry team" reads like chit-chat to the router, and a `direct` turn
-would answer "noted" and save nothing. The same rule covers Apple Notes: a
+would answer "noted" and save nothing. The same rule covers a question that says "memorize", or a word for saving with "your memory" or "to memory", such as "save in your memory that I prefer tea". The same rule covers Apple Notes: a
 question that says "Apple Notes" or "Notes app" gets tools while the Apple Notes
 tools are on. "My notes" alone doesn't count, since it may mean the notes in
 your folders or an Obsidian vault. The router's prompt doesn't name these
@@ -5347,6 +5351,8 @@ the song ... acvtually mean", the follow-up's words glued to the question
 before it. Now it searches for "song maname maname sung by r. devi acvtually
 mean". A follow-up with a subject, such as "search the web for the pricing",
 still gets the earlier question after it.
+
+A closing "now" stays when the word before it has at most three letters, and the pair then stands alone. So "now web search for ms now" searches for "ms now". A real chat asked for the news site MS NOW, and the old rule cut it to "ms" and added the question before it. Words of assent at the start ("just", "yes", "yeah", "yep") go too.
 
 **Named things.** The detector reads English and knows three shapes: a term in
 double quotes; a run of capitalised words, such as "Acme Flow", where a lone

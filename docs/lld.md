@@ -481,7 +481,7 @@ either (ARCHITECTURE.md, "The supervisor").
 
 `Handle` also calls `Tools()` on each turn for a second route rule. `toolTarget`
 looks for a sign that the question points at a connected tool: it names an MCP
-server or A2A agent (`toolServers`), says "remember", asks for the web
+server or A2A agent (`toolServers`), says "remember" or asks to save to memory, asks for the web
 (`asksForWeb`), gives a URL (`givesURL`), or names what a server's tools act on. When it finds one and the route has no tools, `withTools`
 adds them, `direct` to `tools` and `search` to `search+tools`. On a `tools` turn
 the same sign skips the search of your files (`aboutFiles`). It reads the names

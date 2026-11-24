@@ -162,12 +162,35 @@ func kindRank(kind string) int {
 // builtin package, which it has no other use for.
 const rememberTool = "remember"
 
-// asksToRemember reports whether question holds "remember" as a whole word
-// while the tools on offer include remember. See Handle, which uses it to
-// add tools to a route that has none.
+// asksToRemember reports whether question holds "remember" as a whole word,
+// or asks to save something to Meru's memory (see savesToMemory), while the
+// tools on offer include remember. See Handle, which uses it to add tools
+// to a route that has none.
 func asksToRemember(question string, specs []engine.ToolSpec) bool {
-	if !namesFolder(question, []string{rememberTool}) {
+	if !namesFolder(question, []string{rememberTool}) && !savesToMemory(question) {
 		return false
 	}
 	return slices.ContainsFunc(specs, func(s engine.ToolSpec) bool { return s.Name == rememberTool })
+}
+
+// savesToMemory reports whether question says "memorize", or holds a word
+// for saving along with "your memory" or "to memory". A real turn showed
+// why. "save in your memory that I prefer tea" routed to search, which doesn't
+// offer remember, and the model said it had no memory to write to. A wrong
+// guess, such as "how do I save an array to memory", only offers tools the
+// model need not call.
+func savesToMemory(question string) bool {
+	ws := words(question)
+	if slices.Contains(ws, "memorize") || slices.Contains(ws, "memorise") {
+		return true
+	}
+	saves := slices.ContainsFunc(ws, func(w string) bool {
+		return slices.Contains([]string{"save", "store", "add", "put", "keep", "write", "note"}, w)
+	})
+	for i := 1; saves && i < len(ws); i++ {
+		if ws[i] == "memory" && (ws[i-1] == "your" || ws[i-1] == "to") {
+			return true
+		}
+	}
+	return false
 }
