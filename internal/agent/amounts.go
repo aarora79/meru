@@ -1,8 +1,9 @@
-// This file checks the money amounts in an answer against what the turn
-// read: each amount, such as $95.18, should appear in a tool's result, an
-// excerpt the prompt held, or the user's own words. One that appears in none
-// gets a notice under the answer, so the user knows the model worked it out
-// rather than read it. See issue #241.
+// This file checks the money amounts and percentages in an answer against
+// what the turn read: each amount, such as $95.18, and each percentage,
+// such as 12.3%, should appear in a tool's result, an excerpt the prompt
+// held, or the user's own words. One that appears in none gets a notice
+// under the answer, so the user knows the model worked it out or recalled
+// it rather than read it. See issue #241.
 
 package agent
 
@@ -26,6 +27,11 @@ const maxAmountsNamed = 5
 // before the number ($95.18, € 27, EUR 1,042.25) or a code after it
 // (27.00 EUR). Group 1 or group 2 holds the number.
 var amountPattern = regexp.MustCompile(`(?i)(?:[$€£₹¥]\s?|\b(?:usd|eur|gbp|inr|cad|aud|jpy|chf)\s?)-?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s?(?:usd|eur|gbp|inr|cad|aud|jpy|chf)\b`)
+
+// percentPattern finds a percentage in an answer: 12%, 8.4 % or 12.3
+// percent. Group 1 holds the number; a minus sign before it doesn't
+// count, so "down 8.4%" and "-8.4%" both match a read 8.4.
+var percentPattern = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s?(?:%|percent\b)`)
 
 // inlineCode matches a span of inline code, such as `echo $9.99`, which
 // the check skips as it skips fenced code.
@@ -62,10 +68,8 @@ func (t *turn) noteRead(texts ...string) {
 	}
 }
 
-// unreadAmounts returns the amounts in answer, as the answer writes them,
-// whose value appears in nothing in read. It skips fenced and inline code,
-// which may hold sample figures, and lists each amount once.
-func unreadAmounts(answer string, read []string) []string {
+// readNumbers returns every number in read, in hundredths, as a set.
+func readNumbers(read []string) map[int64]bool {
 	seen := map[int64]bool{}
 	for _, text := range read {
 		for _, n := range numberPattern.FindAllString(text, -1) {
@@ -74,6 +78,14 @@ func unreadAmounts(answer string, read []string) []string {
 			}
 		}
 	}
+	return seen
+}
+
+// unreadAmounts returns the amounts in answer, as the answer writes them,
+// whose value appears in nothing in read. It skips fenced and inline code,
+// which may hold sample figures, and lists each amount once.
+func unreadAmounts(answer string, read []string) []string {
+	seen := readNumbers(read)
 	var out []string
 	for _, m := range amountPattern.FindAllStringSubmatch(inlineCode.ReplaceAllString(withoutCode(answer), ""), -1) {
 		num := m[1]
@@ -90,22 +102,62 @@ func unreadAmounts(answer string, read []string) []string {
 	return out
 }
 
+// unreadPercents returns the percentages in answer, as the answer writes
+// them, whose number appears in nothing in read, under the same rules as
+// unreadAmounts. 0% and 100% never count: they say "none" and "all".
+//
+// A real turn said the market's slide had taken one chip maker "down
+// ~12%" in ten days. The turn had fetched no prices for it, and the fall
+// was 30%; the amounts check let it pass, since it had no currency sign.
+func unreadPercents(answer string, read []string) []string {
+	seen := readNumbers(read)
+	seen[0], seen[10000] = true, true
+	var out []string
+	for _, m := range percentPattern.FindAllStringSubmatch(inlineCode.ReplaceAllString(withoutCode(answer), ""), -1) {
+		c, ok := cents(m[1])
+		if !ok || seen[c] {
+			continue
+		}
+		seen[c] = true // name each percentage once
+		out = append(out, strings.TrimSpace(m[0]))
+	}
+	return out
+}
+
+// namedList writes items as "a, b, c" and, past maxAmountsNamed of them,
+// " and 3 more".
+func namedList(items []string) string {
+	if len(items) <= maxAmountsNamed {
+		return strings.Join(items, ", ")
+	}
+	return strings.Join(items[:maxAmountsNamed], ", ") + " and " + strconv.Itoa(len(items)-maxAmountsNamed) + " more"
+}
+
 // amountsNotice returns the notice for amounts that unreadAmounts found,
 // or "" for none.
 func amountsNotice(amounts []string) string {
 	if len(amounts) == 0 {
 		return ""
 	}
-	list := amounts
-	more := ""
-	if len(list) > maxAmountsNamed {
-		more = " and " + strconv.Itoa(len(list)-maxAmountsNamed) + " more"
-		list = list[:maxAmountsNamed]
-	}
 	what := "This amount isn't"
 	if len(amounts) > 1 {
 		what = "These amounts aren't"
 	}
 	return what + " in what Meru read this turn, so the model worked it out: " +
-		strings.Join(list, ", ") + more + ". Check before you rely on it."
+		namedList(amounts) + ". Check before you rely on it."
+}
+
+// percentsNotice returns the notice for percentages that unreadPercents
+// found, or "" for none. A percentage may come from the model's memory as
+// well as its arithmetic, so the notice names both.
+func percentsNotice(percents []string) string {
+	if len(percents) == 0 {
+		return ""
+	}
+	what := "This percentage isn't"
+	if len(percents) > 1 {
+		what = "These percentages aren't"
+	}
+	return what + " in what Meru read this turn, so the model worked it out or recalled it: " +
+		namedList(percents) + ". Check before you rely on it."
 }

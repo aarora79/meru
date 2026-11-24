@@ -460,6 +460,11 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		t.outside = readOutside(lines, a.outputDir, a.home, a.asksFirst())
 		t.chatLinks = chatLinks(lines)
 		t.lastRoute = lastRoute(lines)
+		// A Continue turn hands the model the stopped turn's results
+		// itself (see continue.go), so it needs no note that they're gone.
+		if !req.Continue {
+			t.stopped = stoppedCalls(lines)
+		}
 	}
 	// asked is the question the turn routes, searches and recalls on. For
 	// Continue it is the last turn's question, and t.handoff holds what
@@ -608,6 +613,10 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 			if n := amountsNotice(unreadAmounts(rep.text, t.read)); n != "" {
 				notice = strings.TrimSpace(notice + " " + n)
 			}
+			// A percentage, under the same rule. See unreadPercents.
+			if n := percentsNotice(unreadPercents(rep.text, t.read)); n != "" {
+				notice = strings.TrimSpace(notice + " " + n)
+			}
 			// A web link no search result, page, tool result or message of
 			// the user's in this chat holds, under the same rule. A real
 			// chat's model gave links built from a poem's words, which
@@ -624,6 +633,12 @@ func (a *Agent) Handle(ctx context.Context, req rpc.Request, emit func(rpc.Event
 		// doesn't own up to. See failedCallsNotice.
 		if n := failedCallsNotice(t.tried, rep.text); n != "" {
 			notice = strings.TrimSpace(notice + " " + n)
+		}
+		// An answer after a stopped question that still called no tool.
+		// A direct turn, such as thanks, claims nothing the calls would
+		// have read. See stopped.go.
+		if t.stopped > 0 && t.calls == 0 && route != "direct" {
+			notice = strings.TrimSpace(notice + " " + stoppedNotice)
 		}
 	}
 	if t.noTools != "" {
@@ -1066,7 +1081,8 @@ func (a *Agent) finishPrompt(ctx context.Context, t *turn, question string, hist
 	msgs := a.prompt(ctx, history, question, sections{
 		memories: memories, skillList: skillList, skillBodies: skillBodies,
 		files: files, web: web, toolsNote: noteFor(specs), fileTools: a.fileToolsNoteFor(specs, fileTurn),
-		model: t.model,
+		stopped: stoppedText(t.stopped),
+		model:   t.model,
 	})
 	// The images ride on this turn's question alone; see withImages.
 	msgs = withImages(msgs, t.images)
@@ -1735,6 +1751,7 @@ func (a *Agent) prompt(ctx context.Context, history []engine.Message, question s
 	add(sec.skillBodies)
 	add(sec.files)
 	add(sec.web)
+	add(sec.stopped)
 	// The time of day goes last, because it changes every minute; see clock.
 	add(clock(time.Now()))
 	recordMemoryTokens(ctx, profile, sec.memories)

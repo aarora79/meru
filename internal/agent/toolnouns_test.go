@@ -229,6 +229,12 @@ func TestFollowsServerTurn(t *testing.T) {
 		{"built-ins only", notes(`- read_file {"path":"~/a.md"} ok: …`), false},
 		{"a command", notes(`- cmd.du {"folder":"~"} ok: …`), false},
 		{"no notes", []engine.Message{{Role: engine.RoleAssistant, Content: "Hello."}}, false},
+		{"a server call one answer back", append(notes(`- robinhood.get_equity_tax_lots {"symbol":"VOO"} ok: …`),
+			engine.Message{Role: engine.RoleUser, Content: "check what you did"},
+			engine.Message{Role: engine.RoleAssistant, Content: "I should have checked the lots."}), true},
+		{"a server call two answers back", append(notes(`- robinhood.get_equity_tax_lots {"symbol":"VOO"} ok: …`),
+			engine.Message{Role: engine.RoleUser, Content: "q2"}, engine.Message{Role: engine.RoleAssistant, Content: "a2"},
+			engine.Message{Role: engine.RoleUser, Content: "q3"}, engine.Message{Role: engine.RoleAssistant, Content: "a3"}), false},
 		{"empty", nil, false},
 	}
 	for _, tt := range tests {

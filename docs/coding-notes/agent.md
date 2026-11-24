@@ -1,6 +1,6 @@
 # agent
 
-**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `unsure.go`, `outside.go`, `links.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `unsure_test.go`, `outside_test.go`, `links_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
+**Code:** `internal/agent/` (`doc.go`, `agent.go`, `tools.go`, `honest.go`, `amounts.go`, `rewrite.go`, `thanks.go`, `unsure.go`, `stopped.go`, `outside.go`, `links.go`, `profile.go`, `recall.go`, `skills.go`, `earlier.go`, `scope.go`, `images.go`, `webfirst.go`, `webnotes.go`, `self.go`, `signin.go`, `webfirst_test.go`, `webturn_test.go`, `images_test.go`, `agent_test.go`, `tools_test.go`, `files_test.go`, `about_test.go`, `agentic_test.go`, `search_test.go`, `observe_test.go`, `usage_test.go`, `profile_test.go`, `recall_test.go`, `skills_test.go`, `earlier_test.go`, `chats_test.go`, `skills_integration_test.go`, `e2e_test.go`, `emptyreply_test.go`, `honest_test.go`, `amounts_test.go`, `rewrite_test.go`, `thanks_test.go`, `unsure_test.go`, `stopped_test.go`, `outside_test.go`, `links_test.go`, `signin_test.go`, `failed_test.go`, `self_test.go`)
 **Milestone:** v0.1; search in v0.2; tool rounds and usage in v0.3; the profile, recall, skills and earlier conversations in v0.4
 **Architecture:** [Agent loop](../../ARCHITECTURE.md#agent-loop), [A question, end to end](../../ARCHITECTURE.md#a-question-end-to-end), [Who decides what](../../ARCHITECTURE.md#who-decides-what), [Retrieval](../../ARCHITECTURE.md#retrieval)
 
@@ -319,13 +319,17 @@ picture with view_image, such as a photo to choose for a card." A model with
 the photos saved had told the user it couldn't view images.
 
 `followsServerTurn` (toolnouns.go) keeps the tools on a reply to a turn that
-used a server's tools. It finds the latest assistant message in the history,
-looks for the tool notes after `toolNotesStart`, and reports true when a
-note's call is named `server.tool` (`toolKind` gives `KindMCP`). `respond`
+used a server's tools. It reads the latest `serverTurnsBack` (two) assistant
+messages in the history, the two that carry tool notes, looks for the notes
+after `toolNotesStart`, and reports true when a note's call is named
+`server.tool` (`toolKind` gives `KindMCP`). An answer with no notes doesn't
+stop the search, so "check what you did", answered with no call, no longer
+hides the broker call before it. `respond`
 then sets `target` to `signFollowsServer`, and the usual `withTools` step
 widens the route. `TestReplyKeepsServerTools` runs two turns: the first
 downloads a photo through a mail tool, the second routes to `search` and
-still gets the mail tool.
+still gets the mail tool. `TestFollowsServerTurn` checks a server call one
+answer back, which counts, and two answers back, which doesn't.
 
 The text of `makePictureNote`:
 
@@ -1423,6 +1427,31 @@ codes before and after, an amount named twice, and inline code. `TestAmountsNoti
 forms. `TestAmountsCheckInATurn` runs a fake turn whose mail tool returns a
 hotel folio: an answer with a made-up tax total gets the notice, one that
 quotes the folio gets none, and one with no tool call gets none.
+
+Percentages run through the same steps. `readNumbers` builds the `seen` set
+once for both checks. `unreadPercents` reads the answer with `percentPattern`,
+a number followed by `%` or the word "percent"; the pattern leaves a minus sign
+outside its group, so "-8.47%" and a read "8.47" match. It adds 0 and 10000,
+0% and 100%, to `seen` first, since "none" and "all" need no source.
+`percentsNotice` says the model "worked it out or recalled it", because a
+percentage often comes from memory, as "down ~12%" did in the real turn that
+drove the check. `namedList` writes the "a, b and 3 more" list for both
+notices. `TestUnreadPercents` and `TestPercentsNotice` cover the cases.
+
+### After a stopped question (stopped.go)
+
+`History` leaves out a question with no answer, so the turn after a stopped
+one never sees that tools ran for it. `stoppedCalls` walks the transcript from
+the end: an `assistant` line first means the last question was answered, and
+it returns 0; otherwise it counts the `tool_call` lines the model made
+(`Caller` empty) back to the last `user` line. `Handle` keeps the count in
+`t.stopped`, except on a Continue turn, whose hand-off carries the results.
+`finishPrompt` passes `stoppedText(t.stopped)` as the `stopped` section, which
+`prompt` adds after the web section, and `Handle` adds `stoppedNotice` when the
+answer called no tool (`t.calls == 0`) on a route other than `direct`.
+`TestStoppedCalls` is a table, and `TestAfterStoppedTurn` seeds a transcript
+with a stopped question, runs the same question again, and checks the note and
+the notice, then that both are gone on the turn after.
 
 ### Links nothing in the chat gave (links.go)
 

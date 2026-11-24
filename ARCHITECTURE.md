@@ -1443,8 +1443,19 @@ router fit beside macOS and a few open apps:
 We checked the 48 GB and 32 GB lines against memory measured on the 64 GB
 Mac, not on a 48 GB or a 32 GB Mac.
 
-`config.KnownModels` lists the six we offer, smallest first: MiniCPM5-2B,
-`gemma3:12b`, `gemma4:26b-a4b-it-qat`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
+**Inkling 2 Mini.** In November 2026 we ran `inkling-2-mini` (20 GB), Thinking
+Machines' looped mixture of experts, against `qwen3.6:35b` on the same code, on
+Ollama 0.40.17, which runs it on Apple silicon only. On 57 tasks a run, three
+runs each, it passed 137 of 171 against 140, every retrieval and image task
+included, but 2 of 18 tasks that need several tool calls against 10: it made the
+first call, then said it lacked what the second would have read. Its median task
+took 71 seconds against 12, and thinking on passed fewer tasks and took longer.
+It stays a model you can pick, not a default.
+[docs/benchmarks/inkling-2-mini.md](docs/benchmarks/inkling-2-mini.md) has the
+figures.
+
+`config.KnownModels` lists the seven we offer, smallest first: MiniCPM5-2B,
+`gemma3:12b`, `gemma4:26b-a4b-it-qat`, `inkling-2-mini`, `qwen3.6:35b`, `gemma4:26b-mxfp8` and
 `qwen3.6:35b-a3b-mxfp8`, with their sizes and a line each on what they did well
 and badly. It leaves out `qwen3.8:27b`, which took about eight times as
 long per task as `qwen3.6:35b-a3b-mxfp8`. The desktop app's Settings, Models
@@ -1814,10 +1825,12 @@ order.
    URL, asks about the user's own records while a server is connected ("trip",
    "hotel", "receipt", "spent", "booked" and the like, so "what did I spend on
    my last trip" gets mail as well as the files), or names what a connected
-   server's tools act on ("email" for Gmail's tools). A reply to a turn that
-   used a server's tools keeps them too, whatever its words: "yes, make the
-   card with the first photo" after a turn that read mail once routed to the
-   file search alone, and the model said it couldn't fetch the attachment. The
+   server's tools act on ("email" for Gmail's tools). A reply within two
+   turns of one that used a server's tools keeps them too, whatever its words:
+   "yes, make the card with the first photo" after a turn that read mail once
+   routed to the file search alone, and the model said it couldn't fetch the
+   attachment. Two turns, because "yes redo properly" once followed a
+   "check what you did" answer that called nothing, and lost a broker's tools. The
    same signs skip the search on a `tools` turn: a web, mail or notes-app question gets no
    excerpts, which crowd the answer and cost time, and the file tools stay on
    offer. `search` and `search+tools` always search. From v0.4, a separate
@@ -2362,6 +2375,16 @@ makes no model call and keeps at most 2 MiB of what the turn read. It misses
 an amount written in words, such as "ninety dollars", and passes a made-up
 amount that happens to equal any number the turn read, such as a room number.
 
+Percentages get the same check under the same rule. A real turn said a chip
+maker was "down ~12%" over ten days; it had fetched no prices for it, and the
+fall was 30%. `merud` finds each percentage outside code, such as `12%`,
+`8.4 %` or `12.3 percent`, drops a minus sign before it, and looks for the
+number among what the turn read; 0% and 100% never count. The `notice` says
+"This percentage isn't in what Meru read this turn, so the model worked it out
+or recalled it: 12%. Check before you rely on it.", or "These percentages
+aren't" for more than one. A rate the model knows, such as a tax bracket, gets
+the notice too, since a recalled figure is the kind the user should check.
+
 A fifth check looks for an answer that says Meru made or changed a file. The
 first check stays quiet once a call that could change something succeeded, and
 a real turn showed the gap: it downloaded a family photo, which succeeded, wrote
@@ -2432,6 +2455,23 @@ one of its notices, wherever it sits in the answer. A Markdown link such as
 "[Meru on GitHub](…)" stays. Since the client already showed the copy, the
 `notice` event adds "The answer copied one of Meru's own notes, and Meru cut it:
 it wasn't about this turn, and this turn didn't do what it said."
+
+A ninth check follows a question that stopped before it answered. The history
+leaves out a question with no answer, so the next turn never sees that its
+tool calls ran. In a real chat the model called a broker's order tool 24
+times, the turn was stopped, and the user asked again; the model wrote a plan
+with no call at all, from its earlier answer, and marked every holding as held
+over a year, though half weren't. Now, when the chat's last question has no
+answer and the model made calls for it, `merud` adds a line to the system
+prompt: "(Meru's note: the user's last question in this chat stopped before it
+was answered, after 24 tool calls. Their results aren't in this chat, so you
+haven't read them. If this question needs what they would have returned, call
+the tools again; don't take figures, dates or facts from earlier answers or
+from memory.)" A Continue turn gets no line, since its hand-off carries the
+results. If the answer still calls no tool, on a route other than `direct`, the
+`notice` event adds "The last question stopped before it finished, and this
+answer called no tool, so it rests on earlier answers, not on what those tool
+calls would have read. Check it before you rely on it." (`stoppedCalls`)
 
 ### Routing
 
@@ -2743,7 +2783,8 @@ assistant line gets an `outcome` field only when the turn ended without a
 full answer: `timeout`, `cut_off`, `window_full`, `capped`, `gave_up`, `bad_output` or `no_vision` (see
 [Agent loop](#agent-loop)). It gets a `notice` field only when a check on
 the answer warned, such as a claimed action with no successful tool call, a
-link to a file that isn't there, a money amount the turn didn't read, or a file
+link to a file that isn't there, a money amount or percentage the turn didn't
+read, an answer with no call after a stopped question, or a file
 the answer says Meru made on a turn that wrote none (see
 [Claims no tool backs](#claims-no-tool-backs)).
 
